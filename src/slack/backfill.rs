@@ -24,6 +24,8 @@ pub struct Channel {
     pub name: String,
     #[serde(default)]
     pub is_private: bool,
+    #[serde(default)]
+    pub is_member: bool,
 }
 
 /// A single message as returned by the Slack API.
@@ -194,7 +196,7 @@ where
     let mut cursor: Option<String> = None;
     loop {
         let (channels, next) = client.conversations_list(cursor.as_deref()).await?;
-        for ch in channels {
+        for ch in channels.into_iter().filter(|c| c.is_member) {
             backfill_channel(repo, client, &ch.id).await?;
         }
         match next {
