@@ -1,0 +1,15 @@
+name: Nightly Backfill
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # 2am UTC daily
+  workflow_dispatch:       # allow manual trigger from GitHub UI
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backfill
+        run: |
+          curl --fail -X POST "${{ secrets.APP_URL }}/api/admin/backfill" \
+            -H "Authorization: Bearer ${{ secrets.ADMIN_TOKEN }}"
