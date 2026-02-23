@@ -11,5 +11,11 @@ jobs:
     steps:
       - name: Trigger backfill
         run: |
-          curl --fail -X POST "${{ secrets.APP_URL }}/api/admin/backfill" \
-            -H "Authorization: Bearer ${{ secrets.ADMIN_TOKEN }}"
+          body=$(curl -s -X POST "${{ secrets.APP_URL }}/api/admin/backfill" \
+            -H "Authorization: Bearer ${{ secrets.ADMIN_TOKEN }}" \
+            -w "\nHTTP_STATUS:%{http_code}")
+          status=$(echo "$body" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
+          response=$(echo "$body" | sed '/HTTP_STATUS:/d')
+          echo "Status: $status"
+          echo "Response: $response"
+          [ "$status" = "200" ] || exit 1
