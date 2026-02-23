@@ -3,7 +3,7 @@ use http::StatusCode;
 
 use crate::api::admin::process;
 use crate::db::InMemoryRepository;
-use crate::slack::backfill::{Channel, SlackApi, SlackError, SlackMessage};
+use crate::slack::backfill::{Channel, SlackApi, SlackError, SlackMessage, SlackUser};
 
 const TOKEN: &str = "secret123";
 
@@ -31,6 +31,13 @@ impl SlackApi for NoOpSlack {
         _ts: &str,
         _cursor: Option<&str>,
     ) -> Result<(Vec<SlackMessage>, Option<String>), SlackError> {
+        Ok((vec![], None))
+    }
+
+    async fn users_list(
+        &self,
+        _cursor: Option<&str>,
+    ) -> Result<(Vec<SlackUser>, Option<String>), SlackError> {
         Ok((vec![], None))
     }
 }

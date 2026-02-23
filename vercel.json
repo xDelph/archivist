@@ -2,6 +2,7 @@
   "routes": [
     { "src": "/api/slack/events", "dest": "/api/events" },
     { "src": "/api/health", "dest": "/api/health" },
-    { "src": "/api/admin/backfill", "dest": "/api/backfill" }
+    { "src": "/api/admin/backfill", "dest": "/api/backfill" },
+    { "src": "/api/report/(.*)", "dest": "/api/report" }
   ]
 }

@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -38,6 +39,41 @@ pub struct ReactionRecord {
     pub event_ts: String,
 }
 
+pub struct UserRecord {
+    pub user_id: String,
+    pub team_id: String,
+    pub display_name: String,
+    pub avatar_url: String,
+}
+
+pub struct ChannelRecord {
+    pub channel_id: String,
+    pub team_id: String,
+    pub name: String,
+}
+
+pub struct ThreadSummary {
+    pub channel_id: String,
+    pub channel_name: String,
+    pub thread_ts: String,
+    pub text: String,
+    pub created_at: DateTime<Utc>,
+    pub display_name: String,
+    pub avatar_url: String,
+    pub reaction_count: i64,
+    pub reply_count: i64,
+    pub participant_count: i64,
+    pub score: i64,
+}
+
+pub struct ThreadMessage {
+    pub ts: String,
+    pub text: String,
+    pub display_name: String,
+    pub avatar_url: String,
+    pub reactions: serde_json::Value,
+}
+
 // ── Repository trait ─────────────────────────────────────────────────────────
 
 /// All DB operations needed by the application.
@@ -52,6 +88,14 @@ pub trait Repository {
     async fn upsert_message(&self, msg: &MessageRecord) -> Result<Uuid>;
     async fn insert_reaction(&self, r: &ReactionRecord) -> Result<()>;
     async fn get_last_archived_ts(&self, channel_id: &str) -> Result<Option<String>>;
+    async fn upsert_user(&self, u: &UserRecord) -> Result<()>;
+    async fn upsert_channel(&self, c: &ChannelRecord) -> Result<()>;
+    async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>>;
+    async fn get_thread_messages(
+        &self,
+        channel_id: &str,
+        thread_ts: &str,
+    ) -> Result<Vec<ThreadMessage>>;
 }
 
 // ── PgPool implementation ─────────────────────────────────────────────────────
@@ -143,6 +187,161 @@ impl Repository for PgPool {
         .await?;
         Ok(ts)
     }
+
+    async fn upsert_user(&self, u: &UserRecord) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO users (user_id, team_id, display_name, avatar_url)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id) DO UPDATE SET
+                display_name = EXCLUDED.display_name,
+                avatar_url   = EXCLUDED.avatar_url,
+                cached_at    = NOW()
+            "#,
+            u.user_id,
+            u.team_id,
+            u.display_name,
+            u.avatar_url,
+        )
+        .execute(self)
+        .await?;
+        Ok(())
+    }
+
+    async fn upsert_channel(&self, c: &ChannelRecord) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO channels (channel_id, team_id, name)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (channel_id) DO UPDATE SET
+                name      = EXCLUDED.name,
+                cached_at = NOW()
+            "#,
+            c.channel_id,
+            c.team_id,
+            c.name,
+        )
+        .execute(self)
+        .await?;
+        Ok(())
+    }
+
+    async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>> {
+        let rows = sqlx::query!(
+            r#"
+            WITH stats AS (
+                SELECT
+                    m.channel_id,
+                    m.ts                                                  AS thread_ts,
+                    m.user_id,
+                    m.text,
+                    m.created_at,
+                    COALESCE(COUNT(DISTINCT r.id)::bigint, 0)             AS reaction_count,
+                    COALESCE(COUNT(DISTINCT rep.ts)::bigint, 0)           AS reply_count,
+                    COALESCE(COUNT(DISTINCT rep.user_id)::bigint + 1, 1)  AS participant_count
+                FROM messages m
+                LEFT JOIN messages rep
+                    ON rep.channel_id = m.channel_id
+                   AND rep.thread_ts  = m.ts
+                   AND rep.ts        != m.ts
+                LEFT JOIN reactions r
+                    ON r.channel_id = m.channel_id
+                   AND r.message_ts = m.ts
+                WHERE m.thread_ts = m.ts
+                GROUP BY m.channel_id, m.ts, m.user_id, m.text, m.created_at
+            )
+            SELECT
+                s.channel_id,
+                COALESCE(ch.name, s.channel_id)         AS "channel_name!",
+                s.thread_ts,
+                s.text,
+                s.created_at,
+                COALESCE(u.display_name, s.user_id, '') AS "display_name!",
+                COALESCE(u.avatar_url, '')               AS "avatar_url!",
+                s.reaction_count                         AS "reaction_count!: i64",
+                s.reply_count                            AS "reply_count!: i64",
+                s.participant_count                      AS "participant_count!: i64",
+                (s.reaction_count * 2
+                    + s.reply_count
+                    + s.participant_count)               AS "score!: i64"
+            FROM stats s
+            LEFT JOIN users    u  ON u.user_id    = s.user_id
+            LEFT JOIN channels ch ON ch.channel_id = s.channel_id
+            ORDER BY s.reaction_count * 2 + s.reply_count + s.participant_count DESC
+            LIMIT $1
+            "#,
+            limit
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| ThreadSummary {
+                channel_id: r.channel_id,
+                channel_name: r.channel_name,
+                thread_ts: r.thread_ts,
+                text: r.text,
+                created_at: r.created_at,
+                display_name: r.display_name,
+                avatar_url: r.avatar_url,
+                reaction_count: r.reaction_count,
+                reply_count: r.reply_count,
+                participant_count: r.participant_count,
+                score: r.score,
+            })
+            .collect())
+    }
+
+    async fn get_thread_messages(
+        &self,
+        channel_id: &str,
+        thread_ts: &str,
+    ) -> Result<Vec<ThreadMessage>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                m.ts,
+                m.text,
+                COALESCE(u.display_name, m.user_id, '') AS "display_name!",
+                COALESCE(u.avatar_url, '')               AS "avatar_url!",
+                COALESCE(
+                    (SELECT json_agg(
+                                jsonb_build_object('name', reaction_name, 'count', cnt)
+                                ORDER BY cnt DESC
+                            )
+                     FROM (
+                         SELECT reaction_name, COUNT(*)::int AS cnt
+                         FROM   reactions
+                         WHERE  channel_id = m.channel_id
+                           AND  message_ts = m.ts
+                         GROUP  BY reaction_name
+                     ) rc)::jsonb,
+                    '[]'::jsonb
+                )                                        AS "reactions!: serde_json::Value"
+            FROM messages m
+            LEFT JOIN users u ON u.user_id = m.user_id
+            WHERE m.channel_id = $1
+              AND m.thread_ts  = $2
+            ORDER BY m.ts ASC
+            "#,
+            channel_id,
+            thread_ts,
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| ThreadMessage {
+                ts: r.ts,
+                text: r.text,
+                display_name: r.display_name,
+                avatar_url: r.avatar_url,
+                reactions: r.reactions,
+            })
+            .collect())
+    }
 }
 
 // ── InMemoryRepository (test double) ─────────────────────────────────────────
@@ -226,6 +425,26 @@ impl Repository for InMemoryRepository {
             .map(|(_, ts)| ts.clone())
             .max();
         Ok(max)
+    }
+
+    async fn upsert_user(&self, _u: &UserRecord) -> Result<()> {
+        Ok(())
+    }
+
+    async fn upsert_channel(&self, _c: &ChannelRecord) -> Result<()> {
+        Ok(())
+    }
+
+    async fn get_top_threads(&self, _limit: i64) -> Result<Vec<ThreadSummary>> {
+        Ok(vec![])
+    }
+
+    async fn get_thread_messages(
+        &self,
+        _channel_id: &str,
+        _thread_ts: &str,
+    ) -> Result<Vec<ThreadMessage>> {
+        Ok(vec![])
     }
 }
 

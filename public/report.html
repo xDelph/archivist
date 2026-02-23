@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Archivist — Top Threads</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #e5e5e5;
+      --muted: #888;
+      --accent: #22c55e;
+      --link: #60a5fa;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100dvh;
+    }
+
+    header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    header h1 { font-size: 1.1rem; font-weight: 700; color: #fff; }
+    header span { font-size: 0.85rem; color: var(--muted); }
+
+    #threads { max-width: 820px; margin: 0 auto; padding: 16px 16px 40px; }
+
+    .thread-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .thread-card:hover { border-color: #444; }
+    .thread-card.open { border-color: #3a3a3a; }
+
+    .thread-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--surface);
+    }
+
+    .score-badge {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      background: #1f2e1f;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .thread-meta { flex: 1; min-width: 0; }
+
+    .thread-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      flex-wrap: wrap;
+    }
+
+    .avatar {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      object-fit: cover;
+      background: #333;
+      flex-shrink: 0;
+    }
+
+    .avatar-placeholder {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      background: #333;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .author { font-weight: 600; font-size: 0.85rem; }
+    .channel { color: var(--link); font-size: 0.8rem; }
+    .date { color: var(--muted); font-size: 0.78rem; margin-left: auto; }
+
+    .thread-preview {
+      color: var(--muted);
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .thread-stats {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .thread-stats span { display: flex; align-items: center; gap: 4px; }
+
+    /* Thread messages */
+    .thread-messages {
+      display: none;
+      padding: 0 16px 16px;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+    .thread-card.open .thread-messages { display: block; }
+
+    .message {
+      display: flex;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #1f1f1f;
+    }
+    .message:last-child { border-bottom: none; }
+
+    .msg-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 5px;
+      object-fit: cover;
+      background: #222;
+      flex-shrink: 0;
+    }
+
+    .msg-avatar-placeholder {
+      width: 28px;
+      height: 28px;
+      border-radius: 5px;
+      background: #222;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .msg-body { flex: 1; min-width: 0; }
+
+    .msg-top {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+    .msg-author { font-weight: 600; font-size: 0.85rem; }
+    .msg-time { color: var(--muted); font-size: 0.75rem; }
+
+    .msg-text {
+      color: var(--text);
+      font-size: 0.88rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg-text a { color: var(--link); text-decoration: none; }
+    .msg-text a:hover { text-decoration: underline; }
+
+    .msg-reactions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 6px;
+    }
+    .reaction {
+      background: #1e2a1e;
+      border: 1px solid #2a3a2a;
+      border-radius: 12px;
+      padding: 2px 8px;
+      font-size: 0.78rem;
+      color: var(--accent);
+    }
+
+    /* URL previews */
+    .url-preview {
+      margin-top: 8px;
+      border: 1px solid var(--border);
+      border-left: 3px solid #3a3a3a;
+      border-radius: 4px;
+      padding: 10px 12px;
+      max-width: 480px;
+    }
+    .url-preview-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 2px; }
+    .url-preview-desc { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    .url-preview img { max-width: 100%; border-radius: 4px; max-height: 160px; object-fit: cover; }
+
+    .loading { color: var(--muted); font-size: 0.85rem; padding: 16px 0; }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 40px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Archivist</h1>
+    <span>Top Threads</span>
+  </header>
+  <div id="threads"><p class="loading">Loading…</p></div>
+
+  <script>
+    const BASE = '/api/report';
+    const unfurlCache = {};
+
+    function tsToDate(ts) {
+      return new Date(parseFloat(ts) * 1000).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      });
+    }
+
+    function tsToTime(ts) {
+      const d = new Date(parseFloat(ts) * 1000);
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function linkify(text) {
+      return text.replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url, label) =>
+        `<a href="${url}" target="_blank" rel="noopener">${label || url}</a>`
+      ).replace(/(https?:\/\/[^\s<>"]+)/g, (url) =>
+        `<a href="${url}" target="_blank" rel="noopener">${url}</a>`
+      );
+    }
+
+    function extractUrls(text) {
+      const urls = [];
+      const re = /<(https?:\/\/[^|>]+)(?:\|[^>]+)?>/g;
+      let m;
+      while ((m = re.exec(text)) !== null) urls.push(m[1]);
+      const re2 = /(?<![<"])(https?:\/\/[^\s<>"]+)/g;
+      while ((m = re2.exec(text)) !== null) urls.push(m[1]);
+      return [...new Set(urls)];
+    }
+
+    async function fetchUnfurl(url) {
+      if (unfurlCache[url] !== undefined) return unfurlCache[url];
+      unfurlCache[url] = null;
+      try {
+        const r = await fetch(`${BASE}/unfurl?url=${encodeURIComponent(url)}`);
+        const data = await r.json();
+        unfurlCache[url] = (data.title || data.description || data.image) ? data : null;
+      } catch (_) {}
+      return unfurlCache[url];
+    }
+
+    function renderAvatar(avatarUrl, name, size = 'small') {
+      const cls = size === 'large' ? 'msg-avatar' : 'avatar';
+      const phCls = size === 'large' ? 'msg-avatar-placeholder' : 'avatar-placeholder';
+      if (avatarUrl)
+        return `<img class="${cls}" src="${avatarUrl}" alt="${name}" loading="lazy">`;
+      return `<span class="${phCls}">${(name || '?')[0].toUpperCase()}</span>`;
+    }
+
+    function renderPreview(data, url) {
+      if (!data) return '';
+      return `<div class="url-preview">
+        ${data.image ? `<img src="${data.image}" alt="" loading="lazy">` : ''}
+        ${data.title ? `<div class="url-preview-title">${data.title}</div>` : ''}
+        ${data.description ? `<div class="url-preview-desc">${data.description}</div>` : ''}
+        <a href="${url}" target="_blank" rel="noopener" style="font-size:0.75rem;color:var(--muted)">${new URL(url).hostname}</a>
+      </div>`;
+    }
+
+    async function loadThread(card, channelId, threadTs) {
+      const container = card.querySelector('.thread-messages');
+      if (container.dataset.loaded) return;
+      container.dataset.loaded = '1';
+      container.innerHTML = '<p class="loading">Loading thread…</p>';
+
+      const r = await fetch(`${BASE}/threads?channel_id=${channelId}&ts=${threadTs}`);
+      const data = await r.json();
+      const msgs = data.messages || [];
+
+      if (!msgs.length) {
+        container.innerHTML = '<p class="empty">No messages.</p>';
+        return;
+      }
+
+      const html = msgs.map(m => {
+        const reactions = (m.reactions || [])
+          .map(rx => `<span class="reaction">${rx.name} ${rx.count}</span>`)
+          .join('');
+        return `<div class="message">
+          ${renderAvatar(m.avatar_url, m.display_name, 'large')}
+          <div class="msg-body">
+            <div class="msg-top">
+              <span class="msg-author">${m.display_name || 'Unknown'}</span>
+              <span class="msg-time">${tsToTime(m.ts)}</span>
+            </div>
+            <div class="msg-text" data-ts="${m.ts}" data-text="${encodeURIComponent(m.text)}">${linkify(m.text)}</div>
+            ${reactions ? `<div class="msg-reactions">${reactions}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+
+      container.innerHTML = html;
+
+      // Lazy unfurl URLs in each message
+      container.querySelectorAll('.msg-text').forEach(async el => {
+        const text = decodeURIComponent(el.dataset.text);
+        const urls = extractUrls(text);
+        for (const url of urls.slice(0, 3)) {
+          const preview = await fetchUnfurl(url);
+          if (preview) {
+            el.insertAdjacentHTML('afterend', renderPreview(preview, url));
+          }
+        }
+      });
+    }
+
+    async function init() {
+      const container = document.getElementById('threads');
+      const r = await fetch(`${BASE}/threads`);
+      const data = await r.json();
+      const threads = data.threads || [];
+
+      if (!threads.length) {
+        container.innerHTML = '<p class="empty">No threads yet. Run a backfill to get started.</p>';
+        return;
+      }
+
+      container.innerHTML = threads.map(t => `
+        <div class="thread-card" data-channel="${t.channel_id}" data-ts="${t.thread_ts}">
+          <div class="thread-header">
+            <div class="score-badge">${t.score}</div>
+            <div class="thread-meta">
+              <div class="thread-top">
+                ${renderAvatar(t.avatar_url, t.display_name)}
+                <span class="author">${t.display_name || 'Unknown'}</span>
+                <span class="channel">#${t.channel_name}</span>
+                <span class="date">${tsToDate(t.thread_ts)}</span>
+              </div>
+              <div class="thread-preview">${t.text || '(no text)'}</div>
+              <div class="thread-stats">
+                <span>💬 ${t.reply_count} replies</span>
+                <span>⚡ ${t.reaction_count} reactions</span>
+                <span>👥 ${t.participant_count} people</span>
+              </div>
+            </div>
+          </div>
+          <div class="thread-messages"></div>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('.thread-card').forEach(card => {
+        card.querySelector('.thread-header').addEventListener('click', () => {
+          const isOpen = card.classList.toggle('open');
+          if (isOpen) {
+            loadThread(card, card.dataset.channel, card.dataset.ts);
+          }
+        });
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
