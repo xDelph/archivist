@@ -1,8 +1,11 @@
 use std::env;
 
+use bytes::Bytes;
+use http::StatusCode;
+use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tokio::sync::OnceCell;
-use vercel_runtime::{Body, Error, Request, Response, StatusCode};
+use vercel_runtime::{Error, Request, Response, ResponseBody};
 
 use crate::db::Repository;
 use crate::db::pool::create_pool;
@@ -23,26 +26,27 @@ async fn pool() -> Result<&'static PgPool, Error> {
     .await
 }
 
-/// Vercel entry-point — obtains the shared pool and delegates to [`process`].
-pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
+/// Vercel entry-point — collects streaming body and delegates to [`process`].
+pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let signing_secret = env::var("SLACK_SIGNING_SECRET").unwrap_or_default();
-    process(pool().await?, &signing_secret, req).await
+    let (parts, body) = req.into_parts();
+    let bytes = body.collect().await?.to_bytes();
+    let req = http::Request::from_parts(parts, bytes);
+    let (parts, body) = process(pool().await?, &signing_secret, req)
+        .await?
+        .into_parts();
+    Ok(Response::from_parts(parts, ResponseBody::from(body)))
 }
 
-/// Core handler logic — secrets injected for testability.
+/// Core handler logic — secrets and body bytes injected for testability.
 pub(crate) async fn process<R: Repository>(
     repo: &R,
     signing_secret: &str,
-    req: Request,
-) -> Result<Response<Body>, Error> {
-    // 1. Capture raw body bytes (required for signature verification before parsing)
-    let raw_bytes: Vec<u8> = match req.body() {
-        Body::Text(s) => s.as_bytes().to_vec(),
-        Body::Binary(b) => b.clone(),
-        Body::Empty => vec![],
-    };
+    req: http::Request<Bytes>,
+) -> Result<Response<Bytes>, Error> {
+    let raw_bytes = req.body().clone();
 
-    // 2. Extract Slack headers
+    // 1. Extract Slack headers
     let headers = req.headers();
     let timestamp = headers
         .get("x-slack-request-timestamp")
@@ -53,20 +57,20 @@ pub(crate) async fn process<R: Repository>(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    // 3. Verify HMAC signature — reject early on failure
+    // 2. Verify HMAC signature — reject early on failure
     if verify_signature(signing_secret, timestamp, &raw_bytes, signature).is_err() {
         return Ok(Response::builder()
             .status(StatusCode::UNAUTHORIZED)
-            .body(Body::Empty)?);
+            .body(Bytes::new())?);
     }
 
-    // 4. Parse JSON — bad JSON is a client error
+    // 3. Parse JSON — bad JSON is a client error
     let raw_value: serde_json::Value = match serde_json::from_slice(&raw_bytes) {
         Ok(v) => v,
         Err(_) => {
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::Empty)?);
+                .body(Bytes::new())?);
         }
     };
     let envelope: SlackEnvelope = match serde_json::from_value(raw_value.clone()) {
@@ -74,18 +78,18 @@ pub(crate) async fn process<R: Repository>(
         Err(_) => {
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::Empty)?);
+                .body(Bytes::new())?);
         }
     };
 
-    // 5. Dispatch
+    // 4. Dispatch
     match envelope {
         SlackEnvelope::UrlVerification(uv) => {
             let body = serde_json::to_string(&uv).map_err(|e| Error::from(e.to_string()))?;
             Ok(Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Body::Text(body))?)
+                .body(Bytes::from(body))?)
         }
         SlackEnvelope::EventCallback(cb) => {
             handle_event(repo, *cb, raw_value)
@@ -93,10 +97,10 @@ pub(crate) async fn process<R: Repository>(
                 .map_err(|e| Error::from(e.to_string()))?;
             Ok(Response::builder()
                 .status(StatusCode::OK)
-                .body(Body::Empty)?)
+                .body(Bytes::new())?)
         }
         SlackEnvelope::Unknown => Ok(Response::builder()
             .status(StatusCode::OK)
-            .body(Body::Empty)?),
+            .body(Bytes::new())?),
     }
 }

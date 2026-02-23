@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use vercel_runtime::{Body, Request, StatusCode};
+use bytes::Bytes;
+use http::StatusCode;
 
 use crate::api::events::process;
 use crate::db::{InMemoryRepository, Repository};
@@ -16,7 +17,7 @@ fn now_secs() -> i64 {
 }
 
 /// Build a correctly signed POST request.
-fn signed_request(body: &str) -> Request {
+fn signed_request(body: &str) -> http::Request<Bytes> {
     let now = now_secs();
     let sig = compute_signature(SECRET, now, body.as_bytes());
     http::Request::builder()
@@ -25,18 +26,18 @@ fn signed_request(body: &str) -> Request {
         .header("x-slack-request-timestamp", now.to_string())
         .header("x-slack-signature", sig)
         .header("content-type", "application/json")
-        .body(Body::Text(body.to_owned()))
+        .body(Bytes::from(body.to_owned()))
         .unwrap()
 }
 
 /// Build a request with a deliberately bad signature.
-fn unsigned_request(body: &str) -> Request {
+fn unsigned_request(body: &str) -> http::Request<Bytes> {
     http::Request::builder()
         .method("POST")
         .uri("/api/slack/events")
         .header("x-slack-request-timestamp", "1700000000")
         .header("x-slack-signature", "v0=badbadbadbad")
-        .body(Body::Text(body.to_owned()))
+        .body(Bytes::from(body.to_owned()))
         .unwrap()
 }
 
@@ -48,7 +49,7 @@ async fn test_missing_signature_returns_401() {
     let req = http::Request::builder()
         .method("POST")
         .uri("/api/slack/events")
-        .body(Body::Text("{}".into()))
+        .body(Bytes::from("{}"))
         .unwrap();
     let resp = process(&repo, SECRET, req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -70,10 +71,7 @@ async fn test_url_verification_returns_challenge() {
     let resp = process(&repo, SECRET, signed_request(body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
-    let text = match resp.into_body() {
-        Body::Text(s) => s,
-        other => panic!("expected Text body, got {other:?}"),
-    };
+    let text = String::from_utf8(resp.into_body().to_vec()).unwrap();
     let json: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(json["challenge"], "test_challenge_xyz");
 }

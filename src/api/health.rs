@@ -1,8 +1,9 @@
-use vercel_runtime::{Body, Error, Request, Response, StatusCode};
+use http::StatusCode;
+use vercel_runtime::{Error, Request, Response, ResponseBody};
 
-pub async fn handler(_req: Request) -> Result<Response<Body>, Error> {
+pub async fn handler(_req: Request) -> Result<Response<ResponseBody>, Error> {
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
-        .body(Body::Text(r#"{"ok":true}"#.into()))?)
+        .body(ResponseBody::from(r#"{"ok":true}"#))?)
 }

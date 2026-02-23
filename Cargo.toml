@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 # Vercel runtime
-vercel_runtime = "1"
+vercel_runtime = "2"
 
 # HTTP
 axum = { version = "0.7", features = ["json", "macros"] }
@@ -42,6 +42,9 @@ chrono = { version = "0.4", features = ["serde"] }
 # Misc
 uuid = { version = "1", features = ["v4", "serde"] }
 dotenvy = "0.15"
+bytes = "1"
+http = "1"
+http-body-util = "0.1"
 
 [[bin]]
 name = "slack_events"
@@ -57,7 +60,6 @@ path = "api/backfill.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
-http = "1"
 
 [lints.clippy]
 all = "deny"
