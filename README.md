@@ -30,7 +30,7 @@ migrations/     sqlx migrations
 ## Requirements
 
 - Rust (stable)
-- [sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli): `cargo install sqlx-cli --no-default-features --features postgres`
+- [sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli): `cargo install sqlx-cli --no-default-features --features postgres,rustls`
 - [Vercel CLI](https://vercel.com/docs/cli): `npm i -g vercel`
 - A [Neon](https://neon.tech) Postgres database
 - A Slack App with Events API configured (see below)
@@ -39,12 +39,22 @@ migrations/     sqlx migrations
 
 ```bash
 cp .env.example .env
-# fill in .env values
+# fill in .env values (DATABASE_URL and DATABASE_URL_UNPOOLED required)
 
-sqlx database create
-sqlx migrate run
+# Run migrations (uses DATABASE_URL_UNPOOLED — Neon's pooler drops prepared statements)
+source .env && DATABASE_URL="$DATABASE_URL_UNPOOLED" sqlx migrate run
 
 vercel dev
+```
+
+**Regenerate sqlx offline query cache** (only needed after changing SQL queries):
+```bash
+source .env && DATABASE_URL="$DATABASE_URL_UNPOOLED" cargo sqlx prepare
+```
+
+**Unit tests** run fully offline — no database or network needed:
+```bash
+cargo test
 ```
 
 ## Environment variables

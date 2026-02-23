@@ -22,10 +22,20 @@ Clippy is configured to deny all warnings via `[lints.clippy] all = "deny"` in `
 
 ## Testing
 
-- Tests live in **separate files** (e.g., `src/slack/tests.rs`, not inline in the module file).
+- Tests live in **separate files** (e.g., `src/slack/tests/mod.rs`), never inline in the module.
 - Every feature or bug fix **must** include a new test for non-regression.
+- All unit tests run **fully offline** — no DB or network. Use `InMemoryRepository` for DB-dependent logic.
 - Run a single test: `cargo test test_name`
-- Run tests for a module: `cargo test slack::`
+- Run tests for a module: `cargo test db::`
+
+## sqlx offline cache
+
+`SQLX_OFFLINE=true` is set in `.cargo/config.toml` — builds never need a live DB.
+Only regenerate `.sqlx/` after changing a SQL query:
+```bash
+source .env && DATABASE_URL="$DATABASE_URL_UNPOOLED" cargo sqlx prepare
+```
+`DATABASE_URL_UNPOOLED` is required because Neon's pooler (`DATABASE_URL`) drops prepared statements and breaks `cargo sqlx prepare`.
 
 ## Architecture
 
@@ -62,12 +72,11 @@ Slack → POST /api/slack/events
 ## Environment Variables
 
 ```
+DATABASE_URL              # Neon pooled — used at runtime
+DATABASE_URL_UNPOOLED     # Neon direct — used only for cargo sqlx prepare / migrations
 SLACK_SIGNING_SECRET
 SLACK_BOT_TOKEN
-DATABASE_URL
-# Optional:
-UPSTASH_REDIS_REST_URL
-UPSTASH_REDIS_REST_TOKEN
+ADMIN_TOKEN
 ```
 
 ## DB Schema (minimal)
