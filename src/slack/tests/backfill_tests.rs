@@ -7,7 +7,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::db::{InMemoryRepository, Repository};
 use crate::slack::backfill::{
-    Channel, SlackApi, SlackClient, SlackError, SlackMessage, run_backfill,
+    Channel, SlackApi, SlackClient, SlackError, SlackMessage, SlackUser, run_backfill,
 };
 
 // ── SlackClient HTTP tests (wiremock) ─────────────────────────────────────────
@@ -225,6 +225,13 @@ impl SlackApi for MockSlackApi {
         let key = (channel_id.to_owned(), ts.to_owned());
         let msgs = self.replies.get(&key).cloned().unwrap_or_default();
         Ok((msgs, None))
+    }
+
+    async fn users_list(
+        &self,
+        _cursor: Option<&str>,
+    ) -> Result<(Vec<SlackUser>, Option<String>), SlackError> {
+        Ok((vec![], None))
     }
 }
 

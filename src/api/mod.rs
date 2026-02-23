@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod events;
 pub mod health;
+pub mod report;
 
 #[cfg(test)]
 mod tests;

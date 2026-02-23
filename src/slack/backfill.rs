@@ -39,6 +39,14 @@ pub struct SlackMessage {
     pub raw: serde_json::Value,
 }
 
+#[derive(Debug, Clone)]
+pub struct SlackUser {
+    pub user_id: String,
+    pub team_id: String,
+    pub display_name: String,
+    pub avatar_url: String,
+}
+
 // ── Trait ─────────────────────────────────────────────────────────────────────
 
 #[allow(async_fn_in_trait)]
@@ -61,6 +69,11 @@ pub trait SlackApi {
         ts: &str,
         cursor: Option<&str>,
     ) -> Result<(Vec<SlackMessage>, Option<String>), SlackError>;
+
+    async fn users_list(
+        &self,
+        cursor: Option<&str>,
+    ) -> Result<(Vec<SlackUser>, Option<String>), SlackError>;
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -169,6 +182,19 @@ impl SlackApi for SlackClient {
         let messages = parse_messages(&json["messages"])?;
         Ok((messages, extract_cursor(&json)))
     }
+
+    async fn users_list(
+        &self,
+        cursor: Option<&str>,
+    ) -> Result<(Vec<SlackUser>, Option<String>), SlackError> {
+        let mut params: Vec<(&str, &str)> = vec![("limit", "200")];
+        if let Some(c) = cursor {
+            params.push(("cursor", c));
+        }
+        let json = self.get("users.list", &params).await?;
+        let users = parse_users(&json["members"])?;
+        Ok((users, extract_cursor(&json)))
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -178,6 +204,34 @@ fn extract_cursor(json: &serde_json::Value) -> Option<String> {
         .as_str()
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
+}
+
+fn parse_users(value: &serde_json::Value) -> Result<Vec<SlackUser>, SlackError> {
+    let arr = value
+        .as_array()
+        .ok_or_else(|| SlackError::Api("members field missing or not an array".to_owned()))?;
+    Ok(arr
+        .iter()
+        .filter(|u| u["is_bot"].as_bool() != Some(true) && u["id"].as_str() != Some("USLACKBOT"))
+        .filter_map(|u| {
+            let user_id = u["id"].as_str()?.to_owned();
+            let team_id = u["team_id"].as_str().unwrap_or("").to_owned();
+            let profile = &u["profile"];
+            let display_name = profile["display_name"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .or_else(|| profile["real_name"].as_str())
+                .unwrap_or(&user_id)
+                .to_owned();
+            let avatar_url = profile["image_72"].as_str().unwrap_or("").to_owned();
+            Some(SlackUser {
+                user_id,
+                team_id,
+                display_name,
+                avatar_url,
+            })
+        })
+        .collect())
 }
 
 // ── Backfill orchestration ────────────────────────────────────────────────────
@@ -195,20 +249,27 @@ where
     S: SlackApi,
 {
     let mut cursor: Option<String> = None;
-    let mut total_channels = 0usize;
+    let mut all_channels: Vec<Channel> = Vec::new();
     loop {
         let (channels, next) = client.conversations_list(cursor.as_deref()).await?;
-        total_channels += channels.len();
-        for ch in channels {
-            info!(channel_id = %ch.id, channel_name = %ch.name, "backfilling channel");
-            backfill_channel(repo, client, &ch.id).await?;
-        }
+        all_channels.extend(channels);
         match next {
             Some(c) => cursor = Some(c),
             None => break,
         }
     }
-    info!(total_channels, "backfill complete");
+
+    info!(total = all_channels.len(), "channels discovered");
+
+    for ch in &all_channels {
+        info!(channel_id = %ch.id, channel_name = %ch.name, "backfilling channel");
+        backfill_channel(repo, client, &ch.id).await?;
+    }
+
+    cache_channels(repo, &all_channels).await?;
+    cache_users(repo, client).await?;
+
+    info!("backfill complete");
     Ok(())
 }
 
@@ -292,6 +353,52 @@ async fn upsert_slack_message<R: crate::db::Repository>(
         raw_json: msg.raw.clone(),
     })
     .await?;
+    Ok(())
+}
+
+async fn cache_channels<R: crate::db::Repository>(
+    repo: &R,
+    channels: &[Channel],
+) -> anyhow::Result<()> {
+    use crate::db::ChannelRecord;
+    for ch in channels {
+        repo.upsert_channel(&ChannelRecord {
+            channel_id: ch.id.clone(),
+            team_id: String::new(),
+            name: ch.name.clone(),
+        })
+        .await?;
+    }
+    info!(count = channels.len(), "channels cached");
+    Ok(())
+}
+
+async fn cache_users<R, S>(repo: &R, client: &S) -> anyhow::Result<()>
+where
+    R: crate::db::Repository,
+    S: SlackApi,
+{
+    use crate::db::UserRecord;
+    let mut cursor: Option<String> = None;
+    let mut total = 0usize;
+    loop {
+        let (users, next) = client.users_list(cursor.as_deref()).await?;
+        total += users.len();
+        for u in users {
+            repo.upsert_user(&UserRecord {
+                user_id: u.user_id,
+                team_id: u.team_id,
+                display_name: u.display_name,
+                avatar_url: u.avatar_url,
+            })
+            .await?;
+        }
+        match next {
+            Some(c) => cursor = Some(c),
+            None => break,
+        }
+    }
+    info!(total, "users cached");
     Ok(())
 }
 

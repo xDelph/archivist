@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO users (user_id, team_id, display_name, avatar_url)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (user_id) DO UPDATE SET\n                display_name = EXCLUDED.display_name,\n                avatar_url   = EXCLUDED.avatar_url,\n                cached_at    = NOW()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7275518247f7fbf4f5b422f720cf545f67caa90166fdfdb618ccf21f19505e7d"
+}

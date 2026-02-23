@@ -62,6 +62,10 @@ path = "api/backfill.rs"
 name = "backfill_local"
 path = "src/bin/backfill_local.rs"
 
+[[bin]]
+name = "report"
+path = "api/report.rs"
+
 [dev-dependencies]
 tokio-test = "0.4"
 wiremock = "0.6"

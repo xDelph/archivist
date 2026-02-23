@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO channels (channel_id, team_id, name)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (channel_id) DO UPDATE SET\n                name      = EXCLUDED.name,\n                cached_at = NOW()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eb8d6a4623904ee011b99929f0ed8b84cc18383b26037e9ff20dbb9cf0f14e9a"
+}
