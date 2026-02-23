@@ -5,9 +5,9 @@
     { "src": "api/backfill.rs", "use": "@vercel/rust" }
   ],
   "routes": [
-    { "src": "/api/slack/events", "dest": "/api/events" },
-    { "src": "/api/health", "dest": "/api/health" },
-    { "src": "/api/admin/backfill", "dest": "/api/backfill" }
+    { "src": "/api/slack/events", "dest": "/api/events.rs" },
+    { "src": "/api/health", "dest": "/api/health.rs" },
+    { "src": "/api/admin/backfill", "dest": "/api/backfill.rs" }
   ],
   "crons": []
 }
