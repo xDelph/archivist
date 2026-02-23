@@ -79,11 +79,33 @@ Run a module's tests: `cargo test slack::`
 
 ## Deployment
 
+**First deploy:**
 ```bash
-vercel deploy
+vercel deploy --prod
 ```
 
-Set all environment variables in the Vercel dashboard or via `vercel env add`.
+Set all environment variables (Vercel dashboard or CLI) before the first request hits the function:
+```bash
+vercel env add DATABASE_URL
+vercel env add SLACK_SIGNING_SECRET
+vercel env add SLACK_BOT_TOKEN
+vercel env add ADMIN_TOKEN
+```
+
+**Subsequent deploys** (after code changes):
+```bash
+vercel deploy --prod
+```
+
+**Verify the deployment** is live:
+```bash
+curl https://<your-project>.vercel.app/api/health
+# → {"ok":true}
+```
+
+**Complete the Slack URL verification** — after deploying, paste the URL into the Slack App's Event Subscriptions page. Slack will send a `url_verification` challenge; the handler echoes it back automatically.
+
+**Pool behaviour:** the `PgPool` is initialised once per Lambda instance via `OnceCell` and reused across warm invocations. Cold starts create a new pool (≤5 connections, Neon pooler).
 
 ## Backfill scheduling
 

@@ -1,5 +1,7 @@
 use std::env;
 
+use sqlx::PgPool;
+use tokio::sync::OnceCell;
 use vercel_runtime::{Body, Error, Request, Response, StatusCode};
 
 use crate::db::Repository;
@@ -8,14 +10,23 @@ use crate::slack::ingest::handle_event;
 use crate::slack::signature::verify_signature;
 use crate::slack::types::SlackEnvelope;
 
-/// Vercel entry-point — reads config from env and delegates to [`process`].
+/// Shared pool — initialised once per Lambda instance, reused on warm starts.
+static POOL: OnceCell<PgPool> = OnceCell::const_new();
+
+async fn pool() -> Result<&'static PgPool, Error> {
+    POOL.get_or_try_init(|| async {
+        let url = env::var("DATABASE_URL").unwrap_or_default();
+        create_pool(&url)
+            .await
+            .map_err(|e| Error::from(e.to_string()))
+    })
+    .await
+}
+
+/// Vercel entry-point — obtains the shared pool and delegates to [`process`].
 pub async fn handler(req: Request) -> Result<Response<Body>, Error> {
-    let database_url = env::var("DATABASE_URL").unwrap_or_default();
     let signing_secret = env::var("SLACK_SIGNING_SECRET").unwrap_or_default();
-    let pool = create_pool(&database_url)
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
-    process(&pool, &signing_secret, req).await
+    process(pool().await?, &signing_secret, req).await
 }
 
 /// Core handler logic — secrets injected for testability.
