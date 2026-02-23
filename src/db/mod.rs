@@ -248,6 +248,12 @@ impl Repository for PgPool {
                     ON r.channel_id = m.channel_id
                    AND r.message_ts = m.ts
                 WHERE m.thread_ts = m.ts
+                   OR (m.thread_ts IS NULL AND EXISTS (
+                       SELECT 1 FROM messages r
+                       WHERE r.channel_id = m.channel_id
+                         AND r.thread_ts  = m.ts
+                         AND r.ts        != m.ts
+                   ))
                 GROUP BY m.channel_id, m.ts, m.user_id, m.text, m.created_at
             )
             SELECT
@@ -322,7 +328,7 @@ impl Repository for PgPool {
             FROM messages m
             LEFT JOIN users u ON u.user_id = m.user_id
             WHERE m.channel_id = $1
-              AND m.thread_ts  = $2
+              AND (m.thread_ts = $2 OR m.ts = $2)
             ORDER BY m.ts ASC
             "#,
             channel_id,
