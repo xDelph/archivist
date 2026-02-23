@@ -1,13 +1,13 @@
 {
   "builds": [
-    { "src": "api/slack/events.rs", "use": "@vercel/rust" },
+    { "src": "api/events.rs", "use": "@vercel/rust" },
     { "src": "api/health.rs", "use": "@vercel/rust" },
-    { "src": "api/admin/backfill.rs", "use": "@vercel/rust" }
+    { "src": "api/backfill.rs", "use": "@vercel/rust" }
   ],
   "routes": [
-    { "src": "/api/slack/events", "dest": "/api/slack/events.rs" },
-    { "src": "/api/health", "dest": "/api/health.rs" },
-    { "src": "/api/admin/backfill", "dest": "/api/admin/backfill.rs" }
+    { "src": "/api/slack/events", "dest": "/api/events" },
+    { "src": "/api/health", "dest": "/api/health" },
+    { "src": "/api/admin/backfill", "dest": "/api/backfill" }
   ],
   "crons": []
 }
