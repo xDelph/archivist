@@ -398,7 +398,14 @@ where
     let mut cursor: Option<String> = None;
     let mut total = 0usize;
     loop {
-        let (users, next) = client.users_list(cursor.as_deref()).await?;
+        let (users, next) = match client.users_list(cursor.as_deref()).await {
+            Ok(r) => r,
+            Err(SlackError::Api(ref e)) if e == "missing_scope" => {
+                warn!("users.list requires users:read scope — skipping user cache (add scope and re-run backfill)");
+                return Ok(());
+            }
+            Err(e) => return Err(e.into()),
+        };
         total += users.len();
         for u in users {
             repo.upsert_user(&UserRecord {
