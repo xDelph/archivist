@@ -45,7 +45,7 @@ dotenvy = "0.15"
 
 [[bin]]
 name = "slack_events"
-path = "api/slack/events.rs"
+path = "api/events.rs"
 
 [[bin]]
 name = "health"
@@ -53,7 +53,7 @@ path = "api/health.rs"
 
 [[bin]]
 name = "admin_backfill"
-path = "api/admin/backfill.rs"
+path = "api/backfill.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"
