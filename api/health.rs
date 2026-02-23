@@ -1,7 +1,7 @@
 use archivist::api::health::handler;
-use vercel_runtime::{Error, run};
+use vercel_runtime::{Error, run, service_fn};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    run(handler).await
+    run(service_fn(handler)).await
 }
