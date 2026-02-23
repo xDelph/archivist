@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO reactions\n                (team_id, channel_id, message_ts, user_id, reaction_name, event_ts)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ON CONFLICT (team_id, channel_id, message_ts, user_id, reaction_name) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7272f0cfba8db16717442ece8db631420c505c269dc863aff00b45deb87a8a8c"
+}
