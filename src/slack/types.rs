@@ -61,6 +61,23 @@ pub struct MessageEvent {
     pub thread_ts: Option<String>,
     /// Non-null for edited, deleted, bot messages, etc.
     pub subtype: Option<String>,
+    /// Present on `message_changed` — the updated message object.
+    pub message: Option<Box<MessageUpdate>>,
+}
+
+/// The updated message payload inside a `message_changed` event.
+#[derive(Debug, Deserialize)]
+pub struct MessageUpdate {
+    pub user: Option<String>,
+    pub text: Option<String>,
+    pub ts: String,
+    pub thread_ts: Option<String>,
+    pub edited: Option<EditInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EditInfo {
+    pub ts: String,
 }
 
 // ── reaction_added ────────────────────────────────────────────────────────────

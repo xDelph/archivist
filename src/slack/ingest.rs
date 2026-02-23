@@ -56,16 +56,35 @@ pub async fn handle_event<R: Repository>(
                 debug!(event_id = %cb.event_id, subtype = ?m.subtype, "ignored subtype");
                 return Ok(());
             }
-            info!(event_id = %cb.event_id, channel_id = %m.channel, ts = %m.ts, "message upserted");
+
+            // For message_changed the canonical ts/user/text live in the nested
+            // `message` object; the top-level ts is just the event notification ts.
+            let (ts, user_id, text, thread_ts, edited_ts) =
+                if m.subtype.as_deref() == Some("message_changed") {
+                    match m.message {
+                        Some(inner) => (
+                            inner.ts.clone(),
+                            inner.user.clone(),
+                            inner.text.clone().unwrap_or_default(),
+                            inner.thread_ts.clone(),
+                            inner.edited.as_ref().map(|e| e.ts.clone()),
+                        ),
+                        None => return Ok(()), // malformed event, nothing to update
+                    }
+                } else {
+                    (m.ts.clone(), m.user.clone(), m.text.unwrap_or_default(), m.thread_ts.clone(), None)
+                };
+
+            info!(event_id = %cb.event_id, channel_id = %m.channel, %ts, "message upserted");
             repo.upsert_message(&MessageRecord {
                 team_id: cb.team_id,
                 channel_id: m.channel,
-                ts: m.ts,
-                thread_ts: m.thread_ts,
-                user_id: m.user,
-                text: m.text.unwrap_or_default(),
+                ts,
+                thread_ts,
+                user_id,
+                text,
                 subtype: m.subtype,
-                edited_ts: None,
+                edited_ts,
                 deleted: false,
                 raw_json: raw_payload,
             })
