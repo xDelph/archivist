@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
@@ -280,6 +282,9 @@ where
 {
     let oldest = repo.get_last_archived_ts(channel_id).await?;
     let mut cursor: Option<String> = None;
+    // Threads whose root was archived in a previous run — replies appear in
+    // history but the root won't be re-fetched via conversations.history.
+    let mut stale_threads: HashSet<String> = HashSet::new();
     loop {
         let (messages, next) = match client
             .conversations_history(channel_id, oldest.as_deref(), cursor.as_deref())
@@ -296,14 +301,25 @@ where
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
+                // Thread root in this batch — fetch all replies.
                 info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
                 backfill_replies(repo, client, channel_id, &msg.ts).await?;
+                stale_threads.remove(&msg.ts);
+            } else if let Some(tts) = &msg.thread_ts {
+                // Reply whose root was archived in a previous run.
+                stale_threads.insert(tts.clone());
             }
         }
         match next {
             Some(c) => cursor = Some(c),
             None => break,
         }
+    }
+    // Re-fetch threads whose root predates this backfill window. This re-upserts
+    // the root with thread_ts = ts and pulls in any new replies.
+    for thread_ts in stale_threads {
+        info!(channel_id, %thread_ts, "backfilling stale thread");
+        backfill_replies(repo, client, channel_id, &thread_ts).await?;
     }
     Ok(())
 }
