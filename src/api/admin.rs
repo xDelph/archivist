@@ -26,11 +26,14 @@ async fn pool() -> Result<&'static PgPool, Error> {
 /// Vercel entry-point — reads config from env and delegates to [`process`].
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_default();
-    let bot_token = env::var("SLACK_BOT_TOKEN").unwrap_or_default();
+    // Prefer user token for backfill (full history access); fall back to bot token.
+    let slack_token = env::var("SLACK_USER_TOKEN")
+        .or_else(|_| env::var("SLACK_BOT_TOKEN"))
+        .unwrap_or_default();
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
-    let client = SlackClient::new(bot_token);
+    let client = SlackClient::new(slack_token);
     let pool = match pool().await {
         Ok(p) => p,
         Err(e) => {
