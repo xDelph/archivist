@@ -43,6 +43,18 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 dotenvy = "0.15"
 
+[[bin]]
+name = "slack_events"
+path = "api/slack/events.rs"
+
+[[bin]]
+name = "health"
+path = "api/health.rs"
+
+[[bin]]
+name = "admin_backfill"
+path = "api/admin/backfill.rs"
+
 [dev-dependencies]
 tokio-test = "0.4"
 http = "1"
