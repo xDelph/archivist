@@ -177,6 +177,107 @@ fn extract_cursor(json: &serde_json::Value) -> Option<String> {
         .map(str::to_owned)
 }
 
+// ── Backfill orchestration ────────────────────────────────────────────────────
+
+/// Backfills all channels the bot can see.
+///
+/// For each channel:
+/// 1. Query the DB for the latest archived `ts` (resume point).
+/// 2. Fetch `conversations.history` from that point, upsert every message.
+/// 3. For every thread-parent message (`thread_ts == ts`), fetch
+///    `conversations.replies` and upsert all replies.
+pub async fn run_backfill<R, S>(repo: &R, client: &S) -> anyhow::Result<()>
+where
+    R: crate::db::Repository,
+    S: SlackApi,
+{
+    let mut cursor: Option<String> = None;
+    loop {
+        let (channels, next) = client.conversations_list(cursor.as_deref()).await?;
+        for ch in channels {
+            backfill_channel(repo, client, &ch.id).await?;
+        }
+        match next {
+            Some(c) => cursor = Some(c),
+            None => break,
+        }
+    }
+    Ok(())
+}
+
+async fn backfill_channel<R, S>(repo: &R, client: &S, channel_id: &str) -> anyhow::Result<()>
+where
+    R: crate::db::Repository,
+    S: SlackApi,
+{
+    let oldest = repo.get_last_archived_ts(channel_id).await?;
+    let mut cursor: Option<String> = None;
+    loop {
+        let (messages, next) = client
+            .conversations_history(channel_id, oldest.as_deref(), cursor.as_deref())
+            .await?;
+        for msg in &messages {
+            upsert_slack_message(repo, channel_id, msg).await?;
+            if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
+                backfill_replies(repo, client, channel_id, &msg.ts).await?;
+            }
+        }
+        match next {
+            Some(c) => cursor = Some(c),
+            None => break,
+        }
+    }
+    Ok(())
+}
+
+async fn backfill_replies<R, S>(
+    repo: &R,
+    client: &S,
+    channel_id: &str,
+    thread_ts: &str,
+) -> anyhow::Result<()>
+where
+    R: crate::db::Repository,
+    S: SlackApi,
+{
+    let mut cursor: Option<String> = None;
+    loop {
+        let (messages, next) = client
+            .conversations_replies(channel_id, thread_ts, cursor.as_deref())
+            .await?;
+        for msg in &messages {
+            upsert_slack_message(repo, channel_id, msg).await?;
+        }
+        match next {
+            Some(c) => cursor = Some(c),
+            None => break,
+        }
+    }
+    Ok(())
+}
+
+async fn upsert_slack_message<R: crate::db::Repository>(
+    repo: &R,
+    channel_id: &str,
+    msg: &SlackMessage,
+) -> anyhow::Result<()> {
+    use crate::db::MessageRecord;
+    repo.upsert_message(&MessageRecord {
+        team_id: msg.raw["team"].as_str().unwrap_or("").to_owned(),
+        channel_id: channel_id.to_owned(),
+        ts: msg.ts.clone(),
+        thread_ts: msg.thread_ts.clone(),
+        user_id: msg.raw["user"].as_str().map(str::to_owned),
+        text: msg.raw["text"].as_str().unwrap_or("").to_owned(),
+        subtype: msg.raw["subtype"].as_str().map(str::to_owned),
+        edited_ts: msg.raw["edited"]["ts"].as_str().map(str::to_owned),
+        deleted: false,
+        raw_json: msg.raw.clone(),
+    })
+    .await?;
+    Ok(())
+}
+
 fn parse_messages(value: &serde_json::Value) -> Result<Vec<SlackMessage>, SlackError> {
     let arr = value
         .as_array()
