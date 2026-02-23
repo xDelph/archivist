@@ -196,7 +196,7 @@ where
     let mut cursor: Option<String> = None;
     loop {
         let (channels, next) = client.conversations_list(cursor.as_deref()).await?;
-        for ch in channels.into_iter().filter(|c| c.is_member) {
+        for ch in channels {
             backfill_channel(repo, client, &ch.id).await?;
         }
         match next {
@@ -215,9 +215,14 @@ where
     let oldest = repo.get_last_archived_ts(channel_id).await?;
     let mut cursor: Option<String> = None;
     loop {
-        let (messages, next) = client
+        let (messages, next) = match client
             .conversations_history(channel_id, oldest.as_deref(), cursor.as_deref())
-            .await?;
+            .await
+        {
+            Ok(r) => r,
+            Err(SlackError::Api(ref e)) if e == "not_in_channel" => return Ok(()),
+            Err(e) => return Err(e.into()),
+        };
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
