@@ -31,9 +31,27 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
     let client = SlackClient::new(bot_token);
-    let (parts, body) = process(&admin_token, req, pool().await?, &client)
-        .await?
-        .into_parts();
+    let pool = match pool().await {
+        Ok(p) => p,
+        Err(e) => {
+            let body = format!(r#"{{"ok":false,"error":"db: {}"}}"#, e);
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Content-Type", "application/json")
+                .body(ResponseBody::from(Bytes::from(body)))?);
+        }
+    };
+    let resp = match process(&admin_token, req, pool, &client).await {
+        Ok(r) => r,
+        Err(e) => {
+            let body = format!(r#"{{"ok":false,"error":"{}"}}"#, e);
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Content-Type", "application/json")
+                .body(ResponseBody::from(Bytes::from(body)))?);
+        }
+    };
+    let (parts, body) = resp.into_parts();
     Ok(Response::from_parts(parts, ResponseBody::from(body)))
 }
 
