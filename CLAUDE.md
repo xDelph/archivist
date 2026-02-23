@@ -75,8 +75,10 @@ Slack → POST /api/slack/events
 DATABASE_URL              # Neon pooled — used at runtime
 DATABASE_URL_UNPOOLED     # Neon direct — used only for cargo sqlx prepare / migrations
 SLACK_SIGNING_SECRET
-SLACK_BOT_TOKEN
-ADMIN_TOKEN
+SLACK_BOT_TOKEN           # xoxb- token (events API, bot presence)
+SLACK_USER_TOKEN          # xoxp- token (backfill — full public channel history)
+ADMIN_TOKEN               # Bearer token protecting POST /api/admin/backfill
+RUST_LOG                  # Log level, e.g. info (default) or debug
 ```
 
 ## DB Schema (minimal)
@@ -85,4 +87,12 @@ Three tables: `slack_events` (dedup store), `messages`, `reactions` — see `pro
 
 ## Vercel Deployment
 
-Rust on Vercel uses the community Rust runtime. Functions are compiled to WASM or native depending on runtime choice. Keep handler cold-start weight minimal.
+Rust on Vercel uses `vercel_runtime v2` (hyper-based, no Lambda env vars required). Three serverless functions share a compiled binary. Set `RUST_LOG=info` in Vercel env vars to see structured JSON logs.
+
+## Local backfill
+
+```bash
+cargo run --bin backfill_local
+```
+
+Loads `.env` automatically, uses `SLACK_USER_TOKEN` (falls back to `SLACK_BOT_TOKEN`).

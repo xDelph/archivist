@@ -7,6 +7,8 @@ use sqlx::PgPool;
 use tokio::sync::OnceCell;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
+use tracing::{info, warn};
+
 use crate::db::Repository;
 use crate::db::pool::create_pool;
 use crate::slack::backfill::{SlackApi, SlackClient};
@@ -76,14 +78,17 @@ where
         .unwrap_or("");
 
     if provided != format!("Bearer {}", admin_token) {
+        warn!("unauthorized backfill attempt");
         return Ok(Response::builder()
             .status(StatusCode::UNAUTHORIZED)
             .body(Bytes::new())?);
     }
 
+    info!("backfill started");
     crate::slack::backfill::run_backfill(repo, client)
         .await
         .map_err(|e| Error::from(e.to_string()))?;
+    info!("backfill completed");
 
     Ok(Response::builder()
         .status(StatusCode::OK)
