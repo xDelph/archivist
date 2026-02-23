@@ -1,6 +1,6 @@
 use crate::db::{InMemoryRepository, Repository};
 use crate::slack::ingest::handle_event;
-use crate::slack::types::{EventCallback, MessageEvent, ReactionEvent, ReactionItem, SlackEvent};
+use crate::slack::types::{EventCallback, MessageEvent, MessageUpdate, ReactionEvent, ReactionItem, SlackEvent};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ fn make_message_cb(event_id: &str, subtype: Option<&str>) -> (EventCallback, ser
             ts: format!("{event_id}.000100"),
             thread_ts: None,
             subtype: subtype.map(String::from),
+            message: None,
         }),
     };
     let raw = serde_json::json!({"event_id": event_id});
@@ -118,6 +119,46 @@ async fn test_all_ignored_subtypes_are_skipped() {
             "subtype '{subtype}' should be ignored"
         );
     }
+}
+
+#[tokio::test]
+async fn test_message_changed_updates_correct_ts() {
+    let repo = InMemoryRepository::default();
+
+    // Store the original message first
+    let (cb_orig, raw_orig) = make_message_cb("Ev030", None);
+    handle_event(&repo, cb_orig, raw_orig).await.unwrap();
+
+    // Now send a message_changed event — nested message has the original ts
+    let original_ts = "Ev030.000100".to_string();
+    let cb_edit = EventCallback {
+        team_id: "T001".into(),
+        api_app_id: "A001".into(),
+        event_id: "Ev031".into(),
+        event_time: 1_700_000_010,
+        event: SlackEvent::Message(MessageEvent {
+            channel: "C001".into(),
+            user: None,             // absent at top level for message_changed
+            text: None,             // absent at top level for message_changed
+            ts: "Ev031.000200".into(), // event notification ts — NOT the message ts
+            thread_ts: None,
+            subtype: Some("message_changed".into()),
+            message: Some(Box::new(MessageUpdate {
+                user: Some("U001".into()),
+                text: Some("edited text".into()),
+                ts: original_ts.clone(),
+                thread_ts: None,
+                edited: None,
+            })),
+        }),
+    };
+    handle_event(&repo, cb_edit, serde_json::json!({})).await.unwrap();
+
+    let store = repo.messages.lock().unwrap();
+    // Still only one message record — upserted by the original ts
+    assert_eq!(store.len(), 1);
+    let (_, msg) = store.get(&("C001".into(), original_ts)).unwrap();
+    assert_eq!(msg.text, "edited text");
 }
 
 #[tokio::test]
