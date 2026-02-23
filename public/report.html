@@ -238,10 +238,63 @@
       return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     }
 
+    // Map Slack emoji shortcode names → Unicode
+    const EMOJI = {
+      'grinning':'😀','smiley':'😃','smile':'😄','grin':'😁','laughing':'😆',
+      'sweat_smile':'😅','rofl':'🤣','joy':'😂','slightly_smiling_face':'🙂',
+      'wink':'😉','blush':'😊','innocent':'😇','heart_eyes':'😍','kissing_heart':'😘',
+      'yum':'😋','stuck_out_tongue':'😛','stuck_out_tongue_winking_eye':'😜',
+      'money_mouth_face':'🤑','hugs':'🤗','thinking':'🤔','zipper_mouth_face':'🤐',
+      'raised_eyebrow':'🤨','neutral_face':'😐','expressionless':'😑','smirk':'😏',
+      'unamused':'😒','roll_eyes':'🙄','grimacing':'😬','relieved':'😌',
+      'pensive':'😔','sleepy':'😪','sleeping':'😴','mask':'😷','nauseated_face':'🤢',
+      'sneezing_face':'🤧','hot_face':'🥵','cold_face':'🥶','woozy_face':'🥴',
+      'dizzy_face':'😵','exploding_head':'🤯','cowboy_hat_face':'🤠',
+      'partying_face':'🥳','sunglasses':'😎','nerd_face':'🤓','monocle_face':'🧐',
+      'confused':'😕','worried':'😟','cry':'😢','sob':'😭','scream':'😱',
+      'rage':'😡','angry':'😠','triumph':'😤','skull':'💀','ghost':'👻',
+      'alien':'👽','robot':'🤖','wave':'👋','+1':'👍','thumbsup':'👍',
+      '-1':'👎','thumbsdown':'👎','clap':'👏','raised_hands':'🙌','pray':'🙏',
+      'handshake':'🤝','muscle':'💪','eyes':'👀','heart':'❤️',
+      'orange_heart':'🧡','yellow_heart':'💛','green_heart':'💚','blue_heart':'💙',
+      'purple_heart':'💜','black_heart':'🖤','broken_heart':'💔',
+      'two_hearts':'💕','sparkling_heart':'💖','white_check_mark':'✅','x':'❌',
+      'question':'❓','exclamation':'❗','fire':'🔥','tada':'🎉','confetti_ball':'🎊',
+      'trophy':'🏆','crown':'👑','gem':'💎','rocket':'🚀','star':'⭐',
+      'star2':'🌟','sparkles':'✨','zap':'⚡','dizzy':'💫','bulb':'💡',
+      'link':'🔗','lock':'🔒','unlock':'🔓','key':'🔑','hammer':'🔨',
+      'wrench':'🔧','gear':'⚙️','package':'📦','memo':'📝','books':'📚',
+      'book':'📖','computer':'💻','phone':'📱','email':'📧','e-mail':'📧',
+      'bell':'🔔','loudspeaker':'📢','mega':'📣','chart_with_upwards_trend':'📈',
+      'chart_with_downwards_trend':'📉','bar_chart':'📊','calendar':'📅',
+      'hourglass':'⌛','alarm_clock':'⏰','sun':'☀️','sunny':'☀️','cloud':'☁️',
+      'snowflake':'❄️','rainbow':'🌈','dog':'🐶','cat':'🐱','bear':'🐻',
+      'penguin':'🐧','pizza':'🍕','hamburger':'🍔','beer':'🍺','beers':'🍻',
+      'coffee':'☕','tada':'🎉','100':'💯','ok_hand':'👌','v':'✌️',
+      'crossed_fingers':'🤞','raised_hand':'✋','point_up':'☝️',
+      'point_right':'👉','point_left':'👈','point_down':'👇','point_up_2':'👆',
+      'moneybag':'💰','dollar':'💵','mag':'🔍','arrow_up':'⬆️',
+      'arrow_down':'⬇️','arrow_left':'⬅️','arrow_right':'➡️','sos':'🆘',
+      'new':'🆕','cool':'🆒','white_flag':'🏳️','checkered_flag':'🏁',
+    };
+
+    function emojiChar(name) {
+      return EMOJI[name] || null;
+    }
+
+    function demojify(text) {
+      return text.replace(/:([a-z0-9_+\-]+):/g, (match, name) =>
+        EMOJI[name] ? EMOJI[name] : match
+      );
+    }
+
     function linkify(text) {
-      return text.replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url, label) =>
+      // Step 1: convert Slack <url|label> and <url> formats
+      const linked = text.replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url, label) =>
         `<a href="${url}" target="_blank" rel="noopener">${label || url}</a>`
-      ).replace(/(https?:\/\/[^\s<>"]+)/g, (url) =>
+      );
+      // Step 2: linkify remaining bare URLs — skip ones already inside HTML attributes (preceded by " or >)
+      return linked.replace(/(?<![">])(https?:\/\/[^\s<>"]+)/g, (url) =>
         `<a href="${url}" target="_blank" rel="noopener">${url}</a>`
       );
     }
@@ -302,7 +355,7 @@
 
       const html = msgs.map(m => {
         const reactions = (m.reactions || [])
-          .map(rx => `<span class="reaction">${rx.name} ${rx.count}</span>`)
+          .map(rx => `<span class="reaction">${emojiChar(rx.name) || rx.name} ${rx.count}</span>`)
           .join('');
         return `<div class="message">
           ${renderAvatar(m.avatar_url, m.display_name, 'large')}
@@ -311,7 +364,7 @@
               <span class="msg-author">${m.display_name || 'Unknown'}</span>
               <span class="msg-time">${tsToTime(m.ts)}</span>
             </div>
-            <div class="msg-text" data-ts="${m.ts}" data-text="${encodeURIComponent(m.text)}">${linkify(m.text)}</div>
+            <div class="msg-text" data-ts="${m.ts}" data-text="${encodeURIComponent(m.text)}">${linkify(demojify(m.text))}</div>
             ${reactions ? `<div class="msg-reactions">${reactions}</div>` : ''}
           </div>
         </div>`;
@@ -354,7 +407,7 @@
                 <span class="channel">#${t.channel_name}</span>
                 <span class="date">${tsToDate(t.thread_ts)}</span>
               </div>
-              <div class="thread-preview">${t.text || '(no text)'}</div>
+              <div class="thread-preview">${demojify(t.text || '(no text)')}</div>
               <div class="thread-stats">
                 <span>💬 ${t.reply_count} replies</span>
                 <span>⚡ ${t.reaction_count} reactions</span>
