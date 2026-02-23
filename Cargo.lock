@@ -42,6 +42,7 @@ dependencies = [
  "dotenvy",
  "hex",
  "hmac",
+ "http",
  "reqwest",
  "serde",
  "serde_json",

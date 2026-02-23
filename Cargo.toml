@@ -45,6 +45,7 @@ dotenvy = "0.15"
 
 [dev-dependencies]
 tokio-test = "0.4"
+http = "1"
 
 [lints.clippy]
 all = "deny"
