@@ -1,4 +1,5 @@
 use anyhow::Result;
+use tracing::{debug, info};
 
 use crate::db::{MessageRecord, ReactionRecord, Repository, SlackEventRecord};
 use crate::slack::types::{EventCallback, SlackEvent};
@@ -32,6 +33,7 @@ pub async fn handle_event<R: Repository>(
 ) -> Result<()> {
     // 1. Dedup
     if repo.event_exists(&cb.event_id).await? {
+        info!(event_id = %cb.event_id, "duplicate event, skipping");
         return Ok(());
     }
 
@@ -51,8 +53,10 @@ pub async fn handle_event<R: Repository>(
                 .as_deref()
                 .is_some_and(|s| IGNORED_SUBTYPES.contains(&s))
             {
+                debug!(event_id = %cb.event_id, subtype = ?m.subtype, "ignored subtype");
                 return Ok(());
             }
+            info!(event_id = %cb.event_id, channel_id = %m.channel, ts = %m.ts, "message upserted");
             repo.upsert_message(&MessageRecord {
                 team_id: cb.team_id,
                 channel_id: m.channel,
@@ -68,6 +72,7 @@ pub async fn handle_event<R: Repository>(
             .await?;
         }
         SlackEvent::ReactionAdded(r) => {
+            info!(event_id = %cb.event_id, reaction = %r.reaction, "reaction inserted");
             repo.insert_reaction(&ReactionRecord {
                 team_id: cb.team_id,
                 channel_id: r.item.channel,

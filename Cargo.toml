@@ -58,6 +58,10 @@ path = "api/health.rs"
 name = "admin_backfill"
 path = "api/backfill.rs"
 
+[[bin]]
+name = "backfill_local"
+path = "src/bin/backfill_local.rs"
+
 [dev-dependencies]
 tokio-test = "0.4"
 wiremock = "0.6"

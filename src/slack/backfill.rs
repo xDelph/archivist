@@ -1,6 +1,7 @@
 use reqwest::StatusCode;
 use serde::Deserialize;
 use thiserror::Error;
+use tracing::{info, warn};
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
@@ -194,9 +195,12 @@ where
     S: SlackApi,
 {
     let mut cursor: Option<String> = None;
+    let mut total_channels = 0usize;
     loop {
         let (channels, next) = client.conversations_list(cursor.as_deref()).await?;
+        total_channels += channels.len();
         for ch in channels {
+            info!(channel_id = %ch.id, channel_name = %ch.name, "backfilling channel");
             backfill_channel(repo, client, &ch.id).await?;
         }
         match next {
@@ -204,6 +208,7 @@ where
             None => break,
         }
     }
+    info!(total_channels, "backfill complete");
     Ok(())
 }
 
@@ -220,12 +225,17 @@ where
             .await
         {
             Ok(r) => r,
-            Err(SlackError::Api(ref e)) if e == "not_in_channel" => return Ok(()),
+            Err(SlackError::Api(ref e)) if e == "not_in_channel" => {
+                warn!(channel_id, "skipping private channel: bot not a member");
+                return Ok(());
+            }
             Err(e) => return Err(e.into()),
         };
+        info!(channel_id, count = messages.len(), "fetched message batch");
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
+                info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
                 backfill_replies(repo, client, channel_id, &msg.ts).await?;
             }
         }

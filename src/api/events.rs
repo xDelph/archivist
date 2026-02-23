@@ -7,6 +7,8 @@ use sqlx::PgPool;
 use tokio::sync::OnceCell;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
+use tracing::{info, warn};
+
 use crate::db::Repository;
 use crate::db::pool::create_pool;
 use crate::slack::ingest::handle_event;
@@ -59,6 +61,7 @@ pub(crate) async fn process<R: Repository>(
 
     // 2. Verify HMAC signature — reject early on failure
     if verify_signature(signing_secret, timestamp, &raw_bytes, signature).is_err() {
+        warn!(timestamp, "signature verification failed");
         return Ok(Response::builder()
             .status(StatusCode::UNAUTHORIZED)
             .body(Bytes::new())?);
@@ -67,7 +70,8 @@ pub(crate) async fn process<R: Repository>(
     // 3. Parse JSON — bad JSON is a client error
     let raw_value: serde_json::Value = match serde_json::from_slice(&raw_bytes) {
         Ok(v) => v,
-        Err(_) => {
+        Err(e) => {
+            warn!(error = %e, "failed to parse request body as JSON");
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body(Bytes::new())?);
@@ -75,7 +79,8 @@ pub(crate) async fn process<R: Repository>(
     };
     let envelope: SlackEnvelope = match serde_json::from_value(raw_value.clone()) {
         Ok(e) => e,
-        Err(_) => {
+        Err(e) => {
+            warn!(error = %e, "failed to deserialize Slack envelope");
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body(Bytes::new())?);
@@ -85,6 +90,7 @@ pub(crate) async fn process<R: Repository>(
     // 4. Dispatch
     match envelope {
         SlackEnvelope::UrlVerification(uv) => {
+            info!("url_verification challenge");
             let body = serde_json::to_string(&uv).map_err(|e| Error::from(e.to_string()))?;
             Ok(Response::builder()
                 .status(StatusCode::OK)
@@ -92,6 +98,7 @@ pub(crate) async fn process<R: Repository>(
                 .body(Bytes::from(body))?)
         }
         SlackEnvelope::EventCallback(cb) => {
+            info!(event_id = %cb.event_id, team_id = %cb.team_id, "event_callback received");
             handle_event(repo, *cb, raw_value)
                 .await
                 .map_err(|e| Error::from(e.to_string()))?;

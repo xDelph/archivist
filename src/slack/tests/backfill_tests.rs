@@ -299,20 +299,21 @@ async fn test_backfill_passes_last_archived_ts_as_oldest() {
 
     let repo = InMemoryRepository::default();
     // Pre-populate so get_last_archived_ts returns a ts
-    let _: uuid::Uuid = repo.upsert_message(&crate::db::MessageRecord {
-        team_id: "T001".into(),
-        channel_id: "C001".into(),
-        ts: "1700000005.000100".into(),
-        thread_ts: None,
-        user_id: None,
-        text: "existing".into(),
-        subtype: None,
-        edited_ts: None,
-        deleted: false,
-        raw_json: serde_json::Value::Null,
-    })
-    .await
-    .unwrap();
+    let _: uuid::Uuid = repo
+        .upsert_message(&crate::db::MessageRecord {
+            team_id: "T001".into(),
+            channel_id: "C001".into(),
+            ts: "1700000005.000100".into(),
+            thread_ts: None,
+            user_id: None,
+            text: "existing".into(),
+            subtype: None,
+            edited_ts: None,
+            deleted: false,
+            raw_json: serde_json::Value::Null,
+        })
+        .await
+        .unwrap();
 
     let calls = mock.history_calls.clone();
     #[allow(unused_variables)]
