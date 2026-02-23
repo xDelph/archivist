@@ -1,10 +1,16 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use crate::slack::backfill::{SlackApi, SlackClient, SlackError};
+use crate::db::{InMemoryRepository, Repository};
+use crate::slack::backfill::{
+    Channel, SlackApi, SlackClient, SlackError, SlackMessage, run_backfill,
+};
 
-// ── conversations_history ─────────────────────────────────────────────────────
+// ── SlackClient HTTP tests (wiremock) ─────────────────────────────────────────
 
 #[tokio::test]
 async fn test_history_returns_cursor_when_has_more() {
@@ -76,8 +82,6 @@ async fn test_empty_history_returns_empty_vec() {
     assert_eq!(cursor, None);
 }
 
-// ── rate limiting ─────────────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn test_rate_limit_429_surfaces_as_error() {
     let server = MockServer::start().await;
@@ -95,8 +99,6 @@ async fn test_rate_limit_429_surfaces_as_error() {
         Err(SlackError::RateLimited { retry_after: 30 })
     ));
 }
-
-// ── conversations_list ────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_conversations_list_returns_channels_and_cursor() {
@@ -123,8 +125,6 @@ async fn test_conversations_list_returns_channels_and_cursor() {
     assert_eq!(cursor, Some("nextpage".to_owned()));
 }
 
-// ── conversations_replies ─────────────────────────────────────────────────────
-
 #[tokio::test]
 async fn test_replies_includes_thread_ts() {
     let server = MockServer::start().await;
@@ -149,4 +149,171 @@ async fn test_replies_includes_thread_ts() {
 
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[1].thread_ts.as_deref(), Some("1700000000.000100"));
+}
+
+// ── run_backfill logic tests (in-memory mock, fully offline) ──────────────────
+
+fn make_message(ts: &str, thread_ts: Option<&str>) -> SlackMessage {
+    let mut raw = json!({"ts": ts, "text": "hi", "team": "T001", "user": "U001"});
+    if let Some(tts) = thread_ts {
+        raw["thread_ts"] = json!(tts);
+    }
+    SlackMessage {
+        ts: ts.to_owned(),
+        thread_ts: thread_ts.map(str::to_owned),
+        raw,
+    }
+}
+
+/// Minimal mock that serves preset channel/history/reply data.
+struct MockSlackApi {
+    channels: Vec<Channel>,
+    history: HashMap<String, Vec<SlackMessage>>,
+    replies: HashMap<(String, String), Vec<SlackMessage>>,
+    /// Records (channel_id, oldest) for each conversations_history call.
+    history_calls: Arc<Mutex<Vec<(String, Option<String>)>>>,
+}
+
+impl MockSlackApi {
+    fn new(channels: Vec<Channel>) -> Self {
+        Self {
+            channels,
+            history: HashMap::new(),
+            replies: HashMap::new(),
+            history_calls: Arc::new(Mutex::new(vec![])),
+        }
+    }
+    fn with_history(mut self, channel_id: &str, messages: Vec<SlackMessage>) -> Self {
+        self.history.insert(channel_id.to_owned(), messages);
+        self
+    }
+    fn with_replies(mut self, channel_id: &str, ts: &str, messages: Vec<SlackMessage>) -> Self {
+        self.replies
+            .insert((channel_id.to_owned(), ts.to_owned()), messages);
+        self
+    }
+}
+
+impl SlackApi for MockSlackApi {
+    async fn conversations_list(
+        &self,
+        _cursor: Option<&str>,
+    ) -> Result<(Vec<Channel>, Option<String>), SlackError> {
+        Ok((self.channels.clone(), None))
+    }
+
+    async fn conversations_history(
+        &self,
+        channel_id: &str,
+        oldest: Option<&str>,
+        _cursor: Option<&str>,
+    ) -> Result<(Vec<SlackMessage>, Option<String>), SlackError> {
+        self.history_calls
+            .lock()
+            .unwrap()
+            .push((channel_id.to_owned(), oldest.map(str::to_owned)));
+        let msgs = self.history.get(channel_id).cloned().unwrap_or_default();
+        Ok((msgs, None))
+    }
+
+    async fn conversations_replies(
+        &self,
+        channel_id: &str,
+        ts: &str,
+        _cursor: Option<&str>,
+    ) -> Result<(Vec<SlackMessage>, Option<String>), SlackError> {
+        let key = (channel_id.to_owned(), ts.to_owned());
+        let msgs = self.replies.get(&key).cloned().unwrap_or_default();
+        Ok((msgs, None))
+    }
+}
+
+#[tokio::test]
+async fn test_backfill_upserts_messages_for_all_channels() {
+    let mock = MockSlackApi::new(vec![
+        Channel {
+            id: "C001".into(),
+            name: "general".into(),
+            is_private: false,
+        },
+        Channel {
+            id: "C002".into(),
+            name: "random".into(),
+            is_private: false,
+        },
+    ])
+    .with_history("C001", vec![make_message("1700000001.000100", None)])
+    .with_history(
+        "C002",
+        vec![
+            make_message("1700000002.000100", None),
+            make_message("1700000002.000200", None),
+        ],
+    );
+
+    let repo = InMemoryRepository::default();
+    run_backfill(&repo, &mock).await.unwrap();
+
+    assert_eq!(repo.messages.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn test_backfill_fetches_replies_for_thread_parents() {
+    let thread_ts = "1700000000.000100";
+    let mock = MockSlackApi::new(vec![Channel {
+        id: "C001".into(),
+        name: "general".into(),
+        is_private: false,
+    }])
+    // thread parent: thread_ts == ts
+    .with_history("C001", vec![make_message(thread_ts, Some(thread_ts))])
+    // two replies (parent + child)
+    .with_replies(
+        "C001",
+        thread_ts,
+        vec![
+            make_message(thread_ts, Some(thread_ts)),
+            make_message("1700000001.000200", Some(thread_ts)),
+        ],
+    );
+
+    let repo = InMemoryRepository::default();
+    run_backfill(&repo, &mock).await.unwrap();
+
+    // parent (from history + replies, idempotent) + reply = 2 distinct (channel, ts) keys
+    assert_eq!(repo.messages.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_backfill_passes_last_archived_ts_as_oldest() {
+    let mock = MockSlackApi::new(vec![Channel {
+        id: "C001".into(),
+        name: "general".into(),
+        is_private: false,
+    }])
+    .with_history("C001", vec![]);
+
+    let repo = InMemoryRepository::default();
+    // Pre-populate so get_last_archived_ts returns a ts
+    let _: uuid::Uuid = repo.upsert_message(&crate::db::MessageRecord {
+        team_id: "T001".into(),
+        channel_id: "C001".into(),
+        ts: "1700000005.000100".into(),
+        thread_ts: None,
+        user_id: None,
+        text: "existing".into(),
+        subtype: None,
+        edited_ts: None,
+        deleted: false,
+        raw_json: serde_json::Value::Null,
+    })
+    .await
+    .unwrap();
+
+    let calls = mock.history_calls.clone();
+    #[allow(unused_variables)]
+    run_backfill(&repo, &mock).await.unwrap();
+
+    let recorded = calls.lock().unwrap();
+    assert_eq!(recorded[0].1.as_deref(), Some("1700000005.000100"));
 }
