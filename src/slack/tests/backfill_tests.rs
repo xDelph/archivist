@@ -235,11 +235,13 @@ async fn test_backfill_upserts_messages_for_all_channels() {
             id: "C001".into(),
             name: "general".into(),
             is_private: false,
+            is_member: true,
         },
         Channel {
             id: "C002".into(),
             name: "random".into(),
             is_private: false,
+            is_member: true,
         },
     ])
     .with_history("C001", vec![make_message("1700000001.000100", None)])
@@ -264,6 +266,7 @@ async fn test_backfill_fetches_replies_for_thread_parents() {
         id: "C001".into(),
         name: "general".into(),
         is_private: false,
+        is_member: true,
     }])
     // thread parent: thread_ts == ts
     .with_history("C001", vec![make_message(thread_ts, Some(thread_ts))])
@@ -290,6 +293,7 @@ async fn test_backfill_passes_last_archived_ts_as_oldest() {
         id: "C001".into(),
         name: "general".into(),
         is_private: false,
+        is_member: true,
     }])
     .with_history("C001", vec![]);
 
