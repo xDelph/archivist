@@ -268,21 +268,22 @@ impl Repository for PgPool {
                     m.text,
                     m.created_at,
                     -- Count reactions across every message in the thread (root + replies).
-                    -- Reads raw_json['reactions'] because backfill stores aggregated
-                    -- reaction counts there (not in the reactions table).
-                    -- Uses jsonb_typeof guard to skip JSON-null / non-array values
-                    -- (COALESCE only catches SQL NULL, not JSON null).
+                    -- Uses raw_json['reactions'] (backfill data). Alias 'rr' avoids
+                    -- conflict with the outer LEFT JOIN alias 'rep'.
+                    -- jsonb_typeof guard prevents passing non-arrays to jsonb_array_elements.
+                    -- Uses jsonb cast (rr_elem->'count') not text cast (->>'count') so
+                    -- fractional JSON numbers don't cause a cast error.
                     COALESCE((
-                        SELECT SUM((r_elem->>'count')::bigint)
-                        FROM messages rep
+                        SELECT SUM((rr_elem->'count')::bigint)
+                        FROM messages rr
                         CROSS JOIN LATERAL jsonb_array_elements(
-                            CASE WHEN jsonb_typeof(rep.raw_json->'reactions') = 'array'
-                                 THEN rep.raw_json->'reactions'
+                            CASE WHEN jsonb_typeof(rr.raw_json->'reactions') = 'array'
+                                 THEN rr.raw_json->'reactions'
                                  ELSE '[]'::jsonb
                             END
-                        ) AS r_elem
-                        WHERE rep.channel_id = m.channel_id
-                          AND (rep.thread_ts = m.ts OR rep.ts = m.ts)
+                        ) AS rr_elem
+                        WHERE rr.channel_id = m.channel_id
+                          AND (rr.thread_ts = m.ts OR rr.ts = m.ts)
                     ), 0)                                                 AS reaction_count,
                     COALESCE(COUNT(DISTINCT rep.ts)::bigint, 0)           AS reply_count,
                     COALESCE(COUNT(DISTINCT rep.user_id)::bigint + 1, 1)  AS participant_count
