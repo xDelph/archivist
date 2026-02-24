@@ -155,6 +155,15 @@ Add these two secrets to the GitHub repository (`Settings → Secrets and variab
 | `APP_URL` | Your deployed Vercel URL, e.g. `https://archivist.vercel.app` |
 | `ADMIN_TOKEN` | Same value as the `ADMIN_TOKEN` env var in Vercel |
 
+## Record viewer (`GET /record`)
+
+The viewer is a server-rendered HTMX app. Behaviour notes:
+
+- **Filter bar** wraps gracefully at narrow widths; fully responsive on mobile.
+- **Search** — live with 300 ms debounce; pressing Enter also triggers the search (handled via HTMX, no full-page navigation).
+- **User mentions** in thread previews are resolved to display names (loaded server-side alongside threads).
+- **Slack-encoded entities** (`&amp;`, `&lt;`, `&gt;`) are decoded before re-escaping to prevent double-encoding.
+
 ## Slack App configuration
 
 **Bot Token Scopes:** `channels:read`, `channels:history`, `groups:read`, `groups:history`, `reactions:read`
