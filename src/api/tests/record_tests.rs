@@ -178,10 +178,9 @@ fn test_filter_bar_marks_active_period() {
 }
 
 #[test]
-fn test_filter_bar_has_htmx_attrs() {
+fn test_filter_bar_has_form_id() {
     let html = render_filter_bar(&[], "score", "all", "", "").into_string();
-    assert!(html.contains("hx-get=\"/record/threads\""));
-    assert!(html.contains("hx-target=\"#threads\""));
+    assert!(html.contains("id=\"filter-form\""));
 }
 
 #[test]
@@ -233,10 +232,12 @@ fn test_highlight_search_empty_is_noop() {
 }
 
 #[test]
-fn test_thread_card_search_includes_search_in_url() {
+fn test_thread_card_has_hx_include() {
+    // Search is appended dynamically via hx-include, not baked into the URL.
     let t = make_thread(10, "eng");
     let html = render_thread_card(&t, "hello", &empty_users()).into_string();
-    assert!(html.contains("search=hello"));
+    assert!(html.contains("hx-include=\"#search-input\""));
+    assert!(!html.contains("search=hello"));
 }
 
 #[test]
@@ -244,6 +245,17 @@ fn test_thread_card_no_search_no_search_param() {
     let t = make_thread(10, "eng");
     let html = render_thread_card(&t, "", &empty_users()).into_string();
     assert!(!html.contains("search="));
+}
+
+#[test]
+fn test_thread_card_has_filter_data_attrs() {
+    let t = make_thread(42, "eng");
+    let html = render_thread_card(&t, "", &empty_users()).into_string();
+    assert!(html.contains("data-user=\"Alice\""));
+    assert!(html.contains("data-score=\"42\""));
+    assert!(html.contains("data-channel-name=\"eng\""));
+    assert!(html.contains("data-text="));
+    assert!(html.contains("data-preview="));
 }
 
 // ── Handler tests — async, InMemoryRepository ─────────────────────────────────
