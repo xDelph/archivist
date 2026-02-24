@@ -2,7 +2,7 @@ name: Nightly Backfill
 
 on:
   schedule:
-    - cron: "0 2 * * *"   # 2am UTC daily
+    - cron: "0 * * * *"   # every hour
   workflow_dispatch:       # allow manual trigger from GitHub UI
 
 jobs:
