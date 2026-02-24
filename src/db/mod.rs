@@ -274,7 +274,7 @@ impl Repository for PgPool {
                     -- Uses jsonb cast (rr_elem->'count') not text cast (->>'count') so
                     -- fractional JSON numbers don't cause a cast error.
                     COALESCE((
-                        SELECT SUM((rr_elem->'count')::bigint)
+                        SELECT SUM((rr_elem->'count')::bigint)::bigint
                         FROM messages rr
                         CROSS JOIN LATERAL jsonb_array_elements(
                             CASE WHEN jsonb_typeof(rr.raw_json->'reactions') = 'array'
