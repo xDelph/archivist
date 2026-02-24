@@ -453,8 +453,8 @@ pub async fn archive_files<R: crate::db::Repository>(
             .send()
             .await;
 
-        let data = match resp {
-            Ok(r) if r.status().is_success() => r.bytes().await?,
+        let response = match resp {
+            Ok(r) if r.status().is_success() => r,
             Ok(r) => {
                 warn!(file_id, status = %r.status(), "failed to download file from Slack");
                 continue;
@@ -464,6 +464,27 @@ pub async fn archive_files<R: crate::db::Repository>(
                 continue;
             }
         };
+
+        // Slack redirects to an HTML login page when the token lacks files:read
+        // scope or the file has expired. reqwest follows the redirect and returns
+        // 200 OK with HTML — detect and skip this case.
+        let resp_content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_owned();
+        if resp_content_type.starts_with("text/html") && !mimetype.starts_with("text/") {
+            warn!(
+                file_id,
+                name,
+                expected_mime = mimetype,
+                "Slack returned HTML instead of file — token may lack files:read scope or file has expired; skipping"
+            );
+            continue;
+        }
+
+        let data = response.bytes().await?;
 
         let storage_key = format!("{team_id}/{channel_id}/{file_id}/{name}");
         let storage_url = match storage.upload(&storage_key, data, mimetype).await {
