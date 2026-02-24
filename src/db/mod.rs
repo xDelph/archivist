@@ -52,6 +52,7 @@ pub struct ChannelRecord {
     pub name: String,
 }
 
+#[derive(Clone)]
 pub struct ThreadSummary {
     pub channel_id: String,
     pub channel_name: String,
@@ -489,6 +490,7 @@ pub struct InMemoryRepository {
     pub(crate) messages: MessageStore,
     // key: (team_id, channel_id, message_ts, user_id, reaction_name)
     pub(crate) reactions: Mutex<HashSet<ReactionKey>>,
+    pub threads: Mutex<Vec<ThreadSummary>>,
 }
 
 impl Repository for InMemoryRepository {
@@ -567,8 +569,9 @@ impl Repository for InMemoryRepository {
         Ok(())
     }
 
-    async fn get_top_threads(&self, _limit: i64) -> Result<Vec<ThreadSummary>> {
-        Ok(vec![])
+    async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>> {
+        let threads = self.threads.lock().unwrap();
+        Ok(threads.iter().take(limit as usize).cloned().collect())
     }
 
     async fn get_thread_messages(
