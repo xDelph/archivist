@@ -5,6 +5,8 @@ use serde::Deserialize;
 use thiserror::Error;
 use tracing::{info, warn};
 
+use crate::storage::R2Client;
+
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -140,7 +142,7 @@ impl SlackApi for SlackClient {
     ) -> Result<(Vec<Channel>, Option<String>), SlackError> {
         let mut params: Vec<(&str, &str)> = vec![
             ("exclude_archived", "false"),
-            ("types", "public_channel,private_channel"),
+            ("types", "public_channel"),
             ("limit", "200"),
         ];
         if let Some(c) = cursor {
@@ -245,7 +247,12 @@ fn parse_users(value: &serde_json::Value) -> Result<Vec<SlackUser>, SlackError> 
 /// 2. Fetch `conversations.history` from that point, upsert every message.
 /// 3. For every thread-parent message (`thread_ts == ts`), fetch
 ///    `conversations.replies` and upsert all replies.
-pub async fn run_backfill<R, S>(repo: &R, client: &S) -> anyhow::Result<()>
+pub async fn run_backfill<R, S>(
+    repo: &R,
+    client: &S,
+    slack_token: &str,
+    storage: Option<&R2Client>,
+) -> anyhow::Result<()>
 where
     R: crate::db::Repository,
     S: SlackApi,
@@ -265,7 +272,7 @@ where
 
     for ch in &all_channels {
         info!(channel_id = %ch.id, channel_name = %ch.name, "backfilling channel");
-        backfill_channel(repo, client, &ch.id).await?;
+        backfill_channel(repo, client, slack_token, storage, &ch.id).await?;
     }
 
     cache_channels(repo, &all_channels).await?;
@@ -275,7 +282,13 @@ where
     Ok(())
 }
 
-async fn backfill_channel<R, S>(repo: &R, client: &S, channel_id: &str) -> anyhow::Result<()>
+async fn backfill_channel<R, S>(
+    repo: &R,
+    client: &S,
+    slack_token: &str,
+    storage: Option<&R2Client>,
+    channel_id: &str,
+) -> anyhow::Result<()>
 where
     R: crate::db::Repository,
     S: SlackApi,
@@ -300,10 +313,11 @@ where
         info!(channel_id, count = messages.len(), "fetched message batch");
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
+            download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
                 // Thread root in this batch — fetch all replies.
                 info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
-                backfill_replies(repo, client, channel_id, &msg.ts).await?;
+                backfill_replies(repo, client, slack_token, storage, channel_id, &msg.ts).await?;
                 stale_threads.remove(&msg.ts);
             } else if let Some(tts) = &msg.thread_ts {
                 // Reply whose root was archived in a previous run.
@@ -315,11 +329,10 @@ where
             None => break,
         }
     }
-    // Re-fetch threads whose root predates this backfill window. This re-upserts
-    // the root with thread_ts = ts and pulls in any new replies.
+    // Re-fetch threads whose root predates this backfill window.
     for thread_ts in stale_threads {
         info!(channel_id, %thread_ts, "backfilling stale thread");
-        backfill_replies(repo, client, channel_id, &thread_ts).await?;
+        backfill_replies(repo, client, slack_token, storage, channel_id, &thread_ts).await?;
     }
     Ok(())
 }
@@ -327,6 +340,8 @@ where
 async fn backfill_replies<R, S>(
     repo: &R,
     client: &S,
+    slack_token: &str,
+    storage: Option<&R2Client>,
     channel_id: &str,
     thread_ts: &str,
 ) -> anyhow::Result<()>
@@ -341,6 +356,7 @@ where
             .await?;
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
+            download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
         }
         match next {
             Some(c) => cursor = Some(c),
@@ -369,6 +385,110 @@ async fn upsert_slack_message<R: crate::db::Repository>(
         raw_json: msg.raw.clone(),
     })
     .await?;
+    Ok(())
+}
+
+async fn download_and_archive_files<R: crate::db::Repository>(
+    repo: &R,
+    storage: Option<&R2Client>,
+    slack_token: &str,
+    channel_id: &str,
+    msg: &SlackMessage,
+) -> anyhow::Result<()> {
+    let team_id = msg.raw["team"].as_str().unwrap_or("");
+    let files_raw = msg.raw["files"].clone();
+    archive_files(
+        repo,
+        storage,
+        slack_token,
+        channel_id,
+        &msg.ts,
+        team_id,
+        &files_raw,
+    )
+    .await
+}
+
+pub(crate) async fn archive_files<R: crate::db::Repository>(
+    repo: &R,
+    storage: Option<&R2Client>,
+    slack_token: &str,
+    channel_id: &str,
+    message_ts: &str,
+    team_id: &str,
+    files_value: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let storage = match storage {
+        Some(s) => s,
+        None => return Ok(()),
+    };
+    let files = match files_value.as_array() {
+        Some(f) if !f.is_empty() => f.clone(),
+        _ => return Ok(()),
+    };
+    let http = reqwest::Client::new();
+
+    for file in &files {
+        let file_id = match file["id"].as_str() {
+            Some(id) => id,
+            None => continue,
+        };
+        if repo.file_exists(file_id).await? {
+            continue;
+        }
+        let url_private = match file["url_private"].as_str() {
+            Some(u) => u,
+            None => continue,
+        };
+        let name = file["name"].as_str().unwrap_or("file");
+        let mimetype = file["mimetype"]
+            .as_str()
+            .unwrap_or("application/octet-stream");
+        let size_bytes = file["size"].as_i64().unwrap_or(0);
+
+        let resp = http
+            .get(url_private)
+            .bearer_auth(slack_token)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await;
+
+        let data = match resp {
+            Ok(r) if r.status().is_success() => r.bytes().await?,
+            Ok(r) => {
+                warn!(file_id, status = %r.status(), "failed to download file from Slack");
+                continue;
+            }
+            Err(e) => {
+                warn!(file_id, error = %e, "error downloading file from Slack");
+                continue;
+            }
+        };
+
+        let storage_key = format!("{team_id}/{channel_id}/{file_id}/{name}");
+        let storage_url = match storage.upload(&storage_key, data, mimetype).await {
+            Ok(u) => u,
+            Err(e) => {
+                warn!(file_id, error = %e, "failed to upload file to R2");
+                continue;
+            }
+        };
+
+        repo.insert_file(&crate::db::FileRecord {
+            file_id: file_id.to_owned(),
+            team_id: team_id.to_owned(),
+            channel_id: channel_id.to_owned(),
+            message_ts: message_ts.to_owned(),
+            name: name.to_owned(),
+            mimetype: mimetype.to_owned(),
+            size_bytes,
+            storage_key,
+            storage_url,
+        })
+        .await?;
+
+        info!(file_id, name, "archived file to R2");
+    }
     Ok(())
 }
 
@@ -401,7 +521,9 @@ where
         let (users, next) = match client.users_list(cursor.as_deref()).await {
             Ok(r) => r,
             Err(SlackError::Api(ref e)) if e == "missing_scope" => {
-                warn!("users.list requires users:read scope — skipping user cache (add scope and re-run backfill)");
+                warn!(
+                    "users.list requires users:read scope — skipping user cache (add scope and re-run backfill)"
+                );
                 return Ok(());
             }
             Err(e) => return Err(e.into()),

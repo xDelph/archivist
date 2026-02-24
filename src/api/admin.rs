@@ -12,6 +12,7 @@ use tracing::{info, warn};
 use crate::db::Repository;
 use crate::db::pool::create_pool;
 use crate::slack::backfill::{SlackApi, SlackClient};
+use crate::storage::R2Client;
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
 
@@ -35,7 +36,8 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
-    let client = SlackClient::new(slack_token);
+    let client = SlackClient::new(slack_token.clone());
+    let storage = R2Client::from_env().await.ok();
     let pool = match pool().await {
         Ok(p) => p,
         Err(e) => {
@@ -46,7 +48,16 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
                 .body(ResponseBody::from(Bytes::from(body)))?);
         }
     };
-    let resp = match process(&admin_token, req, pool, &client).await {
+    let resp = match process(
+        &admin_token,
+        &slack_token,
+        req,
+        pool,
+        &client,
+        storage.as_ref(),
+    )
+    .await
+    {
         Ok(r) => r,
         Err(e) => {
             let body = format!(r#"{{"ok":false,"error":"{}"}}"#, e);
@@ -63,9 +74,11 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
 /// Core handler logic — token, repo, and client injected for testability.
 pub(crate) async fn process<R, S>(
     admin_token: &str,
+    slack_token: &str,
     req: http::Request<Bytes>,
     repo: &R,
     client: &S,
+    storage: Option<&R2Client>,
 ) -> Result<Response<Bytes>, Error>
 where
     R: Repository,
@@ -85,7 +98,7 @@ where
     }
 
     info!("backfill started");
-    crate::slack::backfill::run_backfill(repo, client)
+    crate::slack::backfill::run_backfill(repo, client, slack_token, storage)
         .await
         .map_err(|e| Error::from(e.to_string()))?;
     info!("backfill completed");

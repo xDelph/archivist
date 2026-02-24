@@ -1,6 +1,6 @@
 # Archivist
 
-Slack archiver for public and private channels (no DMs), deployed as Rust serverless functions on Vercel. Receives real-time events via the Slack Events API and stores messages, threads, and reactions in Neon (Postgres serverless).
+Slack archiver for public channels (no DMs or private channels), deployed as Rust serverless functions on Vercel. Receives real-time events via the Slack Events API and stores messages, threads, reactions, and file attachments in Neon (Postgres serverless). Files and images are downloaded from Slack and permanently stored in Cloudflare R2 to survive Slack's 90-day free-tier deletion.
 
 ## Architecture
 
@@ -19,12 +19,14 @@ Source layout:
 
 ```
 src/
-  api/          HTTP handler logic (events, health, admin)
-  db/           PgPool setup, repository functions, migrations
+  api/          HTTP handler logic (events, health, admin, report)
+  db/           PgPool setup, repository functions
   slack/        signature verification, event types, ingest, backfill
     tests/      all tests in separate files (signature, ingest, backfill)
+  storage/      Cloudflare R2 client (S3-compatible)
 api/            Vercel function entry points (thin wrappers over src/api/)
 migrations/     sqlx migrations
+public/         Static assets (report.html viewer, og.png)
 ```
 
 ## Requirements
@@ -33,6 +35,7 @@ migrations/     sqlx migrations
 - [sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli): `cargo install sqlx-cli --no-default-features --features postgres,rustls`
 - [Vercel CLI](https://vercel.com/docs/cli): `npm i -g vercel`
 - A [Neon](https://neon.tech) Postgres database
+- A [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/) bucket with public access enabled
 - A Slack App with Events API configured (see below)
 
 ## Local setup
@@ -62,9 +65,16 @@ cargo test
 | Variable | Description |
 |---|---|
 | `DATABASE_URL` | Neon connection string (`postgres://...?sslmode=require`) |
+| `DATABASE_URL_UNPOOLED` | Neon direct connection — only for migrations / sqlx prepare |
 | `SLACK_SIGNING_SECRET` | From Slack App → Basic Information |
 | `SLACK_BOT_TOKEN` | `xoxb-...` from Slack App → OAuth & Permissions |
+| `SLACK_USER_TOKEN` | `xoxp-...` — for backfill (full channel history) |
 | `ADMIN_TOKEN` | Shared secret for `POST /api/admin/backfill` |
+| `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
+| `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
+| `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |
+| `CLOUDFLARED_R2_BUCKET` | R2 bucket name (e.g. `archivist-files`) |
+| `CLOUDFLARED_R2_PUBLIC_URL` | Public R2 URL (e.g. `https://pub-xxx.r2.dev`) |
 
 ## Development workflow
 

@@ -50,7 +50,8 @@ The app is **modular** — each concern lives in its own module:
 | `slack::events` | Event dispatch: `url_verification` challenge, `event_callback` routing |
 | `slack::ingest` | Dedup via `event_id`, upsert messages, insert reactions |
 | `slack::backfill` | Slack Web API calls: `conversations.list/history/replies` |
-| `db` | DB access layer (schema: `slack_events`, `messages`, `reactions`) |
+| `db` | DB access layer (schema: `slack_events`, `messages`, `reactions`, `files`) |
+| `storage` | Cloudflare R2 client — download Slack files and upload to R2 for permanent storage |
 
 ### Request flow
 
@@ -78,12 +79,17 @@ SLACK_SIGNING_SECRET
 SLACK_BOT_TOKEN           # xoxb- token (events API, bot presence)
 SLACK_USER_TOKEN          # xoxp- token (backfill — full public channel history)
 ADMIN_TOKEN               # Bearer token protecting POST /api/admin/backfill
+CLOUDFLARED_R2_ACCOUNT_ID # Cloudflare account ID
+CLOUDFLARED_R2_ACCESS_KEY # R2 API token access key
+CLOUDFLARED_R2_SECRET_KEY # R2 API token secret key
+CLOUDFLARED_R2_BUCKET     # e.g. archivist-files
+CLOUDFLARED_R2_PUBLIC_URL # e.g. https://pub-xxx.r2.dev (no trailing slash)
 RUST_LOG                  # Log level, e.g. info (default) or debug
 ```
 
 ## DB Schema (minimal)
 
-Three tables: `slack_events` (dedup store), `messages`, `reactions` — see `project.md §8` for full field list.
+Four tables: `slack_events` (dedup store), `messages`, `reactions`, `files` — see `project.md §8` for full field list.
 
 ## Vercel Deployment
 

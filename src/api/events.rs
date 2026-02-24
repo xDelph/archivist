@@ -14,6 +14,7 @@ use crate::db::pool::create_pool;
 use crate::slack::ingest::handle_event;
 use crate::slack::signature::verify_signature;
 use crate::slack::types::SlackEnvelope;
+use crate::storage::R2Client;
 
 /// Shared pool — initialised once per Lambda instance, reused on warm starts.
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
@@ -31,12 +32,22 @@ async fn pool() -> Result<&'static PgPool, Error> {
 /// Vercel entry-point — collects streaming body and delegates to [`process`].
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let signing_secret = env::var("SLACK_SIGNING_SECRET").unwrap_or_default();
+    let slack_token = env::var("SLACK_USER_TOKEN")
+        .or_else(|_| env::var("SLACK_BOT_TOKEN"))
+        .unwrap_or_default();
+    let storage = R2Client::from_env().await.ok();
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
-    let (parts, body) = process(pool().await?, &signing_secret, req)
-        .await?
-        .into_parts();
+    let (parts, body) = process(
+        pool().await?,
+        &signing_secret,
+        &slack_token,
+        storage.as_ref(),
+        req,
+    )
+    .await?
+    .into_parts();
     Ok(Response::from_parts(parts, ResponseBody::from(body)))
 }
 
@@ -44,6 +55,8 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
 pub(crate) async fn process<R: Repository>(
     repo: &R,
     signing_secret: &str,
+    slack_token: &str,
+    storage: Option<&R2Client>,
     req: http::Request<Bytes>,
 ) -> Result<Response<Bytes>, Error> {
     let raw_bytes = req.body().clone();
@@ -99,7 +112,7 @@ pub(crate) async fn process<R: Repository>(
         }
         SlackEnvelope::EventCallback(cb) => {
             info!(event_id = %cb.event_id, team_id = %cb.team_id, "event_callback received");
-            handle_event(repo, *cb, raw_value)
+            handle_event(repo, storage, slack_token, *cb, raw_value)
                 .await
                 .map_err(|e| Error::from(e.to_string()))?;
             Ok(Response::builder()

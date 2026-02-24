@@ -99,15 +99,38 @@ async fn thread_detail<R: Repository>(
         .await
         .map_err(|e| Error::from(e.to_string()))?;
 
+    let tss: Vec<String> = messages.iter().map(|m| m.ts.clone()).collect();
+    let all_files = repo
+        .get_files_for_messages(channel_id, &tss)
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    // Group files by message ts
+    let mut files_by_ts: std::collections::HashMap<String, Vec<serde_json::Value>> =
+        std::collections::HashMap::new();
+    for f in all_files {
+        files_by_ts
+            .entry(f.message_ts.clone())
+            .or_default()
+            .push(serde_json::json!({
+                "file_id":  f.file_id,
+                "name":     f.name,
+                "mimetype": f.mimetype,
+                "url":      f.storage_url,
+            }));
+    }
+
     let items: Vec<serde_json::Value> = messages
         .into_iter()
         .map(|m| {
+            let files = files_by_ts.remove(&m.ts).unwrap_or_default();
             serde_json::json!({
                 "ts":           m.ts,
                 "text":         m.text,
                 "display_name": m.display_name,
                 "avatar_url":   m.avatar_url,
                 "reactions":    m.reactions,
+                "files":        files,
             })
         })
         .collect();
