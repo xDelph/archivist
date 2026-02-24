@@ -270,11 +270,16 @@ impl Repository for PgPool {
                     -- Count reactions across every message in the thread (root + replies).
                     -- Reads raw_json['reactions'] because backfill stores aggregated
                     -- reaction counts there (not in the reactions table).
+                    -- Uses jsonb_typeof guard to skip JSON-null / non-array values
+                    -- (COALESCE only catches SQL NULL, not JSON null).
                     COALESCE((
                         SELECT SUM((r_elem->>'count')::bigint)
                         FROM messages rep
                         CROSS JOIN LATERAL jsonb_array_elements(
-                            COALESCE(rep.raw_json->'reactions', '[]'::jsonb)
+                            CASE WHEN jsonb_typeof(rep.raw_json->'reactions') = 'array'
+                                 THEN rep.raw_json->'reactions'
+                                 ELSE '[]'::jsonb
+                            END
                         ) AS r_elem
                         WHERE rep.channel_id = m.channel_id
                           AND (rep.thread_ts = m.ts OR rep.ts = m.ts)
