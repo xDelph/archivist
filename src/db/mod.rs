@@ -267,16 +267,17 @@ impl Repository for PgPool {
                     m.user_id,
                     m.text,
                     m.created_at,
-                    -- Count reactions across every message in the thread (root + replies)
+                    -- Count reactions across every message in the thread (root + replies).
+                    -- Reads raw_json['reactions'] because backfill stores aggregated
+                    -- reaction counts there (not in the reactions table).
                     COALESCE((
-                        SELECT COUNT(r.id)::bigint
-                        FROM reactions r
-                        WHERE r.channel_id = m.channel_id
-                          AND r.message_ts IN (
-                              SELECT rep.ts FROM messages rep
-                              WHERE rep.channel_id = m.channel_id
-                                AND (rep.thread_ts = m.ts OR rep.ts = m.ts)
-                          )
+                        SELECT SUM((r_elem->>'count')::bigint)
+                        FROM messages rep
+                        CROSS JOIN LATERAL jsonb_array_elements(
+                            COALESCE(rep.raw_json->'reactions', '[]'::jsonb)
+                        ) AS r_elem
+                        WHERE rep.channel_id = m.channel_id
+                          AND (rep.thread_ts = m.ts OR rep.ts = m.ts)
                     ), 0)                                                 AS reaction_count,
                     COALESCE(COUNT(DISTINCT rep.ts)::bigint, 0)           AS reply_count,
                     COALESCE(COUNT(DISTINCT rep.user_id)::bigint + 1, 1)  AS participant_count
