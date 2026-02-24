@@ -230,10 +230,29 @@ fn parse_query(query: &str) -> std::collections::HashMap<String, String> {
         .filter_map(|pair| {
             let mut parts = pair.splitn(2, '=');
             let k = parts.next()?.to_owned();
-            let v = parts.next().unwrap_or("").to_owned();
+            let v = percent_decode(parts.next().unwrap_or(""));
             if k.is_empty() { None } else { Some((k, v)) }
         })
         .collect()
+}
+
+fn percent_decode(s: &str) -> String {
+    let mut bytes: Vec<u8> = Vec::with_capacity(s.len());
+    let mut iter = s.bytes();
+    while let Some(b) = iter.next() {
+        match b {
+            b'%' => {
+                let h1 = iter.next().and_then(|c| (c as char).to_digit(16));
+                let h2 = iter.next().and_then(|c| (c as char).to_digit(16));
+                if let (Some(h1), Some(h2)) = (h1, h2) {
+                    bytes.push(((h1 << 4) | h2) as u8);
+                }
+            }
+            b'+' => bytes.push(b' '),
+            _ => bytes.push(b),
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn json_ok(value: &serde_json::Value) -> Result<Response<Bytes>, Error> {
