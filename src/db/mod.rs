@@ -267,7 +267,17 @@ impl Repository for PgPool {
                     m.user_id,
                     m.text,
                     m.created_at,
-                    COALESCE(COUNT(DISTINCT r.id)::bigint, 0)             AS reaction_count,
+                    -- Count reactions across every message in the thread (root + replies)
+                    COALESCE((
+                        SELECT COUNT(r.id)::bigint
+                        FROM reactions r
+                        WHERE r.channel_id = m.channel_id
+                          AND r.message_ts IN (
+                              SELECT rep.ts FROM messages rep
+                              WHERE rep.channel_id = m.channel_id
+                                AND (rep.thread_ts = m.ts OR rep.ts = m.ts)
+                          )
+                    ), 0)                                                 AS reaction_count,
                     COALESCE(COUNT(DISTINCT rep.ts)::bigint, 0)           AS reply_count,
                     COALESCE(COUNT(DISTINCT rep.user_id)::bigint + 1, 1)  AS participant_count
                 FROM messages m
@@ -275,15 +285,12 @@ impl Repository for PgPool {
                     ON rep.channel_id = m.channel_id
                    AND rep.thread_ts  = m.ts
                    AND rep.ts        != m.ts
-                LEFT JOIN reactions r
-                    ON r.channel_id = m.channel_id
-                   AND r.message_ts = m.ts
                 WHERE m.thread_ts = m.ts
                    OR (m.thread_ts IS NULL AND EXISTS (
-                       SELECT 1 FROM messages r
-                       WHERE r.channel_id = m.channel_id
-                         AND r.thread_ts  = m.ts
-                         AND r.ts        != m.ts
+                       SELECT 1 FROM messages r2
+                       WHERE r2.channel_id = m.channel_id
+                         AND r2.thread_ts  = m.ts
+                         AND r2.ts        != m.ts
                    ))
                 GROUP BY m.channel_id, m.ts, m.user_id, m.text, m.created_at
             )
@@ -304,6 +311,7 @@ impl Repository for PgPool {
             FROM stats s
             LEFT JOIN users    u  ON u.user_id    = s.user_id
             LEFT JOIN channels ch ON ch.channel_id = s.channel_id
+            WHERE COALESCE(ch.name, s.channel_id) != 'intro'
             ORDER BY s.reaction_count * 2 + s.reply_count + s.participant_count DESC
             LIMIT $1
             "#,
