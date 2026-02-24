@@ -160,8 +160,9 @@ Add these two secrets to the GitHub repository (`Settings → Secrets and variab
 The viewer is a server-rendered HTMX app. Behaviour notes:
 
 - **Filter bar** wraps gracefully at narrow widths; fully responsive on mobile.
-- **Search** — live with 300 ms debounce; pressing Enter also triggers the search (handled via HTMX, no full-page navigation).
+- **Search** — live with 300 ms debounce; pressing Enter also triggers the search (handled via HTMX, no full-page navigation). All filtering, sorting and search run in Rust against a cached dataset — zero DB round-trips per keystroke.
 - **User mentions** in thread previews are resolved to display names (loaded server-side alongside threads).
+- **In-process cache** — `get_top_threads`, `get_all_users` and `get_all_channels` are cached in-process for 5 minutes (TTL). On warm Lambda instances, search and filter requests hit zero DB queries.
 - **Slack-encoded entities** (`&amp;`, `&lt;`, `&gt;`) are decoded before re-escaping to prevent double-encoding.
 
 ## Slack App configuration

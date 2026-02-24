@@ -10,10 +10,12 @@ use tokio::sync::OnceCell;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
 use crate::db::pool::create_pool;
-use crate::db::{FileRow, Repository};
+use crate::db::{FileRow, Repository, ThreadSummary};
 use crate::render::components::render_threads_content;
 use crate::render::page::render_page;
 use crate::render::thread::render_thread_fragment;
+
+// ── DB connection pool ────────────────────────────────────────────────────────
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
 
@@ -26,6 +28,121 @@ async fn pool() -> Result<&'static PgPool, Error> {
     })
     .await
 }
+
+// ── In-process TTL cache ──────────────────────────────────────────────────────
+//
+// Threads, users and channels change only during a backfill.  A 5-minute cache
+// eliminates all DB round-trips for search keystrokes and filter changes — all
+// of which are pure Rust operations on the cached Vec.
+//
+// RwLock: many parallel reads (search debounce), rare writes (cache miss).
+// In test mode both variants are compiled away and the repo is called directly
+// to prevent cross-test data contamination.
+
+#[cfg(not(test))]
+use std::sync::OnceLock;
+#[cfg(not(test))]
+use std::time::{Duration, Instant};
+#[cfg(not(test))]
+use tokio::sync::RwLock;
+
+#[cfg(not(test))]
+const CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
+
+#[cfg(not(test))]
+struct AppCache {
+    threads: Option<(Instant, Vec<ThreadSummary>)>,
+    users: Option<(Instant, Vec<(String, String)>)>,
+    channels: Option<(Instant, Vec<(String, String)>)>,
+}
+
+#[cfg(not(test))]
+static CACHE: OnceLock<RwLock<AppCache>> = OnceLock::new();
+
+#[cfg(not(test))]
+fn app_cache() -> &'static RwLock<AppCache> {
+    CACHE.get_or_init(|| {
+        RwLock::new(AppCache {
+            threads: None,
+            users: None,
+            channels: None,
+        })
+    })
+}
+
+#[cfg(not(test))]
+async fn cached_threads<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<ThreadSummary>, anyhow::Error> {
+    {
+        let c = app_cache().read().await;
+        if let Some((ts, data)) = &c.threads
+            && ts.elapsed() < CACHE_TTL
+        {
+            return Ok(data.clone());
+        }
+    }
+    let data = repo.get_top_threads(200).await?;
+    app_cache().write().await.threads = Some((Instant::now(), data.clone()));
+    Ok(data)
+}
+
+#[cfg(test)]
+async fn cached_threads<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<ThreadSummary>, anyhow::Error> {
+    repo.get_top_threads(200).await
+}
+
+#[cfg(not(test))]
+async fn cached_users<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
+    {
+        let c = app_cache().read().await;
+        if let Some((ts, data)) = &c.users
+            && ts.elapsed() < CACHE_TTL
+        {
+            return Ok(data.clone());
+        }
+    }
+    let data = repo.get_all_users().await?;
+    app_cache().write().await.users = Some((Instant::now(), data.clone()));
+    Ok(data)
+}
+
+#[cfg(test)]
+async fn cached_users<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
+    repo.get_all_users().await
+}
+
+#[cfg(not(test))]
+async fn cached_channels<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
+    {
+        let c = app_cache().read().await;
+        if let Some((ts, data)) = &c.channels
+            && ts.elapsed() < CACHE_TTL
+        {
+            return Ok(data.clone());
+        }
+    }
+    let data = repo.get_all_channels().await?;
+    app_cache().write().await.channels = Some((Instant::now(), data.clone()));
+    Ok(data)
+}
+
+#[cfg(test)]
+async fn cached_channels<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
+    repo.get_all_channels().await
+}
+
+// ── Vercel entry-point ────────────────────────────────────────────────────────
 
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let (parts, body) = req.into_parts();
@@ -55,8 +172,7 @@ pub(crate) async fn process<R: Repository>(
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 async fn page_handler<R: Repository>(repo: &R) -> Result<Response<Bytes>, Error> {
-    // Fetch 200 so the filter bar can populate user/channel options from a wider set
-    let (threads, users_vec) = tokio::try_join!(repo.get_top_threads(200), repo.get_all_users(),)
+    let (threads, users_vec) = tokio::try_join!(cached_threads(repo), cached_users(repo))
         .map_err(|e| Error::from(e.to_string()))?;
 
     let users: HashMap<String, String> = users_vec.into_iter().collect();
@@ -93,9 +209,8 @@ async fn threads_fragment<R: Repository>(repo: &R, query: &str) -> Result<Respon
         .unwrap_or("")
         .to_owned();
 
-    let (mut threads, users_vec) =
-        tokio::try_join!(repo.get_top_threads(200), repo.get_all_users(),)
-            .map_err(|e| Error::from(e.to_string()))?;
+    let (mut threads, users_vec) = tokio::try_join!(cached_threads(repo), cached_users(repo))
+        .map_err(|e| Error::from(e.to_string()))?;
     let users: HashMap<String, String> = users_vec.into_iter().collect();
 
     // Period filter — compare against thread_ts (Unix seconds), NOT created_at.
@@ -148,10 +263,11 @@ async fn thread_fragment<R: Repository>(repo: &R, query: &str) -> Result<Respons
     };
     let search = params.get("search").cloned().unwrap_or_default();
 
+    // messages is per-thread (can't cache generically); users/channels are cached
     let (messages, users_vec, channels_vec) = tokio::try_join!(
         repo.get_thread_messages(&channel_id, &ts),
-        repo.get_all_users(),
-        repo.get_all_channels(),
+        cached_users(repo),
+        cached_channels(repo),
     )
     .map_err(|e| Error::from(e.to_string()))?;
 
