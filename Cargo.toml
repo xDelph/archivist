@@ -43,6 +43,12 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
+# HTML templating
+maud = "0.26"
+
+# Emoji shortcode lookup
+emojis = "0.6"
+
 # Misc
 uuid = { version = "1", features = ["v4", "serde"] }
 dotenvy = "0.15"
@@ -73,6 +79,10 @@ path = "src/bin/archive_files_local.rs"
 [[bin]]
 name = "report"
 path = "api/report.rs"
+
+[[bin]]
+name = "record"
+path = "api/record.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"

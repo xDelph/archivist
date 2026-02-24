@@ -10,6 +10,13 @@ Slack → POST /api/slack/events
   → url_verification: return challenge
   → event_callback: dedup → upsert to DB → 200 OK
 
+GET  /record
+  → fetch top-50 threads from DB
+  → render full HTML page (maud + HTMX) — no JS required for thread list
+GET  /record/thread?channel_id=&ts=
+  → fetch messages + files for thread
+  → return HTML fragment (loaded lazily by HTMX on first expand)
+
 POST /api/admin/backfill  (bearer-token protected)
   → conversations.list → conversations.history → conversations.replies
 GET  /api/health
@@ -19,15 +26,31 @@ Source layout:
 
 ```
 src/
-  api/          HTTP handler logic (events, health, admin, report)
+  api/          HTTP handler logic (events, health, admin, report, record)
   db/           PgPool setup, repository functions
+  render/       Server-side HTML rendering with maud + HTMX
+    text.rs     Slack mrkdwn → HTML, demojify (emoji shortcode → Unicode)
+    components  Thread cards, avatars, score badges, header
+    thread.rs   HTMX fragment: rendered thread messages
+    page.rs     Full HTML page for GET /record
   slack/        signature verification, event types, ingest, backfill
     tests/      all tests in separate files (signature, ingest, backfill)
   storage/      Cloudflare R2 client (S3-compatible)
 api/            Vercel function entry points (thin wrappers over src/api/)
 migrations/     sqlx migrations
-public/         Static assets (report.html viewer, og.png)
+public/         Static assets (record.css, modal.js, report.html, og.png)
 ```
+
+## Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `POST /api/slack/events` | Receive Slack Events API payloads |
+| `GET /api/health` | Health check |
+| `POST /api/admin/backfill` | Trigger channel backfill (bearer-token protected) |
+| `GET /api/report/*` | JSON API for the legacy client-side report viewer |
+| `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
+| `GET /record/thread?channel_id=&ts=` | HTMX fragment: lazy-load thread messages |
 
 ## Requirements
 
