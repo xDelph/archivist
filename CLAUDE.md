@@ -6,9 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Archivist** — a Slack archiver for public and private channels (no DMs) deployed as Rust serverless functions on Vercel. It receives real-time events via Slack Events API and stores messages/threads/reactions in **Neon (Postgres serverless)** via **sqlx**.
 
-## Git commits
+## Git
 
 **Never** add `Co-Authored-By` trailers to commit messages.
+
+**Never** run `git commit` or `git push` without an explicit instruction from the user. Wait for "commit" or "push" commands — do not combine them unless both are explicitly requested in the same message.
 
 ## Mandatory Workflow
 
