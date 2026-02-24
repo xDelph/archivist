@@ -155,9 +155,12 @@ async fn slack_context<R: Repository>(repo: &R) -> Result<Response<Bytes>, Error
         .map(|(id, name)| (id, serde_json::Value::String(name)))
         .collect();
 
+    let workspace_url = env::var("SLACK_WORKSPACE_URL").ok();
+
     json_ok(&serde_json::json!({
-        "users":    users_obj,
-        "channels": channels_obj,
+        "users":         users_obj,
+        "channels":      channels_obj,
+        "workspace_url": workspace_url,
     }))
 }
 
