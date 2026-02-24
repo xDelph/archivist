@@ -39,6 +39,10 @@ pub(crate) async fn process<R: Repository>(
     let path = req.uri().path();
     let query = req.uri().query().unwrap_or("");
 
+    if path.ends_with("/context") {
+        return slack_context(repo).await;
+    }
+
     if path.ends_with("/threads") {
         let params = parse_query(query);
         if let (Some(channel_id), Some(ts)) = (params.get("channel_id"), params.get("ts")) {
@@ -136,6 +140,25 @@ async fn thread_detail<R: Repository>(
         .collect();
 
     json_ok(&serde_json::json!({ "messages": items }))
+}
+
+async fn slack_context<R: Repository>(repo: &R) -> Result<Response<Bytes>, Error> {
+    let (users, channels) = tokio::try_join!(repo.get_all_users(), repo.get_all_channels(),)
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    let users_obj: serde_json::Map<String, serde_json::Value> = users
+        .into_iter()
+        .map(|(id, name)| (id, serde_json::Value::String(name)))
+        .collect();
+    let channels_obj: serde_json::Map<String, serde_json::Value> = channels
+        .into_iter()
+        .map(|(id, name)| (id, serde_json::Value::String(name)))
+        .collect();
+
+    json_ok(&serde_json::json!({
+        "users":    users_obj,
+        "channels": channels_obj,
+    }))
 }
 
 async fn unfurl(url: &str) -> Result<Response<Bytes>, Error> {

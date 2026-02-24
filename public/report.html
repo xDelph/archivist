@@ -351,6 +351,36 @@
       border-radius: 4px;
       background: #fff;
     }
+
+    .modal-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--border);
+      color: #fff;
+      font-size: 1.4rem;
+      line-height: 1;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .modal-nav:hover { background: rgba(0, 0, 0, 0.85); }
+    .modal-nav:disabled { opacity: 0.2; cursor: default; }
+    .modal-prev { left: 12px; }
+    .modal-next { right: 12px; }
+
+    .file-modal-counter {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
@@ -362,21 +392,27 @@
 
   <!-- File preview modal -->
   <div id="file-modal" class="file-modal-overlay" style="display:none" role="dialog" aria-modal="true">
+    <button class="modal-nav modal-prev" id="modal-prev" title="Previous (←)">&#8592;</button>
     <div class="file-modal-box">
       <div class="file-modal-header">
         <span class="file-modal-name" id="modal-filename"></span>
         <div class="file-modal-actions">
+          <span class="file-modal-counter" id="modal-counter"></span>
           <a id="modal-download" class="file-modal-download" target="_blank" rel="noopener">↓ Download</a>
           <button class="file-modal-close" id="modal-close" title="Close (Esc)">✕</button>
         </div>
       </div>
       <div class="file-modal-body" id="modal-body"></div>
     </div>
+    <button class="modal-nav modal-next" id="modal-next" title="Next (→)">&#8594;</button>
   </div>
 
   <script>
     const BASE = '/api/report';
     const unfurlCache = {};
+    // Resolved on init: { "U123": "John", ... } and { "C123": "general", ... }
+    let USERS = {};
+    let CHANNELS = {};
 
     function tsToDate(ts) {
       return new Date(parseFloat(ts) * 1000).toLocaleDateString('en-GB', {
@@ -446,13 +482,17 @@
         // User mention: <@U123> or <@U123|name>
         if (inner.startsWith('@')) {
           const pipe = inner.indexOf('|');
-          const name = pipe !== -1 ? inner.slice(pipe + 1) : inner.slice(1);
+          const id = pipe !== -1 ? inner.slice(1, pipe) : inner.slice(1);
+          const fallback = pipe !== -1 ? inner.slice(pipe + 1) : id;
+          const name = USERS[id] || fallback;
           return `<span class="mention">@${name}</span>`;
         }
         // Channel mention: <#C123|name>
         if (inner.startsWith('#')) {
           const pipe = inner.indexOf('|');
-          const name = pipe !== -1 ? inner.slice(pipe + 1) : inner.slice(1);
+          const id = pipe !== -1 ? inner.slice(1, pipe) : inner.slice(1);
+          const fallback = pipe !== -1 ? inner.slice(pipe + 1) : id;
+          const name = CHANNELS[id] || fallback;
           return `<span class="mention">#${name}</span>`;
         }
         // Broadcast mentions
@@ -515,42 +555,75 @@
 
     // ── File modal ──────────────────────────────────────────────────────────────
 
-    function openFileModal(url, name, mimetype) {
+    // Current gallery state: array of {url, name, mimetype} + current index
+    let modalFiles = [];
+    let modalIndex = 0;
+
+    function renderModalContent(url, name, mimetype) {
       let content = '';
       if (mimetype.startsWith('image/')) {
         content = `<img src="${url}" alt="${name}">`;
       } else if (mimetype.startsWith('video/')) {
         content = `<video src="${url}" controls autoplay></video>`;
       } else {
-        // PDF, text, or anything else the browser can display inline
         content = `<iframe src="${url}" title="${name}"></iframe>`;
       }
       document.getElementById('modal-filename').textContent = name;
       document.getElementById('modal-download').href = url;
       document.getElementById('modal-body').innerHTML = content;
+      const counter = document.getElementById('modal-counter');
+      counter.textContent = modalFiles.length > 1 ? `${modalIndex + 1} / ${modalFiles.length}` : '';
+      document.getElementById('modal-prev').disabled = modalIndex === 0;
+      document.getElementById('modal-next').disabled = modalIndex === modalFiles.length - 1;
+    }
+
+    function openFileModal(files, index) {
+      modalFiles = files;
+      modalIndex = index;
+      renderModalContent(files[index].url, files[index].name, files[index].mimetype);
       document.getElementById('file-modal').style.display = 'flex';
     }
 
     function closeFileModal() {
       document.getElementById('file-modal').style.display = 'none';
       document.getElementById('modal-body').innerHTML = '';
+      modalFiles = [];
+    }
+
+    function modalNav(delta) {
+      const next = modalIndex + delta;
+      if (next < 0 || next >= modalFiles.length) return;
+      modalIndex = next;
+      renderModalContent(modalFiles[next].url, modalFiles[next].name, modalFiles[next].mimetype);
     }
 
     document.getElementById('modal-close').addEventListener('click', closeFileModal);
+    document.getElementById('modal-prev').addEventListener('click', () => modalNav(-1));
+    document.getElementById('modal-next').addEventListener('click', () => modalNav(1));
     document.getElementById('file-modal').addEventListener('click', e => {
       if (e.target === document.getElementById('file-modal')) closeFileModal();
     });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') closeFileModal();
+      if (e.key === 'ArrowLeft') modalNav(-1);
+      if (e.key === 'ArrowRight') modalNav(1);
     });
 
-    // Delegated click handler for all file previews
+    // Delegated click handler — collects all sibling files in the same thread for gallery
     document.addEventListener('click', e => {
       const target = e.target.closest('[data-file-url]');
-      if (target) {
-        e.preventDefault();
-        openFileModal(target.dataset.fileUrl, target.dataset.fileName, target.dataset.fileMime);
-      }
+      if (!target) return;
+      e.preventDefault();
+      // Collect all previewable files in the same thread-messages container
+      const container = target.closest('.thread-messages') || document;
+      const allTargets = [...container.querySelectorAll('[data-file-url]')];
+      const files = allTargets.map(el => ({
+        url: el.dataset.fileUrl,
+        name: el.dataset.fileName,
+        mimetype: el.dataset.fileMime,
+      }));
+      const index = allTargets.indexOf(target);
+      openFileModal(files, index >= 0 ? index : 0);
     });
 
     // ── File rendering ──────────────────────────────────────────────────────────
@@ -637,6 +710,13 @@
     }
 
     async function init() {
+      // Pre-load user and channel maps for mention resolution
+      try {
+        const ctx = await fetch(`${BASE}/context`).then(r => r.json());
+        USERS = ctx.users || {};
+        CHANNELS = ctx.channels || {};
+      } catch (_) {}
+
       const container = document.getElementById('threads');
       const r = await fetch(`${BASE}/threads`);
       const data = await r.json();
