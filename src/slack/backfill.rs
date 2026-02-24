@@ -409,7 +409,7 @@ async fn download_and_archive_files<R: crate::db::Repository>(
     .await
 }
 
-pub(crate) async fn archive_files<R: crate::db::Repository>(
+pub async fn archive_files<R: crate::db::Repository>(
     repo: &R,
     storage: Option<&R2Client>,
     slack_token: &str,
