@@ -261,7 +261,7 @@ async fn test_backfill_upserts_messages_for_all_channels() {
     );
 
     let repo = InMemoryRepository::default();
-    run_backfill(&repo, &mock).await.unwrap();
+    run_backfill(&repo, &mock, "", None).await.unwrap();
 
     assert_eq!(repo.messages.lock().unwrap().len(), 3);
 }
@@ -288,7 +288,7 @@ async fn test_backfill_fetches_replies_for_thread_parents() {
     );
 
     let repo = InMemoryRepository::default();
-    run_backfill(&repo, &mock).await.unwrap();
+    run_backfill(&repo, &mock, "", None).await.unwrap();
 
     // parent (from history + replies, idempotent) + reply = 2 distinct (channel, ts) keys
     assert_eq!(repo.messages.lock().unwrap().len(), 2);
@@ -324,7 +324,7 @@ async fn test_backfill_passes_last_archived_ts_as_oldest() {
 
     let calls = mock.history_calls.clone();
     #[allow(unused_variables)]
-    run_backfill(&repo, &mock).await.unwrap();
+    run_backfill(&repo, &mock, "", None).await.unwrap();
 
     let recorded = calls.lock().unwrap();
     assert_eq!(recorded[0].1.as_deref(), Some("1700000005.000100"));

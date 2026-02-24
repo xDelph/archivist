@@ -74,6 +74,26 @@ pub struct ThreadMessage {
     pub reactions: serde_json::Value,
 }
 
+pub struct FileRecord {
+    pub file_id: String,
+    pub team_id: String,
+    pub channel_id: String,
+    pub message_ts: String,
+    pub name: String,
+    pub mimetype: String,
+    pub size_bytes: i64,
+    pub storage_key: String,
+    pub storage_url: String,
+}
+
+pub struct FileRow {
+    pub file_id: String,
+    pub message_ts: String,
+    pub name: String,
+    pub mimetype: String,
+    pub storage_url: String,
+}
+
 // ── Repository trait ─────────────────────────────────────────────────────────
 
 /// All DB operations needed by the application.
@@ -96,6 +116,13 @@ pub trait Repository {
         channel_id: &str,
         thread_ts: &str,
     ) -> Result<Vec<ThreadMessage>>;
+    async fn file_exists(&self, file_id: &str) -> Result<bool>;
+    async fn insert_file(&self, f: &FileRecord) -> Result<()>;
+    async fn get_files_for_messages(
+        &self,
+        channel_id: &str,
+        tss: &[String],
+    ) -> Result<Vec<FileRow>>;
 }
 
 // ── PgPool implementation ─────────────────────────────────────────────────────
@@ -348,6 +375,69 @@ impl Repository for PgPool {
             })
             .collect())
     }
+
+    async fn file_exists(&self, file_id: &str) -> Result<bool> {
+        let row: Option<bool> = sqlx::query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM files WHERE file_id = $1)",
+            file_id
+        )
+        .fetch_one(self)
+        .await?;
+        Ok(row.unwrap_or(false))
+    }
+
+    async fn insert_file(&self, f: &FileRecord) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO files
+                (file_id, team_id, channel_id, message_ts, name, mimetype, size_bytes, storage_key, storage_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (file_id) DO NOTHING
+            "#,
+            f.file_id,
+            f.team_id,
+            f.channel_id,
+            f.message_ts,
+            f.name,
+            f.mimetype,
+            f.size_bytes,
+            f.storage_key,
+            f.storage_url,
+        )
+        .execute(self)
+        .await?;
+        Ok(())
+    }
+
+    async fn get_files_for_messages(
+        &self,
+        channel_id: &str,
+        tss: &[String],
+    ) -> Result<Vec<FileRow>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT file_id, message_ts, name, mimetype, storage_url
+            FROM files
+            WHERE channel_id = $1 AND message_ts = ANY($2)
+            ORDER BY cached_at ASC
+            "#,
+            channel_id,
+            tss,
+        )
+        .fetch_all(self)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| FileRow {
+                file_id: r.file_id,
+                message_ts: r.message_ts,
+                name: r.name,
+                mimetype: r.mimetype,
+                storage_url: r.storage_url,
+            })
+            .collect())
+    }
 }
 
 // ── InMemoryRepository (test double) ─────────────────────────────────────────
@@ -450,6 +540,22 @@ impl Repository for InMemoryRepository {
         _channel_id: &str,
         _thread_ts: &str,
     ) -> Result<Vec<ThreadMessage>> {
+        Ok(vec![])
+    }
+
+    async fn file_exists(&self, _file_id: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    async fn insert_file(&self, _f: &FileRecord) -> Result<()> {
+        Ok(())
+    }
+
+    async fn get_files_for_messages(
+        &self,
+        _channel_id: &str,
+        _tss: &[String],
+    ) -> Result<Vec<FileRow>> {
         Ok(vec![])
     }
 }

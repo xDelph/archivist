@@ -3,6 +3,7 @@ use tracing::{debug, info};
 
 use crate::db::{MessageRecord, ReactionRecord, Repository, SlackEventRecord};
 use crate::slack::types::{EventCallback, SlackEvent};
+use crate::storage::R2Client;
 
 /// Message subtypes that carry no archivable content.
 const IGNORED_SUBTYPES: &[&str] = &[
@@ -28,6 +29,8 @@ const IGNORED_SUBTYPES: &[&str] = &[
 /// stored verbatim in `slack_events.payload_json`.
 pub async fn handle_event<R: Repository>(
     repo: &R,
+    storage: Option<&R2Client>,
+    slack_token: &str,
     cb: EventCallback,
     raw_payload: serde_json::Value,
 ) -> Result<()> {
@@ -72,22 +75,40 @@ pub async fn handle_event<R: Repository>(
                         None => return Ok(()), // malformed event, nothing to update
                     }
                 } else {
-                    (m.ts.clone(), m.user.clone(), m.text.unwrap_or_default(), m.thread_ts.clone(), None)
+                    (
+                        m.ts.clone(),
+                        m.user.clone(),
+                        m.text.unwrap_or_default(),
+                        m.thread_ts.clone(),
+                        None,
+                    )
                 };
 
             info!(event_id = %cb.event_id, channel_id = %m.channel, %ts, "message upserted");
             repo.upsert_message(&MessageRecord {
-                team_id: cb.team_id,
-                channel_id: m.channel,
-                ts,
+                team_id: cb.team_id.clone(),
+                channel_id: m.channel.clone(),
+                ts: ts.clone(),
                 thread_ts,
                 user_id,
                 text,
                 subtype: m.subtype,
                 edited_ts,
                 deleted: false,
-                raw_json: raw_payload,
+                raw_json: raw_payload.clone(),
             })
+            .await?;
+
+            // Archive any attached files to R2
+            crate::slack::backfill::archive_files(
+                repo,
+                storage,
+                slack_token,
+                &m.channel,
+                &ts,
+                raw_payload["event"]["team"].as_str().unwrap_or(""),
+                &raw_payload["event"]["files"],
+            )
             .await?;
         }
         SlackEvent::ReactionAdded(r) => {

@@ -51,14 +51,14 @@ async fn test_missing_signature_returns_401() {
         .uri("/api/slack/events")
         .body(Bytes::from("{}"))
         .unwrap();
-    let resp = process(&repo, SECRET, req).await.unwrap();
+    let resp = process(&repo, SECRET, "", None, req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
 async fn test_invalid_signature_returns_401() {
     let repo = InMemoryRepository::default();
-    let resp = process(&repo, SECRET, unsigned_request("{}"))
+    let resp = process(&repo, SECRET, "", None, unsigned_request("{}"))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -68,7 +68,9 @@ async fn test_invalid_signature_returns_401() {
 async fn test_url_verification_returns_challenge() {
     let repo = InMemoryRepository::default();
     let body = r#"{"type":"url_verification","challenge":"test_challenge_xyz"}"#;
-    let resp = process(&repo, SECRET, signed_request(body)).await.unwrap();
+    let resp = process(&repo, SECRET, "", None, signed_request(body))
+        .await
+        .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let text = String::from_utf8(resp.into_body().to_vec()).unwrap();
@@ -93,7 +95,9 @@ async fn test_valid_message_event_returns_200() {
             "ts": "1700000000.000100"
         }
     }"#;
-    let resp = process(&repo, SECRET, signed_request(body)).await.unwrap();
+    let resp = process(&repo, SECRET, "", None, signed_request(body))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(repo.event_exists("Ev999").await.unwrap());
 }
@@ -115,8 +119,12 @@ async fn test_duplicate_event_returns_200_and_is_ignored() {
             "ts": "1700000000.000200"
         }
     }"#;
-    process(&repo, SECRET, signed_request(body)).await.unwrap();
-    let resp = process(&repo, SECRET, signed_request(body)).await.unwrap();
+    process(&repo, SECRET, "", None, signed_request(body))
+        .await
+        .unwrap();
+    let resp = process(&repo, SECRET, "", None, signed_request(body))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(repo.messages.lock().unwrap().len(), 1);
 }
@@ -125,6 +133,8 @@ async fn test_duplicate_event_returns_200_and_is_ignored() {
 async fn test_unknown_envelope_type_returns_200() {
     let repo = InMemoryRepository::default();
     let body = r#"{"type":"app_rate_limited","team_id":"T001"}"#;
-    let resp = process(&repo, SECRET, signed_request(body)).await.unwrap();
+    let resp = process(&repo, SECRET, "", None, signed_request(body))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }

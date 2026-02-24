@@ -1,6 +1,8 @@
 use crate::db::{InMemoryRepository, Repository};
 use crate::slack::ingest::handle_event;
-use crate::slack::types::{EventCallback, MessageEvent, MessageUpdate, ReactionEvent, ReactionItem, SlackEvent};
+use crate::slack::types::{
+    EventCallback, MessageEvent, MessageUpdate, ReactionEvent, ReactionItem, SlackEvent,
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -64,7 +66,7 @@ async fn test_message_is_stored() {
     let repo = InMemoryRepository::default();
     let (cb, raw) = make_message_cb("Ev001", None);
 
-    handle_event(&repo, cb, raw).await.unwrap();
+    handle_event(&repo, None, "", cb, raw).await.unwrap();
 
     assert!(repo.event_exists("Ev001").await.unwrap());
     assert_eq!(repo.messages.lock().unwrap().len(), 1);
@@ -76,8 +78,8 @@ async fn test_duplicate_event_id_is_ignored() {
     let (cb1, raw1) = make_message_cb("Ev001", None);
     let (cb2, raw2) = make_message_cb("Ev001", None);
 
-    handle_event(&repo, cb1, raw1).await.unwrap();
-    handle_event(&repo, cb2, raw2).await.unwrap();
+    handle_event(&repo, None, "", cb1, raw1).await.unwrap();
+    handle_event(&repo, None, "", cb2, raw2).await.unwrap();
 
     // Only one message stored despite two calls
     assert_eq!(repo.messages.lock().unwrap().len(), 1);
@@ -88,7 +90,7 @@ async fn test_bot_message_subtype_is_ignored() {
     let repo = InMemoryRepository::default();
     let (cb, raw) = make_message_cb("Ev002", Some("bot_message"));
 
-    handle_event(&repo, cb, raw).await.unwrap();
+    handle_event(&repo, None, "", cb, raw).await.unwrap();
 
     // Event recorded for dedup, but no message stored
     assert!(repo.event_exists("Ev002").await.unwrap());
@@ -112,7 +114,7 @@ async fn test_all_ignored_subtypes_are_skipped() {
         let repo = InMemoryRepository::default();
         let event_id = format!("Ev{i:03}");
         let (cb, raw) = make_message_cb(&event_id, Some(subtype));
-        handle_event(&repo, cb, raw).await.unwrap();
+        handle_event(&repo, None, "", cb, raw).await.unwrap();
         assert_eq!(
             repo.messages.lock().unwrap().len(),
             0,
@@ -127,7 +129,9 @@ async fn test_message_changed_updates_correct_ts() {
 
     // Store the original message first
     let (cb_orig, raw_orig) = make_message_cb("Ev030", None);
-    handle_event(&repo, cb_orig, raw_orig).await.unwrap();
+    handle_event(&repo, None, "", cb_orig, raw_orig)
+        .await
+        .unwrap();
 
     // Now send a message_changed event — nested message has the original ts
     let original_ts = "Ev030.000100".to_string();
@@ -138,8 +142,8 @@ async fn test_message_changed_updates_correct_ts() {
         event_time: 1_700_000_010,
         event: SlackEvent::Message(MessageEvent {
             channel: "C001".into(),
-            user: None,             // absent at top level for message_changed
-            text: None,             // absent at top level for message_changed
+            user: None,                // absent at top level for message_changed
+            text: None,                // absent at top level for message_changed
             ts: "Ev031.000200".into(), // event notification ts — NOT the message ts
             thread_ts: None,
             subtype: Some("message_changed".into()),
@@ -152,7 +156,9 @@ async fn test_message_changed_updates_correct_ts() {
             })),
         }),
     };
-    handle_event(&repo, cb_edit, serde_json::json!({})).await.unwrap();
+    handle_event(&repo, None, "", cb_edit, serde_json::json!({}))
+        .await
+        .unwrap();
 
     let store = repo.messages.lock().unwrap();
     // Still only one message record — upserted by the original ts
@@ -166,7 +172,7 @@ async fn test_reaction_is_stored() {
     let repo = InMemoryRepository::default();
     let (cb, raw) = make_reaction_cb("Ev010");
 
-    handle_event(&repo, cb, raw).await.unwrap();
+    handle_event(&repo, None, "", cb, raw).await.unwrap();
 
     assert!(repo.event_exists("Ev010").await.unwrap());
     assert_eq!(repo.reactions.lock().unwrap().len(), 1);
@@ -178,8 +184,8 @@ async fn test_duplicate_reaction_is_idempotent() {
     let (cb1, raw1) = make_reaction_cb("Ev011");
     let (cb2, raw2) = make_reaction_cb("Ev012"); // different event_id, same reaction
 
-    handle_event(&repo, cb1, raw1).await.unwrap();
-    handle_event(&repo, cb2, raw2).await.unwrap();
+    handle_event(&repo, None, "", cb1, raw1).await.unwrap();
+    handle_event(&repo, None, "", cb2, raw2).await.unwrap();
 
     // Both events recorded, but reaction deduped (same team/channel/ts/user/name)
     assert_eq!(repo.reactions.lock().unwrap().len(), 1);
@@ -190,7 +196,7 @@ async fn test_unknown_event_type_is_acked_not_stored() {
     let repo = InMemoryRepository::default();
     let (cb, raw) = make_unknown_cb("Ev020");
 
-    handle_event(&repo, cb, raw).await.unwrap();
+    handle_event(&repo, None, "", cb, raw).await.unwrap();
 
     // Event recorded for dedup, but nothing stored in messages or reactions
     assert!(repo.event_exists("Ev020").await.unwrap());

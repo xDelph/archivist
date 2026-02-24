@@ -2,6 +2,7 @@ use std::env;
 
 use archivist::db::pool::create_pool;
 use archivist::slack::backfill::{SlackClient, run_backfill};
+use archivist::storage::R2Client;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -20,9 +21,10 @@ async fn main() -> anyhow::Result<()> {
         .expect("SLACK_USER_TOKEN or SLACK_BOT_TOKEN not set");
 
     let pool = create_pool(&db_url).await?;
-    let client = SlackClient::new(slack_token);
+    let client = SlackClient::new(slack_token.clone());
+    let storage = R2Client::from_env().await.ok();
 
-    run_backfill(&pool, &client).await?;
+    run_backfill(&pool, &client, &slack_token, storage.as_ref()).await?;
 
     Ok(())
 }

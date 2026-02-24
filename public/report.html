@@ -184,6 +184,16 @@
     .msg-text a { color: var(--link); text-decoration: none; }
     .msg-text a:hover { text-decoration: underline; }
 
+    /* Slack mentions */
+    .mention {
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--accent);
+      border-radius: 3px;
+      padding: 0 4px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
     .msg-reactions {
       display: flex;
       flex-wrap: wrap;
@@ -197,6 +207,37 @@
       padding: 2px 8px;
       font-size: 0.78rem;
       color: var(--accent);
+    }
+
+    /* File attachments */
+    .msg-file { margin-top: 6px; }
+    .msg-file-img {
+      max-width: 360px;
+      max-height: 240px;
+      border-radius: 6px;
+      object-fit: cover;
+      display: block;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .msg-file-img:hover { opacity: 0.85; }
+    .msg-file-link { color: var(--link); font-size: 0.85rem; text-decoration: none; }
+    .msg-file-link:hover { text-decoration: underline; }
+    .msg-file-preview {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--link);
+      font-size: 0.85rem;
+    }
+    .msg-file-preview:hover { text-decoration: underline; }
+    .mime-badge {
+      font-size: 0.7rem;
+      color: var(--muted);
+      background: #2a2a2a;
+      border-radius: 3px;
+      padding: 1px 5px;
     }
 
     /* URL previews */
@@ -214,6 +255,102 @@
 
     .loading { color: var(--muted); font-size: 0.85rem; padding: 16px 0; }
     .empty { color: var(--muted); font-size: 0.9rem; padding: 40px 0; text-align: center; }
+
+    /* File modal */
+    .file-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .file-modal-box {
+      position: relative;
+      width: 90vw;
+      height: 90vh;
+      background: #111;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .file-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .file-modal-name {
+      font-size: 0.85rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-modal-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .file-modal-download {
+      color: var(--link);
+      font-size: 0.8rem;
+      text-decoration: none;
+    }
+    .file-modal-download:hover { text-decoration: underline; }
+
+    .file-modal-close {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 4px;
+      padding: 3px 8px;
+    }
+    .file-modal-close:hover { background: #2a2a2a; }
+
+    .file-modal-body {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .file-modal-body img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .file-modal-body video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 4px;
+    }
+
+    .file-modal-body iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 4px;
+      background: #fff;
+    }
   </style>
 </head>
 <body>
@@ -222,6 +359,20 @@
     <span>Top Threads</span>
   </header>
   <div id="threads"><p class="loading">Loading…</p></div>
+
+  <!-- File preview modal -->
+  <div id="file-modal" class="file-modal-overlay" style="display:none" role="dialog" aria-modal="true">
+    <div class="file-modal-box">
+      <div class="file-modal-header">
+        <span class="file-modal-name" id="modal-filename"></span>
+        <div class="file-modal-actions">
+          <a id="modal-download" class="file-modal-download" target="_blank" rel="noopener">↓ Download</a>
+          <button class="file-modal-close" id="modal-close" title="Close (Esc)">✕</button>
+        </div>
+      </div>
+      <div class="file-modal-body" id="modal-body"></div>
+    </div>
+  </div>
 
   <script>
     const BASE = '/api/report';
@@ -288,13 +439,37 @@
       );
     }
 
-    function linkify(text) {
-      // Step 1: convert Slack <url|label> and <url> formats
-      const linked = text.replace(/<(https?:\/\/[^|>]+)(?:\|([^>]+))?>/g, (_, url, label) =>
-        `<a href="${url}" target="_blank" rel="noopener">${label || url}</a>`
-      );
-      // Step 2: linkify remaining bare URLs — skip ones already inside HTML attributes (preceded by " or >)
-      return linked.replace(/(?<![">])(https?:\/\/[^\s<>"]+)/g, (url) =>
+    // Render Slack mrkdwn tokens: mentions, channels, broadcasts, and links.
+    // Replaces all <...> patterns, then linkifies remaining bare URLs.
+    function renderSlackText(text) {
+      const out = text.replace(/<([^>]+)>/g, (match, inner) => {
+        // User mention: <@U123> or <@U123|name>
+        if (inner.startsWith('@')) {
+          const pipe = inner.indexOf('|');
+          const name = pipe !== -1 ? inner.slice(pipe + 1) : inner.slice(1);
+          return `<span class="mention">@${name}</span>`;
+        }
+        // Channel mention: <#C123|name>
+        if (inner.startsWith('#')) {
+          const pipe = inner.indexOf('|');
+          const name = pipe !== -1 ? inner.slice(pipe + 1) : inner.slice(1);
+          return `<span class="mention">#${name}</span>`;
+        }
+        // Broadcast mentions
+        if (inner === '!here') return `<span class="mention">@here</span>`;
+        if (inner === '!channel') return `<span class="mention">@channel</span>`;
+        if (inner === '!everyone') return `<span class="mention">@everyone</span>`;
+        // URL: <https://...|label> or <https://...>
+        if (inner.startsWith('http://') || inner.startsWith('https://')) {
+          const pipe = inner.indexOf('|');
+          const url = pipe !== -1 ? inner.slice(0, pipe) : inner;
+          const label = pipe !== -1 ? inner.slice(pipe + 1) : url;
+          return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
+        }
+        return match;
+      });
+      // Linkify remaining bare URLs not already inside HTML attributes
+      return out.replace(/(?<![">])(https?:\/\/[^\s<>"]+)/g, url =>
         `<a href="${url}" target="_blank" rel="noopener">${url}</a>`
       );
     }
@@ -338,6 +513,80 @@
       </div>`;
     }
 
+    // ── File modal ──────────────────────────────────────────────────────────────
+
+    function openFileModal(url, name, mimetype) {
+      let content = '';
+      if (mimetype.startsWith('image/')) {
+        content = `<img src="${url}" alt="${name}">`;
+      } else if (mimetype.startsWith('video/')) {
+        content = `<video src="${url}" controls autoplay></video>`;
+      } else {
+        // PDF, text, or anything else the browser can display inline
+        content = `<iframe src="${url}" title="${name}"></iframe>`;
+      }
+      document.getElementById('modal-filename').textContent = name;
+      document.getElementById('modal-download').href = url;
+      document.getElementById('modal-body').innerHTML = content;
+      document.getElementById('file-modal').style.display = 'flex';
+    }
+
+    function closeFileModal() {
+      document.getElementById('file-modal').style.display = 'none';
+      document.getElementById('modal-body').innerHTML = '';
+    }
+
+    document.getElementById('modal-close').addEventListener('click', closeFileModal);
+    document.getElementById('file-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('file-modal')) closeFileModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeFileModal();
+    });
+
+    // Delegated click handler for all file previews
+    document.addEventListener('click', e => {
+      const target = e.target.closest('[data-file-url]');
+      if (target) {
+        e.preventDefault();
+        openFileModal(target.dataset.fileUrl, target.dataset.fileName, target.dataset.fileMime);
+      }
+    });
+
+    // ── File rendering ──────────────────────────────────────────────────────────
+
+    function renderFile(f) {
+      const url = f.url || '';
+      const name = f.name || 'file';
+      const mime = f.mimetype || '';
+      const safeName = name.replace(/"/g, '&quot;');
+
+      if (mime.startsWith('image/')) {
+        return `<div class="msg-file">
+          <img src="${url}" alt="${safeName}" loading="lazy" class="msg-file-img"
+               data-file-url="${url}" data-file-name="${safeName}" data-file-mime="${mime}"
+               title="Click to enlarge">
+        </div>`;
+      }
+
+      const canPreview = mime.startsWith('video/') || mime === 'application/pdf' || mime.startsWith('text/');
+      if (canPreview) {
+        const icon = mime.startsWith('video/') ? '▶' : '📄';
+        return `<div class="msg-file">
+          <span class="msg-file-preview"
+                data-file-url="${url}" data-file-name="${safeName}" data-file-mime="${mime}">
+            ${icon} ${safeName} <span class="mime-badge">${mime}</span>
+          </span>
+        </div>`;
+      }
+
+      return `<div class="msg-file">
+        <a href="${url}" target="_blank" rel="noopener" class="msg-file-link">📎 ${safeName}</a>
+      </div>`;
+    }
+
+    // ── Thread loading ──────────────────────────────────────────────────────────
+
     async function loadThread(card, channelId, threadTs) {
       const container = card.querySelector('.thread-messages');
       if (container.dataset.loaded) return;
@@ -357,6 +606,7 @@
         const reactions = (m.reactions || [])
           .map(rx => `<span class="reaction">${emojiChar(rx.name) || rx.name} ${rx.count}</span>`)
           .join('');
+        const files = (m.files || []).map(renderFile).join('');
         return `<div class="message">
           ${renderAvatar(m.avatar_url, m.display_name, 'large')}
           <div class="msg-body">
@@ -364,7 +614,8 @@
               <span class="msg-author">${m.display_name || 'Unknown'}</span>
               <span class="msg-time">${tsToTime(m.ts)}</span>
             </div>
-            <div class="msg-text" data-ts="${m.ts}" data-text="${encodeURIComponent(m.text)}">${linkify(demojify(m.text))}</div>
+            <div class="msg-text" data-ts="${m.ts}" data-text="${encodeURIComponent(m.text)}">${demojify(renderSlackText(m.text))}</div>
+            ${files}
             ${reactions ? `<div class="msg-reactions">${reactions}</div>` : ''}
           </div>
         </div>`;
@@ -407,7 +658,7 @@
                 <span class="channel">#${t.channel_name}</span>
                 <span class="date">${tsToDate(t.thread_ts)}</span>
               </div>
-              <div class="thread-preview">${demojify(t.text || '(no text)')}</div>
+              <div class="thread-preview">${demojify(renderSlackText(t.text || '(no text)'))}</div>
               <div class="thread-stats">
                 <span>💬 ${t.reply_count} replies</span>
                 <span>⚡ ${t.reaction_count} reactions</span>
