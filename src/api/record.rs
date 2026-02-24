@@ -56,28 +56,47 @@ pub(crate) async fn process<R: Repository>(
 
 async fn page_handler<R: Repository>(repo: &R) -> Result<Response<Bytes>, Error> {
     // Fetch 200 so the filter bar can populate user/channel options from a wider set
-    let threads = repo
-        .get_top_threads(200)
-        .await
+    let (threads, users_vec) = tokio::try_join!(repo.get_top_threads(200), repo.get_all_users(),)
         .map_err(|e| Error::from(e.to_string()))?;
 
+    let users: HashMap<String, String> = users_vec.into_iter().collect();
     let workspace_url = env::var("SLACK_WORKSPACE_URL").ok();
-    let markup = render_page(&threads, workspace_url.as_deref());
+    let markup = render_page(&threads, workspace_url.as_deref(), &users);
     html_ok(markup)
 }
 
 async fn threads_fragment<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {
     let params = parse_query(query);
-    let sort    = params.get("sort")    .map(String::as_str).unwrap_or("score").to_owned();
-    let period  = params.get("period")  .map(String::as_str).unwrap_or("all").to_owned();
-    let user    = params.get("user")    .map(String::as_str).unwrap_or("").to_owned();
-    let channel = params.get("channel") .map(String::as_str).unwrap_or("").to_owned();
-    let search  = params.get("search")  .map(String::as_str).unwrap_or("").to_owned();
+    let sort = params
+        .get("sort")
+        .map(String::as_str)
+        .unwrap_or("score")
+        .to_owned();
+    let period = params
+        .get("period")
+        .map(String::as_str)
+        .unwrap_or("all")
+        .to_owned();
+    let user = params
+        .get("user")
+        .map(String::as_str)
+        .unwrap_or("")
+        .to_owned();
+    let channel = params
+        .get("channel")
+        .map(String::as_str)
+        .unwrap_or("")
+        .to_owned();
+    let search = params
+        .get("search")
+        .map(String::as_str)
+        .unwrap_or("")
+        .to_owned();
 
-    let mut threads = repo
-        .get_top_threads(200)
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
+    let (mut threads, users_vec) =
+        tokio::try_join!(repo.get_top_threads(200), repo.get_all_users(),)
+            .map_err(|e| Error::from(e.to_string()))?;
+    let users: HashMap<String, String> = users_vec.into_iter().collect();
 
     // Period filter — compare against thread_ts (Unix seconds), NOT created_at.
     // created_at reflects when we archived it (e.g. all on same backfill day), not when posted.
@@ -107,13 +126,13 @@ async fn threads_fragment<R: Repository>(repo: &R, query: &str) -> Result<Respon
             b_ts.partial_cmp(&a_ts).unwrap_or(std::cmp::Ordering::Equal)
         }),
         "reactions" => threads.sort_by(|a, b| b.reaction_count.cmp(&a.reaction_count)),
-        "replies"   => threads.sort_by(|a, b| b.reply_count.cmp(&a.reply_count)),
-        _           => {} // "score" — DB order is already correct
+        "replies" => threads.sort_by(|a, b| b.reply_count.cmp(&a.reply_count)),
+        _ => {} // "score" — DB order is already correct
     }
 
     threads.truncate(50);
 
-    html_ok(render_threads_content(&threads, &search))
+    html_ok(render_threads_content(&threads, &search, &users))
 }
 
 async fn thread_fragment<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {

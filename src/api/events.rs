@@ -32,8 +32,8 @@ async fn pool() -> Result<&'static PgPool, Error> {
 /// Vercel entry-point — collects streaming body and delegates to [`process`].
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let signing_secret = env::var("SLACK_SIGNING_SECRET").unwrap_or_default();
-    let slack_token = env::var("SLACK_USER_TOKEN")
-        .or_else(|_| env::var("SLACK_BOT_TOKEN"))
+    let slack_token = env::var("SLACK_BOT_TOKEN")
+        .or_else(|_| env::var("SLACK_USER_TOKEN"))
         .unwrap_or_default();
     let storage = R2Client::from_env().await.ok();
     let (parts, body) = req.into_parts();

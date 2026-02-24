@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use maud::{Markup, PreEscaped, html};
 
 use crate::db::ThreadSummary;
@@ -42,7 +44,11 @@ pub fn render_avatar(avatar_url: &str, name: &str, size: &str) -> Markup {
     }
 }
 
-pub fn render_thread_card(t: &ThreadSummary, search: &str) -> Markup {
+pub fn render_thread_card(
+    t: &ThreadSummary,
+    search: &str,
+    users: &HashMap<String, String>,
+) -> Markup {
     let date = format_ts_date(&t.thread_ts);
 
     // With search: show the first line containing the match so the highlight is visible.
@@ -63,7 +69,7 @@ pub fn render_thread_card(t: &ThreadSummary, search: &str) -> Markup {
 
     // Render preview then optionally highlight the search term
     let preview_html = {
-        let rendered = render_text_simple(first_line).into_string();
+        let rendered = render_text_simple(first_line, users).into_string();
         if search.is_empty() {
             rendered
         } else {
@@ -73,7 +79,10 @@ pub fn render_thread_card(t: &ThreadSummary, search: &str) -> Markup {
 
     // Pass the search term to the thread fragment so it can highlight matches there too
     let hx_url = if search.is_empty() {
-        format!("/record/thread?channel_id={}&ts={}", t.channel_id, t.thread_ts)
+        format!(
+            "/record/thread?channel_id={}&ts={}",
+            t.channel_id, t.thread_ts
+        )
     } else {
         format!(
             "/record/thread?channel_id={}&ts={}&search={}",
@@ -156,7 +165,7 @@ pub fn render_filter_bar(
         }
         seen.into_iter().collect()
     };
-    channels.sort_unstable();
+    channels.sort_unstable_by_key(|s| s.to_ascii_lowercase());
 
     let mut users: Vec<&str> = {
         let mut seen = std::collections::BTreeSet::new();
@@ -165,53 +174,60 @@ pub fn render_filter_bar(
         }
         seen.into_iter().collect()
     };
-    users.sort_unstable();
+    users.sort_unstable_by_key(|s| s.to_ascii_lowercase());
 
     html! {
         form class="filter-bar"
              "hx-get"="/record/threads"
              "hx-target"="#threads"
-             "hx-trigger"="change, input delay:300ms from:#search-input"
+             "hx-trigger"="change, input delay:300ms from:#search-input, keyup[key=='Enter' && target.value.trim()!==''] changed from:#search-input"
              "hx-indicator"="#page-loader"
              "hx-sync"="this:replace"
+             onsubmit="return false"
         {
-            div class="filter-group filter-group-search" {
-                input type="search" id="search-input" name="search"
-                      placeholder="Search messages…" class="filter-search"
-                      autocomplete="off";
-            }
-            div class="filter-group" {
-                label "for"="sort-select" { "Sort" }
-                select id="sort-select" name="sort" {
-                    option value="score"     selected[sort == "score"]     { "Score" }
-                    option value="date"      selected[sort == "date"]      { "Date" }
-                    option value="reactions" selected[sort == "reactions"] { "Reactions" }
-                    option value="replies"   selected[sort == "replies"]   { "Replies" }
+            // Row 1: search (grows) + sort (compact)
+            div class="filter-row filter-row-top" {
+                div class="filter-group filter-group-search" {
+                    input type="search" id="search-input" name="search"
+                          placeholder="Search messages…" class="filter-search"
+                          autocomplete="off";
                 }
-            }
-            div class="filter-group" {
-                label "for"="period-select" { "Period" }
-                select id="period-select" name="period" {
-                    option value="all" selected[period == "all"] { "All time" }
-                    option value="30d" selected[period == "30d"] { "30 days" }
-                    option value="7d"  selected[period == "7d"]  { "7 days" }
-                }
-            }
-            div class="filter-group" {
-                label "for"="channel-select" { "Channel" }
-                select id="channel-select" name="channel" {
-                    option value="" selected[channel.is_empty()] { "All channels" }
-                    @for ch in &channels {
-                        option value=(ch) selected[*ch == channel] { "#" (ch) }
+                div class="filter-group" {
+                    label "for"="sort-select" { "Sort" }
+                    select id="sort-select" name="sort" {
+                        option value="score"     selected[sort == "score"]     { "Score" }
+                        option value="date"      selected[sort == "date"]      { "Date" }
+                        option value="reactions" selected[sort == "reactions"] { "Reactions" }
+                        option value="replies"   selected[sort == "replies"]   { "Replies" }
                     }
                 }
             }
-            div class="filter-group" {
-                label "for"="user-select" { "User" }
-                select id="user-select" name="user" {
-                    option value="" selected[user.is_empty()] { "All users" }
-                    @for u in &users {
-                        option value=(u) selected[*u == user] { (u) }
+            // Row 2: period + channel + user (share space equally)
+            div class="filter-row filter-row-bottom" {
+                div class="filter-group" {
+                    label "for"="period-select" { "Period" }
+                    select id="period-select" name="period" {
+                        option value="all" selected[period == "all"] { "All time" }
+                        option value="30d" selected[period == "30d"] { "30 days" }
+                        option value="7d"  selected[period == "7d"]  { "7 days" }
+                    }
+                }
+                div class="filter-group" {
+                    label "for"="channel-select" { "Channel" }
+                    select id="channel-select" name="channel" {
+                        option value="" selected[channel.is_empty()] { "All channels" }
+                        @for ch in &channels {
+                            option value=(ch) selected[*ch == channel] { "#" (ch) }
+                        }
+                    }
+                }
+                div class="filter-group" {
+                    label "for"="user-select" { "User" }
+                    select id="user-select" name="user" {
+                        option value="" selected[user.is_empty()] { "All users" }
+                        @for u in &users {
+                            option value=(u) selected[*u == user] { (u) }
+                        }
                     }
                 }
             }
@@ -219,11 +235,15 @@ pub fn render_filter_bar(
     }
 }
 
-pub fn render_threads_content(threads: &[ThreadSummary], search: &str) -> Markup {
+pub fn render_threads_content(
+    threads: &[ThreadSummary],
+    search: &str,
+    users: &HashMap<String, String>,
+) -> Markup {
     if threads.is_empty() {
         html! { p class="empty" { "No threads yet. Run a backfill to get started." } }
     } else {
-        html! { @for t in threads { (render_thread_card(t, search)) } }
+        html! { @for t in threads { (render_thread_card(t, search, users)) } }
     }
 }
 
@@ -237,8 +257,16 @@ fn encode_query_param(s: &str) -> String {
             b' ' => out.push('+'),
             _ => {
                 out.push('%');
-                out.push(char::from_digit((b >> 4) as u32, 16).unwrap().to_ascii_uppercase());
-                out.push(char::from_digit((b & 0xf) as u32, 16).unwrap().to_ascii_uppercase());
+                out.push(
+                    char::from_digit((b >> 4) as u32, 16)
+                        .unwrap()
+                        .to_ascii_uppercase(),
+                );
+                out.push(
+                    char::from_digit((b & 0xf) as u32, 16)
+                        .unwrap()
+                        .to_ascii_uppercase(),
+                );
             }
         }
     }

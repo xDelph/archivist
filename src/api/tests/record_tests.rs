@@ -6,9 +6,13 @@ use chrono::Utc;
 use crate::api::record::process;
 use crate::db::{InMemoryRepository, ThreadSummary};
 use crate::render::components::{render_filter_bar, render_thread_card, render_threads_content};
-use crate::render::text::highlight_search;
 use crate::render::page::render_page;
-use crate::render::text::{demojify, render_slack_text};
+use crate::render::text::highlight_search;
+use crate::render::text::{demojify, render_slack_text, render_text_simple};
+
+fn empty_users() -> HashMap<String, String> {
+    HashMap::new()
+}
 
 fn make_get(path: &str) -> http::Request<Bytes> {
     http::Request::builder()
@@ -88,12 +92,39 @@ fn test_render_slack_text_url_with_label() {
     assert!(html.contains("Example"));
 }
 
+#[test]
+fn test_render_text_simple_decodes_slack_entities() {
+    let users = HashMap::new();
+    // Slack sends "-&gt;" for "->"; should render as "->" not "-&gt;"
+    let html = render_text_simple("a -&gt; b", &users).into_string();
+    assert!(
+        html.contains("a -&gt; b"),
+        "expected HTML-encoded arrow, got: {html}"
+    );
+    assert!(!html.contains("&amp;gt;"), "must not double-encode: {html}");
+}
+
+#[test]
+fn test_render_text_simple_user_mention_resolved() {
+    let users = HashMap::from([("U123".to_owned(), "Alice".to_owned())]);
+    let html = render_text_simple("<@U123>", &users).into_string();
+    assert!(html.contains("@Alice"), "expected resolved name: {html}");
+}
+
+#[test]
+fn test_render_text_simple_user_mention_fallback_to_id() {
+    // No users map, no pipe fallback: should show the raw ID, not @…
+    let html = render_text_simple("<@U999XYZ>", &HashMap::new()).into_string();
+    assert!(html.contains("@U999XYZ"), "expected ID fallback: {html}");
+    assert!(!html.contains("@…"), "should not show ellipsis: {html}");
+}
+
 // ── Component rendering — pure functions ──────────────────────────────────────
 
 #[test]
 fn test_thread_card_has_htmx_attrs() {
     let t = make_thread(42, "eng");
-    let html = render_thread_card(&t, "").into_string();
+    let html = render_thread_card(&t, "", &empty_users()).into_string();
     assert!(html.contains("hx-get"));
     assert!(html.contains("/record/thread"));
 }
@@ -101,14 +132,14 @@ fn test_thread_card_has_htmx_attrs() {
 #[test]
 fn test_thread_card_shows_score() {
     let t = make_thread(99, "general");
-    let html = render_thread_card(&t, "").into_string();
+    let html = render_thread_card(&t, "", &empty_users()).into_string();
     assert!(html.contains("99"));
 }
 
 #[test]
 fn test_page_empty_state() {
     assert!(
-        render_page(&[], None)
+        render_page(&[], None, &empty_users())
             .into_string()
             .contains("No threads yet")
     );
@@ -116,14 +147,14 @@ fn test_page_empty_state() {
 
 #[test]
 fn test_page_has_htmx_script() {
-    let html = render_page(&[], None).into_string();
+    let html = render_page(&[], None, &empty_users()).into_string();
     assert!(html.contains("htmx.org"));
 }
 
 #[test]
 fn test_page_renders_thread_cards() {
     let threads = vec![make_thread(10, "eng"), make_thread(5, "general")];
-    let html = render_page(&threads, None).into_string();
+    let html = render_page(&threads, None, &empty_users()).into_string();
     assert!(html.contains("hx-get"));
     assert!(html.contains("#eng"));
     assert!(html.contains("#general"));
@@ -170,7 +201,7 @@ fn test_filter_bar_marks_active_channel() {
 
 #[test]
 fn test_threads_content_empty() {
-    let html = render_threads_content(&[], "").into_string();
+    let html = render_threads_content(&[], "", &empty_users()).into_string();
     assert!(html.contains("No threads yet"));
 }
 
@@ -204,14 +235,14 @@ fn test_highlight_search_empty_is_noop() {
 #[test]
 fn test_thread_card_search_includes_search_in_url() {
     let t = make_thread(10, "eng");
-    let html = render_thread_card(&t, "hello").into_string();
+    let html = render_thread_card(&t, "hello", &empty_users()).into_string();
     assert!(html.contains("search=hello"));
 }
 
 #[test]
 fn test_thread_card_no_search_no_search_param() {
     let t = make_thread(10, "eng");
-    let html = render_thread_card(&t, "").into_string();
+    let html = render_thread_card(&t, "", &empty_users()).into_string();
     assert!(!html.contains("search="));
 }
 

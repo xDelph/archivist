@@ -14,10 +14,10 @@ pub fn render_slack_text(
     PreEscaped(render_slack_text_inner(text, users, channels))
 }
 
-/// Convenience: render with empty user/channel maps (for thread card previews).
-pub fn render_text_simple(text: &str) -> Markup {
+/// Convenience: render with an empty channel map (for thread card previews).
+pub fn render_text_simple(text: &str, users: &HashMap<String, String>) -> Markup {
     let empty = HashMap::new();
-    PreEscaped(demojify_str(&render_slack_text_inner(text, &empty, &empty)))
+    PreEscaped(demojify_str(&render_slack_text_inner(text, users, &empty)))
 }
 
 /// Replace `:shortcode:` patterns with Unicode emoji characters.
@@ -98,12 +98,14 @@ fn render_slack_text_inner(
             out.push_str("<br>");
             i += 1;
         } else {
-            // Accumulate plain text until '<' or '\n', then HTML-escape it
+            // Accumulate plain text until '<' or '\n', then HTML-escape it.
+            // Slack pre-encodes &, < and > as &amp;/&lt;/&gt; in message text,
+            // so decode those entities first to avoid double-encoding.
             let start = i;
             while i < len && bytes[i] != b'<' && bytes[i] != b'\n' {
                 i += 1;
             }
-            out.push_str(&escape_html(&text[start..i]));
+            out.push_str(&escape_html(&decode_slack_entities(&text[start..i])));
         }
     }
 
@@ -118,11 +120,11 @@ fn render_token(
     // User mention: @U123 or @U123|name
     if let Some(rest) = inner.strip_prefix('@') {
         let (id, fallback) = split_pipe(rest);
-        // If no display name in text (fallback == id) and not in map, show @… not the raw ID
+        // Prefer: users map > inline fallback name > raw ID
         let name = users
             .get(id)
             .map(String::as_str)
-            .unwrap_or(if fallback != id { fallback } else { "…" });
+            .unwrap_or(if fallback != id { fallback } else { id });
         return format!(r#"<span class="mention">@{}</span>"#, escape_html(name));
     }
 
@@ -211,6 +213,16 @@ pub fn highlight_search(html: &str, search: &str) -> String {
         }
     }
     result
+}
+
+/// Decode the three HTML entities that Slack pre-encodes in message text.
+/// Must be applied before `escape_html` to avoid double-encoding.
+fn decode_slack_entities(s: &str) -> String {
+    // Order matters: decode &lt;/&gt; before &amp; so we don't turn
+    // "&amp;lt;" into "<" instead of the correct "&lt;".
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 fn split_pipe(s: &str) -> (&str, &str) {

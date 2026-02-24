@@ -49,14 +49,30 @@ header .slack-link:hover { color: var(--text); }
   margin: 0 auto;
   padding: 10px 16px;
   display: flex;
-  gap: 16px;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
   border-bottom: 1px solid var(--border);
 }
+
+/* Row wrappers */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Row 1: search grows, sort stays compact */
+.filter-row-top .filter-group-search { flex: 1; }
+
+/* Row 2: period / channel / user share space equally */
+.filter-row-bottom .filter-group { flex: 1; }
+.filter-row-bottom .filter-group select { width: 100%; }
+
 .filter-group {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 .filter-group label {
   font-size: 0.8rem;
@@ -72,10 +88,11 @@ header .slack-link:hover { color: var(--text); }
   font-size: 0.8rem;
   cursor: pointer;
   outline: none;
+  min-width: 0;
 }
 .filter-group select:hover { border-color: var(--muted); }
 .filter-group select:focus { border-color: var(--accent); }
-.filter-group-search { flex: 1; min-width: 180px; }
+
 .filter-search {
   width: 100%;
   background: var(--surface);
@@ -89,6 +106,18 @@ header .slack-link:hover { color: var(--text); }
 .filter-search::placeholder { color: var(--muted); }
 .filter-search:hover { border-color: var(--muted); }
 .filter-search:focus { border-color: var(--accent); }
+
+/* Mobile: dissolve row wrappers → flat 2-column grid
+   Row 1: search (full width)
+   Row 2: sort | period
+   Row 3: channel | user                               */
+@media (max-width: 600px) {
+  .filter-bar { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .filter-row { display: contents; }
+  .filter-group-search { flex: 1 0 100%; }
+  .filter-group { flex: 1; min-width: calc(50% - 4px); }
+  .filter-group select { width: 100%; }
+}
 
 #threads { max-width: 820px; margin: 0 auto; padding: 16px 16px 40px; }
 

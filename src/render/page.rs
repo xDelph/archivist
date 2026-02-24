@@ -1,9 +1,15 @@
+use std::collections::HashMap;
+
 use maud::{DOCTYPE, Markup, html};
 
 use crate::db::ThreadSummary;
 use crate::render::components::{render_filter_bar, render_header, render_threads_content};
 
-pub fn render_page(threads: &[ThreadSummary], workspace_url: Option<&str>) -> Markup {
+pub fn render_page(
+    threads: &[ThreadSummary],
+    workspace_url: Option<&str>,
+    users: &HashMap<String, String>,
+) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -20,7 +26,7 @@ pub fn render_page(threads: &[ThreadSummary], workspace_url: Option<&str>) -> Ma
                 (render_header(workspace_url))
                 (render_filter_bar(threads, "score", "all", "", ""))
                 div id="threads" {
-                    (render_threads_content(&threads[..threads.len().min(50)], ""))
+                    (render_threads_content(&threads[..threads.len().min(50)], "", users))
                 }
                 // Page-level loading overlay — shown via hx-indicator="#page-loader"
                 div id="page-loader" aria-hidden="true" {}
