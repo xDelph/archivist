@@ -11,9 +11,11 @@ Slack → POST /api/slack/events
   → event_callback: dedup → upsert to DB → 200 OK
 
 GET  /record
-  → fetch top-50 threads from DB
-  → render full HTML page (maud + HTMX) — no JS required for thread list
-GET  /record/thread?channel_id=&ts=
+  → fetch top-200 threads from DB (first 50 displayed, rest populate filter options)
+  → render full HTML page (maud + HTMX) with filter/sort/search bar
+GET  /record/threads?sort=&period=&channel=&user=&search=
+  → filter + sort in Rust, return HTML fragment (HTMX swaps #threads)
+GET  /record/thread?channel_id=&ts=[&search=]
   → fetch messages + files for thread
   → return HTML fragment (loaded lazily by HTMX on first expand)
 
@@ -38,7 +40,7 @@ src/
   storage/      Cloudflare R2 client (S3-compatible)
 api/            Vercel function entry points (thin wrappers over src/api/)
 migrations/     sqlx migrations
-public/         Static assets (record.css, modal.js, report.html, og.png)
+public/         Static assets (record.css, modal.js, og.png)
 ```
 
 ## Endpoints
@@ -48,8 +50,8 @@ public/         Static assets (record.css, modal.js, report.html, og.png)
 | `POST /api/slack/events` | Receive Slack Events API payloads |
 | `GET /api/health` | Health check |
 | `POST /api/admin/backfill` | Trigger channel backfill (bearer-token protected) |
-| `GET /api/report/*` | JSON API for the legacy client-side report viewer |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
+| `GET /record/threads?sort=&period=&channel=&user=&search=` | HTMX fragment: filtered/sorted thread list |
 | `GET /record/thread?channel_id=&ts=` | HTMX fragment: lazy-load thread messages |
 
 ## Requirements
@@ -98,6 +100,7 @@ cargo test
 | `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |
 | `CLOUDFLARED_R2_BUCKET` | R2 bucket name (e.g. `archivist-files`) |
 | `CLOUDFLARED_R2_PUBLIC_URL` | Public R2 URL (e.g. `https://pub-xxx.r2.dev`) |
+| `SLACK_WORKSPACE_URL` | Workspace URL (e.g. `devwithai.slack.com`) — shown as "Open Slack" link |
 
 ## Development workflow
 
@@ -123,6 +126,7 @@ vercel env add DATABASE_URL
 vercel env add SLACK_SIGNING_SECRET
 vercel env add SLACK_BOT_TOKEN
 vercel env add ADMIN_TOKEN
+vercel env add SLACK_WORKSPACE_URL   # optional — enables "Open Slack" link
 ```
 
 **Subsequent deploys** (after code changes):

@@ -77,10 +77,6 @@ name = "archive_files_local"
 path = "src/bin/archive_files_local.rs"
 
 [[bin]]
-name = "report"
-path = "api/report.rs"
-
-[[bin]]
 name = "record"
 path = "api/record.rs"
 
