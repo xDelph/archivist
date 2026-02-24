@@ -1,7 +1,10 @@
 /// One-shot script: scan all existing messages in the DB for attached files
 /// and upload any not yet archived to Cloudflare R2.
 ///
-/// Safe to run multiple times — `archive_files` skips files already in R2.
+/// Pass `--purge` to wipe all existing `files` DB records first (use this to
+/// clean up bad uploads from when the HTML-redirect bug was present).
+///
+/// Safe to run multiple times without `--purge` — already-archived files are skipped.
 use std::env;
 
 use archivist::db::pool::create_pool;
@@ -21,6 +24,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    let purge = env::args().any(|a| a == "--purge");
+
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
     let slack_token = env::var("SLACK_USER_TOKEN")
         .or_else(|_| env::var("SLACK_BOT_TOKEN"))
@@ -31,6 +36,14 @@ async fn main() -> anyhow::Result<()> {
     let storage = R2Client::from_env().await.ok();
     if storage.is_none() {
         warn!("R2 not configured — files will be skipped. Set CLOUDFLARED_R2_* env vars.");
+    }
+
+    if purge {
+        let deleted = sqlx::query("DELETE FROM files")
+            .execute(&pool)
+            .await?
+            .rows_affected();
+        info!(deleted, "--purge: cleared files table");
     }
 
     // Runtime query (no macro) — no sqlx prepare needed.
