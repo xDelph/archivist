@@ -123,6 +123,10 @@ pub trait Repository {
         channel_id: &str,
         tss: &[String],
     ) -> Result<Vec<FileRow>>;
+    /// Returns all known users as `(user_id, display_name)` pairs.
+    async fn get_all_users(&self) -> Result<Vec<(String, String)>>;
+    /// Returns all known channels as `(channel_id, name)` pairs.
+    async fn get_all_channels(&self) -> Result<Vec<(String, String)>>;
 }
 
 // ── PgPool implementation ─────────────────────────────────────────────────────
@@ -438,6 +442,23 @@ impl Repository for PgPool {
             })
             .collect())
     }
+
+    async fn get_all_users(&self) -> Result<Vec<(String, String)>> {
+        let rows = sqlx::query!("SELECT user_id, display_name FROM users ORDER BY display_name")
+            .fetch_all(self)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.user_id, r.display_name))
+            .collect())
+    }
+
+    async fn get_all_channels(&self) -> Result<Vec<(String, String)>> {
+        let rows = sqlx::query!("SELECT channel_id, name FROM channels ORDER BY name")
+            .fetch_all(self)
+            .await?;
+        Ok(rows.into_iter().map(|r| (r.channel_id, r.name)).collect())
+    }
 }
 
 // ── InMemoryRepository (test double) ─────────────────────────────────────────
@@ -556,6 +577,14 @@ impl Repository for InMemoryRepository {
         _channel_id: &str,
         _tss: &[String],
     ) -> Result<Vec<FileRow>> {
+        Ok(vec![])
+    }
+
+    async fn get_all_users(&self) -> Result<Vec<(String, String)>> {
+        Ok(vec![])
+    }
+
+    async fn get_all_channels(&self) -> Result<Vec<(String, String)>> {
         Ok(vec![])
     }
 }
