@@ -54,7 +54,7 @@ fn format_ts_time(ts: &str) -> String {
     let secs: f64 = ts.parse().unwrap_or(0.0);
     let dt =
         chrono::DateTime::from_timestamp(secs as i64, 0).unwrap_or(chrono::DateTime::UNIX_EPOCH);
-    dt.format("%H:%M").to_string()
+    dt.format("%d %b %Y %H:%M").to_string()
 }
 
 fn render_file(f: &FileRow) -> Markup {
