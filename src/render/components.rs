@@ -51,57 +51,53 @@ pub fn render_thread_card(
 ) -> Markup {
     let date = format_ts_date(&t.thread_ts);
 
-    // With search: show the first line containing the match so the highlight is visible.
-    // Without search: just use the first non-empty line.
-    let first_line = if search.is_empty() {
-        t.text
-            .lines()
-            .find(|l| !l.trim().is_empty())
-            .unwrap_or("(no text)")
+    // Base preview (always first non-empty line, no highlight) — stored in data-preview
+    // so client-side JS can restore it before re-applying a new search highlight.
+    let base_line = t
+        .text
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("(no text)");
+    let preview_base = render_text_simple(base_line, users).into_string();
+
+    // Server-side render: when search is provided (e.g. via /record/threads), prefer
+    // the line containing the match and apply a highlight.
+    let preview_html = if search.is_empty() {
+        preview_base.clone()
     } else {
         let sl = search.to_lowercase();
-        t.text
+        let best = t
+            .text
             .lines()
             .find(|l| l.to_lowercase().contains(&sl))
-            .or_else(|| t.text.lines().find(|l| !l.trim().is_empty()))
-            .unwrap_or("(no text)")
+            .unwrap_or(base_line);
+        highlight_search(&render_text_simple(best, users).into_string(), search)
     };
 
-    // Render preview then optionally highlight the search term
-    let preview_html = {
-        let rendered = render_text_simple(first_line, users).into_string();
-        if search.is_empty() {
-            rendered
-        } else {
-            highlight_search(&rendered, search)
-        }
-    };
-
-    // Pass the search term to the thread fragment so it can highlight matches there too
-    let hx_url = if search.is_empty() {
-        format!(
-            "/record/thread?channel_id={}&ts={}",
-            t.channel_id, t.thread_ts
-        )
-    } else {
-        format!(
-            "/record/thread?channel_id={}&ts={}&search={}",
-            t.channel_id,
-            t.thread_ts,
-            encode_query_param(search)
-        )
-    };
+    // search is appended at request time via hx-include, not baked into the URL.
+    let hx_url = format!(
+        "/record/thread?channel_id={}&ts={}",
+        t.channel_id, t.thread_ts
+    );
 
     html! {
         details class="thread-card"
                 data-channel=(t.channel_id)
+                data-channel-name=(t.channel_name)
                 data-ts=(t.thread_ts)
+                data-user=(t.display_name)
+                data-score=(t.score)
+                data-replies=(t.reply_count)
+                data-reactions=(t.reaction_count)
+                data-text=(t.text.to_lowercase())
+                data-preview=(preview_base)
         {
             summary class="thread-header"
                     "hx-get"=(hx_url)
                     "hx-target"="next .thread-messages"
                     "hx-trigger"="click once"
                     "hx-swap"="innerHTML"
+                    "hx-include"="#search-input"
             {
                 (render_score_badge(t.score))
                 div class="thread-meta" {
@@ -177,14 +173,7 @@ pub fn render_filter_bar(
     users.sort_unstable_by_key(|s| s.to_ascii_lowercase());
 
     html! {
-        form class="filter-bar"
-             "hx-get"="/record/threads"
-             "hx-target"="#threads"
-             "hx-trigger"="change, input delay:300ms from:#search-input, keyup[key=='Enter' && target.value.trim()!==''] changed from:#search-input"
-             "hx-indicator"="#page-loader"
-             "hx-sync"="this:replace"
-             onsubmit="return false"
-        {
+        form class="filter-bar" id="filter-form" onsubmit="return false" {
             // Row 1: search (grows) + sort (compact)
             div class="filter-row filter-row-top" {
                 div class="filter-group filter-group-search" {
@@ -245,30 +234,4 @@ pub fn render_threads_content(
     } else {
         html! { @for t in threads { (render_thread_card(t, search, users)) } }
     }
-}
-
-fn encode_query_param(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 3);
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char);
-            }
-            b' ' => out.push('+'),
-            _ => {
-                out.push('%');
-                out.push(
-                    char::from_digit((b >> 4) as u32, 16)
-                        .unwrap()
-                        .to_ascii_uppercase(),
-                );
-                out.push(
-                    char::from_digit((b & 0xf) as u32, 16)
-                        .unwrap()
-                        .to_ascii_uppercase(),
-                );
-            }
-        }
-    }
-    out
 }

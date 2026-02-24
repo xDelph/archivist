@@ -21,12 +21,13 @@ pub fn render_page(
                 link rel="stylesheet" href="/record.css";
                 script src="https://unpkg.com/htmx.org@2.0.4" defer {}
                 script src="/modal.js" defer {}
+                script src="/filter.js" defer {}
             }
             body {
                 (render_header(workspace_url))
                 (render_filter_bar(threads, "score", "all", "", ""))
                 div id="threads" {
-                    (render_threads_content(&threads[..threads.len().min(50)], "", users))
+                    (render_threads_content(threads, "", users))
                 }
                 // Page-level loading overlay — shown via hx-indicator="#page-loader"
                 div id="page-loader" aria-hidden="true" {}

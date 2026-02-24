@@ -90,8 +90,6 @@ header .slack-link:hover { color: var(--text); }
   outline: none;
   min-width: 0;
 }
-.filter-group select:hover { border-color: var(--muted); }
-.filter-group select:focus { border-color: var(--accent); }
 
 .filter-search {
   width: 100%;
