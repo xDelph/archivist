@@ -298,6 +298,7 @@ where
     // Threads whose root was archived in a previous run — replies appear in
     // history but the root won't be re-fetched via conversations.history.
     let mut stale_threads: HashSet<String> = HashSet::new();
+    let mut touched_threads: HashSet<String> = HashSet::new();
     loop {
         let (messages, next) = match client
             .conversations_history(channel_id, oldest.as_deref(), cursor.as_deref())
@@ -314,10 +315,20 @@ where
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
             download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
+            touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
                 // Thread root in this batch — fetch all replies.
                 info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
-                backfill_replies(repo, client, slack_token, storage, channel_id, &msg.ts).await?;
+                backfill_replies(
+                    repo,
+                    client,
+                    slack_token,
+                    storage,
+                    channel_id,
+                    &msg.ts,
+                    &mut touched_threads,
+                )
+                .await?;
                 stale_threads.remove(&msg.ts);
             } else if let Some(tts) = &msg.thread_ts {
                 // Reply whose root was archived in a previous run.
@@ -332,8 +343,23 @@ where
     // Re-fetch threads whose root predates this backfill window.
     for thread_ts in stale_threads {
         info!(channel_id, %thread_ts, "backfilling stale thread");
-        backfill_replies(repo, client, slack_token, storage, channel_id, &thread_ts).await?;
+        backfill_replies(
+            repo,
+            client,
+            slack_token,
+            storage,
+            channel_id,
+            &thread_ts,
+            &mut touched_threads,
+        )
+        .await?;
     }
+
+    for thread_ts in touched_threads {
+        repo.upsert_thread_weekly_score(channel_id, &thread_ts)
+            .await?;
+    }
+
     Ok(())
 }
 
@@ -344,6 +370,7 @@ async fn backfill_replies<R, S>(
     storage: Option<&R2Client>,
     channel_id: &str,
     thread_ts: &str,
+    touched_threads: &mut HashSet<String>,
 ) -> anyhow::Result<()>
 where
     R: crate::db::Repository,
@@ -357,6 +384,7 @@ where
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
             download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
+            touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
         }
         match next {
             Some(c) => cursor = Some(c),
