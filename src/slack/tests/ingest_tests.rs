@@ -70,6 +70,7 @@ async fn test_message_is_stored() {
 
     assert!(repo.event_exists("Ev001").await.unwrap());
     assert_eq!(repo.messages.lock().unwrap().len(), 1);
+    assert_eq!(repo.weekly_upserts.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -176,6 +177,7 @@ async fn test_reaction_is_stored() {
 
     assert!(repo.event_exists("Ev010").await.unwrap());
     assert_eq!(repo.reactions.lock().unwrap().len(), 1);
+    assert_eq!(repo.weekly_upserts.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]

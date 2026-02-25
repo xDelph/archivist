@@ -13,6 +13,10 @@ Slack → POST /api/slack/events
 GET  /record
   → fetch top-200 threads from DB (first 50 displayed, rest populate filter options)
   → render full HTML page (maud + HTMX) with filter/sort/search bar
+GET  /record/weekly?tab=top|week|month
+  → render weekly ranking page with tabs:
+    top threads (all-time + current-week badge), this week (rank delta), this month (rank delta)
+  → fetch top-200 for the selected tab (first 50 visible initially; filters/search use the full 200 client-side)
 GET  /record/threads?sort=&period=&channel=&user=&search=
   → filter + sort in Rust, return HTML fragment (HTMX swaps #threads)
 GET  /record/thread?channel_id=&ts=[&search=]
@@ -51,6 +55,7 @@ public/         Static assets (record.css, modal.js, og.png)
 | `GET /api/health` | Health check |
 | `POST /api/admin/backfill` | Trigger channel backfill (bearer-token protected) |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
+| `GET /record/weekly?tab=top|week|month` | SSR ranking tabs (all-time, weekly, monthly) with rank-change badges |
 | `GET /record/threads?sort=&period=&channel=&user=&search=` | HTMX fragment: filtered/sorted thread list |
 | `GET /record/thread?channel_id=&ts=` | HTMX fragment: lazy-load thread messages |
 
@@ -154,6 +159,21 @@ Add these two secrets to the GitHub repository (`Settings → Secrets and variab
 |---|---|
 | `APP_URL` | Your deployed Vercel URL, e.g. `https://archivist.vercel.app` |
 | `ADMIN_TOKEN` | Same value as the `ADMIN_TOKEN` env var in Vercel |
+
+## Weekly ranking data
+
+`thread_weekly_scores` is updated in two paths:
+
+- Real-time ingest: message and reaction events refresh the current week row for the touched thread.
+- Hourly backfill: every touched thread root gets one weekly-score upsert.
+
+One-shot historical seeding:
+
+```bash
+cargo run --bin compute_weekly_scores
+```
+
+This script loads `.env`, uses `DATABASE_URL_UNPOOLED`, and can be re-run safely (`ON CONFLICT DO UPDATE`).
 
 ## Record viewer (`GET /record`)
 

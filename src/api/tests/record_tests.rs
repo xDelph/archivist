@@ -4,8 +4,11 @@ use bytes::Bytes;
 use chrono::Utc;
 
 use crate::api::record::process;
-use crate::db::{InMemoryRepository, ThreadSummary};
-use crate::render::components::{render_filter_bar, render_thread_card, render_threads_content};
+use crate::db::{InMemoryRepository, PeriodRankedThread, ThreadSummary, ThreadWithWeeklyScore};
+use crate::render::components::{
+    PositionChange, render_filter_bar, render_thread_card, render_thread_card_with_meta,
+    render_threads_content,
+};
 use crate::render::page::render_page;
 use crate::render::text::{
     demojify, highlight_search, parse_slack_thread_url, render_slack_text, render_text_simple,
@@ -37,6 +40,37 @@ fn make_thread(score: i64, channel_name: &str) -> ThreadSummary {
         participant_count: 1,
         score,
     }
+}
+
+fn make_top_thread_with_weekly(
+    score: i64,
+    score_week: i64,
+    channel_name: &str,
+) -> ThreadWithWeeklyScore {
+    ThreadWithWeeklyScore {
+        thread: make_thread(score, channel_name),
+        score_week,
+    }
+}
+
+fn make_ranked_thread(
+    rank_score: i64,
+    rank: i64,
+    prev_rank: Option<i64>,
+    channel_name: &str,
+) -> PeriodRankedThread {
+    let mut thread = make_thread(rank_score, channel_name);
+    thread.score = rank_score;
+    PeriodRankedThread {
+        thread,
+        rank_score,
+        rank,
+        prev_rank,
+    }
+}
+
+fn count_occurrences(haystack: &str, needle: &str) -> usize {
+    haystack.match_indices(needle).count()
 }
 
 // ── Text rendering — pure functions ───────────────────────────────────────────
@@ -150,6 +184,25 @@ fn test_page_empty_state() {
 fn test_page_has_htmx_script() {
     let html = render_page(&[], None, &empty_users()).into_string();
     assert!(html.contains("htmx.org"));
+}
+
+#[test]
+fn test_page_has_ranking_tabs() {
+    let html = render_page(&[], None, &empty_users()).into_string();
+    assert!(html.contains("/record/weekly?tab=week"));
+    assert!(html.contains("/record/weekly?tab=month"));
+}
+
+#[test]
+fn test_page_header_has_no_subtitle_text_span() {
+    let html = render_page(&[], None, &empty_users()).into_string();
+    assert!(!html.contains("header-subtitle"));
+}
+
+#[test]
+fn test_page_has_tabs_loader_script() {
+    let html = render_page(&[], None, &empty_users()).into_string();
+    assert!(html.contains("/tabs-loader.js"));
 }
 
 #[test]
@@ -309,6 +362,30 @@ fn test_thread_card_has_filter_data_attrs() {
     assert!(html.contains("data-preview="));
 }
 
+#[test]
+fn test_thread_card_with_weekly_score_badge() {
+    let t = make_thread(42, "eng");
+    let html =
+        render_thread_card_with_meta(&t, "", &empty_users(), None, Some(9), None).into_string();
+    assert!(html.contains("W 9"));
+}
+
+#[test]
+fn test_thread_card_with_position_change_badge() {
+    let t = make_thread(42, "eng");
+    let html = render_thread_card_with_meta(
+        &t,
+        "",
+        &empty_users(),
+        Some(12),
+        None,
+        Some(PositionChange::Up(3)),
+    )
+    .into_string();
+    assert!(html.contains("↑3"));
+    assert!(html.contains("data-score=\"12\""));
+}
+
 // ── Handler tests — async, InMemoryRepository ─────────────────────────────────
 
 #[tokio::test]
@@ -323,6 +400,84 @@ async fn test_record_page_returns_html() {
             .unwrap_or("")
             .contains("text/html")
     );
+}
+
+#[tokio::test]
+async fn test_weekly_page_returns_html() {
+    let repo = InMemoryRepository::default();
+    *repo.top_threads_with_weekly.lock().unwrap() = vec![make_top_thread_with_weekly(42, 7, "eng")];
+
+    let resp = process(&repo, make_get("/record/weekly")).await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("Top threads"));
+    assert!(body.contains("W 7"));
+    assert!(body.contains("id=\"filter-form\""));
+    assert!(body.contains("/filter.js"));
+    assert!(body.contains("/tabs-loader.js"));
+}
+
+#[tokio::test]
+async fn test_weekly_page_with_trailing_slash_returns_tabs() {
+    let repo = InMemoryRepository::default();
+    *repo.top_threads_with_weekly.lock().unwrap() = vec![make_top_thread_with_weekly(42, 7, "eng")];
+
+    let resp = process(&repo, make_get("/record/weekly/")).await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("Top threads"));
+    assert!(body.contains("This week"));
+    assert!(body.contains("This month"));
+}
+
+#[tokio::test]
+async fn test_weekly_page_week_tab_shows_new_badge() {
+    let repo = InMemoryRepository::default();
+    *repo.weekly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(13, 1, None, "eng")];
+
+    let resp = process(&repo, make_get("/record/weekly?tab=week"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("This week"));
+    assert!(body.contains("NEW"));
+    assert!(body.contains("id=\"filter-form\""));
+}
+
+#[tokio::test]
+async fn test_weekly_page_month_tab_shows_rank_up_badge() {
+    let repo = InMemoryRepository::default();
+    *repo.monthly_ranked_threads.lock().unwrap() =
+        vec![make_ranked_thread(21, 1, Some(3), "general")];
+
+    let resp = process(&repo, make_get("/record/weekly?tab=month"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("This month"));
+    assert!(body.contains("↑2"));
+}
+
+#[tokio::test]
+async fn test_weekly_top_page_renders_more_than_fifty_cards_when_available() {
+    let repo = InMemoryRepository::default();
+    *repo.top_threads_with_weekly.lock().unwrap() = (0..60)
+        .map(|i| make_top_thread_with_weekly(100 - i, i as i64, &format!("ch{i}")))
+        .collect();
+
+    let resp = process(&repo, make_get("/record/weekly?tab=top"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert_eq!(count_occurrences(&body, "class=\"thread-card\""), 60);
 }
 
 #[tokio::test]

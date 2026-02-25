@@ -123,3 +123,15 @@ async fn test_get_last_archived_ts_returns_max() {
     let last = repo.get_last_archived_ts("C001").await.unwrap();
     assert_eq!(last.as_deref(), Some("1700000000.000200"));
 }
+
+#[tokio::test]
+async fn test_upsert_thread_weekly_score_is_recorded() {
+    let repo = InMemoryRepository::default();
+    repo.upsert_thread_weekly_score("C001", "1700000000.000100")
+        .await
+        .unwrap();
+    assert_eq!(
+        repo.weekly_upserts.lock().unwrap().as_slice(),
+        [("C001".to_owned(), "1700000000.000100".to_owned())]
+    );
+}
