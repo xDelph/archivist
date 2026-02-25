@@ -6,21 +6,31 @@
   const body = document.body;
   if (!body) return;
 
-  const themeButtons = Array.from(document.querySelectorAll('[data-theme-choice]'));
-  const densityButtons = Array.from(document.querySelectorAll('[data-density-choice]'));
+  const themeToggle = document.querySelector('[data-theme-toggle]');
+  const densityToggle = document.querySelector('[data-density-toggle]');
 
-  function setPressedState(buttons, activeValue, attr) {
-    buttons.forEach((button) => {
-      const isActive = button.getAttribute(attr) === activeValue;
-      button.classList.toggle('is-active', isActive);
-      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    });
+  function syncThemeToggle(theme) {
+    if (!themeToggle) return;
+    const isDark = theme === 'dark';
+    themeToggle.classList.toggle('is-active', isDark);
+    themeToggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+    themeToggle.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+    themeToggle.setAttribute('title', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+
+  function syncDensityToggle(density) {
+    if (!densityToggle) return;
+    const isCompact = density === 'compact';
+    densityToggle.classList.toggle('is-active', isCompact);
+    densityToggle.setAttribute('aria-pressed', isCompact ? 'true' : 'false');
+    densityToggle.setAttribute('aria-label', isCompact ? 'Switch to normal density' : 'Switch to compact density');
+    densityToggle.setAttribute('title', isCompact ? 'Switch to normal density' : 'Switch to compact density');
   }
 
   function applyTheme(theme) {
     const effective = theme === 'light' ? 'light' : 'dark';
     body.classList.toggle('theme-light', effective === 'light');
-    setPressedState(themeButtons, effective, 'data-theme-choice');
+    syncThemeToggle(effective);
     try {
       localStorage.setItem(THEME_KEY, effective);
     } catch (_err) {}
@@ -29,7 +39,7 @@
   function applyDensity(density) {
     const effective = density === 'compact' ? 'compact' : 'normal';
     body.classList.toggle('compact-mode', effective === 'compact');
-    setPressedState(densityButtons, effective, 'data-density-choice');
+    syncDensityToggle(effective);
     try {
       localStorage.setItem(DENSITY_KEY, effective);
     } catch (_err) {}
@@ -53,15 +63,17 @@
   applyTheme(savedTheme || 'dark');
   applyDensity(savedDensity || 'normal');
 
-  themeButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      applyTheme(button.getAttribute('data-theme-choice'));
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      const currentTheme = body.classList.contains('theme-light') ? 'light' : 'dark';
+      applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
     });
-  });
+  }
 
-  densityButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      applyDensity(button.getAttribute('data-density-choice'));
+  if (densityToggle) {
+    densityToggle.addEventListener('click', () => {
+      const currentDensity = body.classList.contains('compact-mode') ? 'compact' : 'normal';
+      applyDensity(currentDensity === 'compact' ? 'normal' : 'compact');
     });
-  });
+  }
 }());
