@@ -10,9 +10,9 @@ use tokio::sync::OnceCell;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
 use crate::db::pool::create_pool;
-use crate::db::{FileRow, Repository, ThreadSummary};
+use crate::db::{FileRow, PeriodRankedThread, Repository, ThreadSummary, ThreadWithWeeklyScore};
 use crate::render::components::render_threads_content;
-use crate::render::page::{render_page, render_thread_page};
+use crate::render::page::{render_page, render_thread_page, render_weekly_page};
 use crate::render::thread::render_thread_fragment;
 
 // ── DB connection pool ────────────────────────────────────────────────────────
@@ -156,7 +156,12 @@ pub(crate) async fn process<R: Repository>(
     repo: &R,
     req: http::Request<Bytes>,
 ) -> Result<Response<Bytes>, Error> {
-    let path = req.uri().path();
+    let raw_path = req.uri().path();
+    let path = if raw_path == "/" {
+        raw_path
+    } else {
+        raw_path.trim_end_matches('/')
+    };
 
     if path.ends_with("/thread") {
         let is_htmx = req.headers().contains_key("hx-request");
@@ -165,6 +170,10 @@ pub(crate) async fn process<R: Repository>(
 
     if path.ends_with("/threads") {
         return threads_fragment(repo, req.uri().query().unwrap_or("")).await;
+    }
+
+    if path.ends_with("/weekly") {
+        return weekly_page_handler(repo, req.uri().query().unwrap_or("")).await;
     }
 
     page_handler(repo).await
@@ -180,6 +189,54 @@ async fn page_handler<R: Repository>(repo: &R) -> Result<Response<Bytes>, Error>
     let workspace_url = env::var("SLACK_WORKSPACE_URL").ok();
     let markup = render_page(&threads, workspace_url.as_deref(), &users);
     html_ok(markup)
+}
+
+async fn weekly_page_handler<R: Repository>(
+    repo: &R,
+    query: &str,
+) -> Result<Response<Bytes>, Error> {
+    let params = parse_query(query);
+    let tab = match params.get("tab").map(String::as_str) {
+        Some("week") => "week",
+        Some("month") => "month",
+        _ => "top",
+    };
+
+    let users_vec = cached_users(repo)
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+    let users: HashMap<String, String> = users_vec.into_iter().collect();
+
+    let (top_threads, ranked_threads): (Vec<ThreadWithWeeklyScore>, Vec<PeriodRankedThread>) =
+        match tab {
+            "week" => (
+                vec![],
+                repo.get_weekly_ranked_threads(200)
+                    .await
+                    .map_err(|e| Error::from(e.to_string()))?,
+            ),
+            "month" => (
+                vec![],
+                repo.get_monthly_ranked_threads(200)
+                    .await
+                    .map_err(|e| Error::from(e.to_string()))?,
+            ),
+            _ => (
+                repo.get_top_threads_with_weekly(200)
+                    .await
+                    .map_err(|e| Error::from(e.to_string()))?,
+                vec![],
+            ),
+        };
+
+    let workspace_url = env::var("SLACK_WORKSPACE_URL").ok();
+    html_ok(render_weekly_page(
+        tab,
+        &top_threads,
+        &ranked_threads,
+        workspace_url.as_deref(),
+        &users,
+    ))
 }
 
 async fn threads_fragment<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {

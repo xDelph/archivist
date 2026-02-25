@@ -20,6 +20,23 @@ pub fn render_score_badge(score: i64) -> Markup {
     html! { div class="score-badge" { (score) } }
 }
 
+#[derive(Clone)]
+pub enum PositionChange {
+    Up(i64),
+    Down(i64),
+    New,
+}
+
+fn render_position_badge(change: &PositionChange) -> Markup {
+    match change {
+        PositionChange::Up(delta) => html! { span class="rank-badge rank-up" { "↑" (delta) } },
+        PositionChange::Down(delta) => {
+            html! { span class="rank-badge rank-down" { "↓" (delta) } }
+        }
+        PositionChange::New => html! { span class="rank-badge rank-new" { "NEW" } },
+    }
+}
+
 pub fn render_avatar(avatar_url: &str, name: &str, size: &str) -> Markup {
     let initial = name
         .chars()
@@ -49,7 +66,19 @@ pub fn render_thread_card(
     search: &str,
     users: &HashMap<String, String>,
 ) -> Markup {
+    render_thread_card_with_meta(t, search, users, None, None, None)
+}
+
+pub fn render_thread_card_with_meta(
+    t: &ThreadSummary,
+    search: &str,
+    users: &HashMap<String, String>,
+    score_override: Option<i64>,
+    score_week_badge: Option<i64>,
+    position_change: Option<PositionChange>,
+) -> Markup {
     let date = format_ts_date(&t.thread_ts);
+    let displayed_score = score_override.unwrap_or(t.score);
 
     // Base preview (always first non-empty line, no highlight) — stored in data-preview
     // so client-side JS can restore it before re-applying a new search highlight.
@@ -86,7 +115,7 @@ pub fn render_thread_card(
                 data-channel-name=(t.channel_name)
                 data-ts=(t.thread_ts)
                 data-user=(t.display_name)
-                data-score=(t.score)
+                data-score=(displayed_score)
                 data-replies=(t.reply_count)
                 data-reactions=(t.reaction_count)
                 data-text=(t.text.to_lowercase())
@@ -99,13 +128,21 @@ pub fn render_thread_card(
                     "hx-swap"="innerHTML"
                     "hx-include"="#search-input"
             {
-                (render_score_badge(t.score))
+                div class="thread-rank-col" {
+                    (render_score_badge(displayed_score))
+                    @if let Some(change) = &position_change {
+                        (render_position_badge(change))
+                    }
+                }
                 div class="thread-meta" {
                     div class="thread-top" {
                         (render_avatar(&t.avatar_url, &t.display_name, "small"))
                         span class="author" { (t.display_name) }
                         span class="channel" { "#" (t.channel_name) }
                         span class="date" { (date) }
+                        @if let Some(score_week) = score_week_badge.filter(|v| *v > 0) {
+                            span class="rank-badge rank-week" { "W " (score_week) }
+                        }
                     }
                     div class="thread-preview" { (PreEscaped(preview_html)) }
                     div class="thread-stats" {
@@ -125,10 +162,26 @@ pub fn render_thread_card(
 }
 
 pub fn render_header(workspace_url: Option<&str>) -> Markup {
+    render_header_with_subtitle(workspace_url, "top")
+}
+
+fn tab_class(active: bool) -> &'static str {
+    if active {
+        "header-tab active"
+    } else {
+        "header-tab"
+    }
+}
+
+pub fn render_header_with_subtitle(workspace_url: Option<&str>, active_tab: &str) -> Markup {
     html! {
         header {
             h1 { "Archivist" }
-            span { "Top Threads" }
+            nav class="header-tabs" {
+                a href="/record" class=(tab_class(active_tab == "top")) { "Top threads" }
+                a href="/record/weekly?tab=week" class=(tab_class(active_tab == "week")) { "This week" }
+                a href="/record/weekly?tab=month" class=(tab_class(active_tab == "month")) { "This month" }
+            }
             div class="header-right" {
                 @if let Some(url) = workspace_url {
                     @let full_url = if url.starts_with("http://") || url.starts_with("https://") {
