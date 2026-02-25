@@ -99,6 +99,8 @@ pub async fn handle_event<R: Repository>(
             })
             .await?;
 
+            repo.upsert_thread_weekly_score(&m.channel, &ts).await?;
+
             // Archive any attached files to R2
             crate::slack::backfill::archive_files(
                 repo,
@@ -113,15 +115,20 @@ pub async fn handle_event<R: Repository>(
         }
         SlackEvent::ReactionAdded(r) => {
             info!(event_id = %cb.event_id, reaction = %r.reaction, "reaction inserted");
+            let channel_id = r.item.channel.clone();
+            let message_ts = r.item.ts.clone();
             repo.insert_reaction(&ReactionRecord {
                 team_id: cb.team_id,
-                channel_id: r.item.channel,
-                message_ts: r.item.ts,
+                channel_id: channel_id.clone(),
+                message_ts: message_ts.clone(),
                 user_id: r.user,
                 reaction_name: r.reaction,
                 event_ts: r.event_ts,
             })
             .await?;
+
+            repo.upsert_thread_weekly_score(&channel_id, &message_ts)
+                .await?;
         }
         SlackEvent::Unknown => {
             // Acknowledged and ignored — no storage needed.
