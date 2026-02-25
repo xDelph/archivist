@@ -30,6 +30,7 @@ pub fn render_thread_page(
                 script src="https://unpkg.com/htmx.org@2.0.4" defer {}
                 script src="/modal.js" defer {}
                 script src="/tabs-loader.js" defer {}
+                script src="/view-preferences.js" defer {}
             }
             body {
                 (render_header(workspace_url))
@@ -81,6 +82,7 @@ pub fn render_page(
                 script src="/modal.js" defer {}
                 script src="/filter.js" defer {}
                 script src="/tabs-loader.js" defer {}
+                script src="/view-preferences.js" defer {}
             }
             body {
                 (render_header(workspace_url))
@@ -155,6 +157,7 @@ pub fn render_weekly_page(
                 script src="/modal.js" defer {}
                 script src="/filter.js" defer {}
                 script src="/tabs-loader.js" defer {}
+                script src="/view-preferences.js" defer {}
             }
             body {
                 (render_header_with_subtitle(workspace_url, tab))

@@ -179,6 +179,10 @@ This script loads `.env`, uses `DATABASE_URL_UNPOOLED`, and can be re-run safely
 
 The viewer is a server-rendered HTMX app. Behaviour notes:
 
+- **Header controls** — includes ranking tabs plus local UI preferences:
+  - Theme: `Dark` / `Light`
+  - Card density: `Normal` / `Compact`
+  Preferences are saved in `localStorage` and reused on next visit.
 - **Filter bar** wraps gracefully at narrow widths; fully responsive on mobile.
 - **Search** — live with 300 ms debounce; pressing Enter also triggers the search (handled via HTMX, no full-page navigation). All filtering, sorting and search run in Rust against a cached dataset — zero DB round-trips per keystroke.
 - **User mentions** in thread previews are resolved to display names (loaded server-side alongside threads).

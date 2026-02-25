@@ -136,12 +136,30 @@ pub fn render_thread_card_with_meta(
                 }
                 div class="thread-meta" {
                     div class="thread-top" {
-                        (render_avatar(&t.avatar_url, &t.display_name, "small"))
-                        span class="author" { (t.display_name) }
-                        span class="channel" { "#" (t.channel_name) }
-                        span class="date" { (date) }
-                        @if let Some(score_week) = score_week_badge.filter(|v| *v > 0) {
-                            span class="rank-badge rank-week" { "W " (score_week) }
+                        div class="thread-top-left" {
+                            (render_avatar(&t.avatar_url, &t.display_name, "small"))
+                            span class="author" { (t.display_name) }
+                            span class="channel" { "#" (t.channel_name) }
+                        }
+                        div class="thread-top-right" {
+                            span class="thread-top-stats" {
+                                span class="thread-top-stat" {
+                                    span class="thread-top-stat-icon" { "💬" }
+                                    span class="thread-top-stat-num" { (t.reply_count) }
+                                }
+                                span class="thread-top-stat" {
+                                    span class="thread-top-stat-icon" { "⚡" }
+                                    span class="thread-top-stat-num" { (t.reaction_count) }
+                                }
+                                span class="thread-top-stat" {
+                                    span class="thread-top-stat-icon" { "👥" }
+                                    span class="thread-top-stat-num" { (t.participant_count) }
+                                }
+                            }
+                            span class="date" { (date) }
+                            @if let Some(score_week) = score_week_badge.filter(|v| *v > 0) {
+                                span class="rank-badge rank-week" { "W " (score_week) }
+                            }
                         }
                     }
                     div class="thread-preview" { (PreEscaped(preview_html)) }
@@ -183,6 +201,16 @@ pub fn render_header_with_subtitle(workspace_url: Option<&str>, active_tab: &str
                 a href="/record/weekly?tab=month" class=(tab_class(active_tab == "month")) { "This month" }
             }
             div class="header-right" {
+                div class="header-preferences" {
+                    div class="header-segment" role="group" aria-label="Card density" {
+                        button type="button" class="header-toggle" data-density-choice="compact" { "Compact" }
+                        button type="button" class="header-toggle" data-density-choice="normal" { "Normal" }
+                    }
+                    div class="header-segment" role="group" aria-label="Color theme" {
+                        button type="button" class="header-toggle" data-theme-choice="light" { "Light" }
+                        button type="button" class="header-toggle" data-theme-choice="dark" { "Dark" }
+                    }
+                }
                 @if let Some(url) = workspace_url {
                     @let full_url = if url.starts_with("http://") || url.starts_with("https://") {
                         url.to_owned()
