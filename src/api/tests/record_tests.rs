@@ -7,8 +7,9 @@ use crate::api::record::process;
 use crate::db::{InMemoryRepository, ThreadSummary};
 use crate::render::components::{render_filter_bar, render_thread_card, render_threads_content};
 use crate::render::page::render_page;
-use crate::render::text::highlight_search;
-use crate::render::text::{demojify, render_slack_text, render_text_simple};
+use crate::render::text::{
+    demojify, highlight_search, parse_slack_thread_url, render_slack_text, render_text_simple,
+};
 
 fn empty_users() -> HashMap<String, String> {
     HashMap::new()
@@ -204,6 +205,41 @@ fn test_threads_content_empty() {
     assert!(html.contains("No threads yet"));
 }
 
+// ── Internal Slack link rewriting ─────────────────────────────────────────────
+
+#[test]
+fn test_parse_slack_thread_url_root_message() {
+    let r = parse_slack_thread_url(
+        "https://devwithai.slack.com/archives/C123/p1700000000123456",
+        Some("devwithai.slack.com"),
+    );
+    assert_eq!(r, Some(("C123".to_owned(), "1700000000.123456".to_owned())));
+}
+
+#[test]
+fn test_parse_slack_thread_url_reply_uses_thread_ts() {
+    let r = parse_slack_thread_url(
+        "https://devwithai.slack.com/archives/C123/p1700000000000000?thread_ts=1700000001.000000&cid=C123",
+        Some("devwithai.slack.com"),
+    );
+    assert_eq!(r, Some(("C123".to_owned(), "1700000001.000000".to_owned())));
+}
+
+#[test]
+fn test_parse_slack_thread_url_external_no_match() {
+    let r = parse_slack_thread_url("https://example.com/foo", Some("devwithai.slack.com"));
+    assert!(r.is_none());
+}
+
+#[test]
+fn test_parse_slack_thread_url_no_workspace() {
+    let r = parse_slack_thread_url(
+        "https://devwithai.slack.com/archives/C123/p1700000000123456",
+        None,
+    );
+    assert!(r.is_none());
+}
+
 // ── Search ────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -223,6 +259,21 @@ fn test_highlight_search_skips_tags() {
     let html = highlight_search(r#"<span class="mention">@Alice</span>"#, "span");
     // "span" inside the tag attribute should NOT be wrapped
     assert!(!html.contains("<mark"));
+}
+
+#[test]
+fn test_highlight_search_url_match_adds_class() {
+    // Search term is in the href but not in the visible label
+    let html = r#"<a href="https://example.com/foo" target="_blank">Click here</a>"#;
+    let result = highlight_search(html, "foo");
+    assert!(
+        result.contains("url-highlight"),
+        "expected url-highlight class: {result}"
+    );
+    assert!(
+        !result.contains("<mark"),
+        "label should not be wrapped in mark: {result}"
+    );
 }
 
 #[test]

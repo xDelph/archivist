@@ -12,7 +12,7 @@ use vercel_runtime::{Error, Request, Response, ResponseBody};
 use crate::db::pool::create_pool;
 use crate::db::{FileRow, Repository, ThreadSummary};
 use crate::render::components::render_threads_content;
-use crate::render::page::render_page;
+use crate::render::page::{render_page, render_thread_page};
 use crate::render::thread::render_thread_fragment;
 
 // ── DB connection pool ────────────────────────────────────────────────────────
@@ -159,7 +159,8 @@ pub(crate) async fn process<R: Repository>(
     let path = req.uri().path();
 
     if path.ends_with("/thread") {
-        return thread_fragment(repo, req.uri().query().unwrap_or("")).await;
+        let is_htmx = req.headers().contains_key("hx-request");
+        return thread_fragment(repo, req.uri().query().unwrap_or(""), is_htmx).await;
     }
 
     if path.ends_with("/threads") {
@@ -250,7 +251,11 @@ async fn threads_fragment<R: Repository>(repo: &R, query: &str) -> Result<Respon
     html_ok(render_threads_content(&threads, &search, &users))
 }
 
-async fn thread_fragment<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {
+async fn thread_fragment<R: Repository>(
+    repo: &R,
+    query: &str,
+    is_htmx: bool,
+) -> Result<Response<Bytes>, Error> {
     let params = parse_query(query);
 
     let channel_id = match params.get("channel_id") {
@@ -281,7 +286,19 @@ async fn thread_fragment<R: Repository>(repo: &R, query: &str) -> Result<Respons
     let channels: HashMap<String, String> = channels_vec.into_iter().collect();
     let files_by_ts = group_files_by_ts(files);
 
-    let markup = render_thread_fragment(&messages, &files_by_ts, &users, &channels, &search);
+    let markup = if is_htmx {
+        render_thread_fragment(&messages, &files_by_ts, &users, &channels, &search)
+    } else {
+        let workspace_url = env::var("SLACK_WORKSPACE_URL").ok();
+        render_thread_page(
+            &messages,
+            &files_by_ts,
+            &users,
+            &channels,
+            &search,
+            workspace_url.as_deref(),
+        )
+    };
     html_ok(markup)
 }
 
