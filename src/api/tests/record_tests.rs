@@ -206,6 +206,16 @@ fn test_page_has_tabs_loader_script() {
 }
 
 #[test]
+fn test_page_has_view_preferences_script_and_controls() {
+    let html = render_page(&[], None, &empty_users()).into_string();
+    assert!(html.contains("/view-preferences.js"));
+    assert!(html.contains("data-theme-choice=\"light\""));
+    assert!(html.contains("data-theme-choice=\"dark\""));
+    assert!(html.contains("data-density-choice=\"compact\""));
+    assert!(html.contains("data-density-choice=\"normal\""));
+}
+
+#[test]
 fn test_page_renders_thread_cards() {
     let threads = vec![make_thread(10, "eng"), make_thread(5, "general")];
     let html = render_page(&threads, None, &empty_users()).into_string();
@@ -363,6 +373,19 @@ fn test_thread_card_has_filter_data_attrs() {
 }
 
 #[test]
+fn test_thread_card_has_compact_top_stats_markup() {
+    let mut t = make_thread(42, "eng");
+    t.reply_count = 12;
+    t.reaction_count = 34;
+    t.participant_count = 5;
+    let html = render_thread_card(&t, "", &empty_users()).into_string();
+    assert!(html.contains("thread-top-stats"));
+    assert!(html.contains("thread-top-stat-num\">12<"));
+    assert!(html.contains("thread-top-stat-num\">34<"));
+    assert!(html.contains("thread-top-stat-num\">5<"));
+}
+
+#[test]
 fn test_thread_card_with_weekly_score_badge() {
     let t = make_thread(42, "eng");
     let html =
@@ -416,6 +439,7 @@ async fn test_weekly_page_returns_html() {
     assert!(body.contains("id=\"filter-form\""));
     assert!(body.contains("/filter.js"));
     assert!(body.contains("/tabs-loader.js"));
+    assert!(body.contains("/view-preferences.js"));
 }
 
 #[tokio::test]
