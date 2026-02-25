@@ -29,10 +29,32 @@ header {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 header h1 { font-size: 1.1rem; font-weight: 700; color: #fff; }
-header span { font-size: 0.85rem; color: var(--muted); }
+header .header-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+header .header-tab {
+  text-decoration: none;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+header .header-tab:hover { color: var(--text); border-color: #3a3a3a; }
+header .header-tab.active {
+  color: #fff;
+  border-color: #2f6f44;
+  background: #1f2e1f;
+}
 header .header-right { margin-left: auto; }
 header .slack-link {
   font-size: 0.8rem;
@@ -110,6 +132,16 @@ header .slack-link:hover { color: var(--text); }
    Row 2: sort | period
    Row 3: channel | user                               */
 @media (max-width: 600px) {
+  header { padding: 12px 14px; gap: 10px; }
+  header .header-tabs {
+    order: 3;
+    width: 100%;
+    margin-top: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  header .header-tabs::-webkit-scrollbar { display: none; }
+  header .header-right { margin-left: 0; }
   .filter-bar { flex-direction: row; flex-wrap: wrap; gap: 8px; }
   .filter-row { display: contents; }
   .filter-group-search { flex: 1 0 100%; }
@@ -129,7 +161,8 @@ header .slack-link:hover { color: var(--text); }
   align-items: center;
   justify-content: center;
 }
-#page-loader.htmx-request { display: flex; }
+#page-loader.htmx-request,
+#page-loader.is-active { display: flex; }
 #page-loader.htmx-request::after {
   content: '';
   width: 52px;
@@ -139,8 +172,18 @@ header .slack-link:hover { color: var(--text); }
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+#page-loader.is-active::after {
+  content: '';
+  width: 52px;
+  height: 52px;
+  border: 4px solid rgba(255,255,255,0.08);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
 /* Dim the thread list while loading — uses :has() for clean CSS-only coupling */
-body:has(#page-loader.htmx-request) #threads {
+body:has(#page-loader.htmx-request) #threads,
+body:has(#page-loader.is-active) #threads {
   opacity: 0.4;
   pointer-events: none;
   transition: opacity 0.15s;
@@ -201,6 +244,14 @@ summary.thread-header {
   justify-content: center;
 }
 
+.thread-rank-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .thread-meta { flex: 1; min-width: 0; }
 
 .thread-top {
@@ -236,6 +287,39 @@ summary.thread-header {
 .author { font-weight: 600; font-size: 0.85rem; }
 .channel { color: var(--link); font-size: 0.8rem; }
 .date { color: var(--muted); font-size: 0.78rem; margin-left: auto; }
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  letter-spacing: 0.02em;
+  min-width: 44px;
+}
+.rank-week {
+  background: #1f2f3a;
+  color: #a5d8ff;
+  border-color: #2a4454;
+}
+.rank-up {
+  background: #214628;
+  color: #bbf7d0;
+  border-color: #2f6f44;
+}
+.rank-down {
+  background: #4a1d25;
+  color: #fecaca;
+  border-color: #7f1d1d;
+}
+.rank-new {
+  background: #293241;
+  color: #e2e8f0;
+  border-color: #475569;
+}
 
 .thread-preview {
   color: var(--muted);
