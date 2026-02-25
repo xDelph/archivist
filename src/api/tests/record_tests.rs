@@ -209,10 +209,8 @@ fn test_page_has_tabs_loader_script() {
 fn test_page_has_view_preferences_script_and_controls() {
     let html = render_page(&[], None, &empty_users()).into_string();
     assert!(html.contains("/view-preferences.js"));
-    assert!(html.contains("data-theme-choice=\"light\""));
-    assert!(html.contains("data-theme-choice=\"dark\""));
-    assert!(html.contains("data-density-choice=\"compact\""));
-    assert!(html.contains("data-density-choice=\"normal\""));
+    assert!(html.contains("data-theme-toggle"));
+    assert!(html.contains("data-density-toggle"));
 }
 
 #[test]

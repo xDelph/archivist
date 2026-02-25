@@ -7,6 +7,10 @@ use crate::render::text::{highlight_search, render_text_simple};
 
 // Slack logo SVG (14×14)
 const SLACK_ICON_SVG: &str = r#"<svg width="14" height="14" viewBox="0 0 122 122" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M25.6 76.8a12.8 12.8 0 1 1-12.8-12.8H25.6v12.8zm6.4 0a12.8 12.8 0 0 1 25.6 0v32a12.8 12.8 0 0 1-25.6 0v-32zM45.2 25.6a12.8 12.8 0 1 1 12.8-12.8V25.6H45.2zm0 6.4a12.8 12.8 0 0 1 0 25.6H13.2a12.8 12.8 0 0 1 0-25.6h32zM96.4 45.2a12.8 12.8 0 1 1 12.8 12.8H96.4V45.2zm-6.4 0a12.8 12.8 0 0 1-25.6 0v-32a12.8 12.8 0 0 1 25.6 0v32zM76.8 96.4a12.8 12.8 0 1 1-12.8 12.8V96.4h12.8zm0-6.4a12.8 12.8 0 0 1 0-25.6h32a12.8 12.8 0 0 1 0 25.6h-32z" fill="currentColor"/></svg>"#;
+const DENSITY_ICON_NORMAL_SVG: &str = r#"<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5" width="16" height="4" rx="1.2" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="15" width="16" height="4" rx="1.2" stroke="currentColor" stroke-width="1.8"/></svg>"#;
+const DENSITY_ICON_COMPACT_SVG: &str = r#"<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="16" height="3" rx="1" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="10.5" width="16" height="3" rx="1" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="17" width="16" height="3" rx="1" stroke="currentColor" stroke-width="1.8"/></svg>"#;
+const THEME_ICON_DARK_SVG: &str = r#"<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.7 14.2A8.5 8.5 0 1 1 9.8 3.3a7 7 0 0 0 10.9 10.9z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
+const THEME_ICON_LIGHT_SVG: &str = r#"<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.5M12 19v2.5M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2.5 12H5M19 12h2.5M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>"#;
 
 /// Format a Slack timestamp (Unix seconds as string) to "DD Mon YYYY".
 pub fn format_ts_date(ts: &str) -> String {
@@ -202,13 +206,25 @@ pub fn render_header_with_subtitle(workspace_url: Option<&str>, active_tab: &str
             }
             div class="header-right" {
                 div class="header-preferences" {
-                    div class="header-segment" role="group" aria-label="Card density" {
-                        button type="button" class="header-toggle" data-density-choice="compact" { "Compact" }
-                        button type="button" class="header-toggle" data-density-choice="normal" { "Normal" }
+                    button
+                        type="button"
+                        class="header-toggle header-icon-toggle header-density-toggle"
+                        data-density-toggle
+                        aria-label="Toggle card density"
+                        title="Toggle card density"
+                    {
+                        span class="toggle-icon density-icon-normal" { (PreEscaped(DENSITY_ICON_NORMAL_SVG)) }
+                        span class="toggle-icon density-icon-compact" { (PreEscaped(DENSITY_ICON_COMPACT_SVG)) }
                     }
-                    div class="header-segment" role="group" aria-label="Color theme" {
-                        button type="button" class="header-toggle" data-theme-choice="light" { "Light" }
-                        button type="button" class="header-toggle" data-theme-choice="dark" { "Dark" }
+                    button
+                        type="button"
+                        class="header-toggle header-icon-toggle header-theme-toggle"
+                        data-theme-toggle
+                        aria-label="Toggle color theme"
+                        title="Toggle color theme"
+                    {
+                        span class="toggle-icon theme-icon-dark" { (PreEscaped(THEME_ICON_DARK_SVG)) }
+                        span class="toggle-icon theme-icon-light" { (PreEscaped(THEME_ICON_LIGHT_SVG)) }
                     }
                 }
                 @if let Some(url) = workspace_url {
@@ -217,9 +233,15 @@ pub fn render_header_with_subtitle(workspace_url: Option<&str>, active_tab: &str
                     } else {
                         format!("https://{url}")
                     };
-                    a href=(full_url) target="_blank" rel="noopener" class="slack-link" {
+                    a href=(full_url)
+                      target="_blank"
+                      rel="noopener"
+                      class="slack-link header-slack"
+                      aria-label="Open Slack"
+                      title="Open Slack"
+                    {
                         (PreEscaped(SLACK_ICON_SVG))
-                        "Open Slack"
+                        span class="slack-link-label" { "Open Slack" }
                     }
                 }
             }
