@@ -264,6 +264,7 @@ async fn test_backfill_upserts_messages_for_all_channels() {
     run_backfill(&repo, &mock, "", None).await.unwrap();
 
     assert_eq!(repo.messages.lock().unwrap().len(), 3);
+    assert_eq!(repo.weekly_upserts.lock().unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -292,6 +293,8 @@ async fn test_backfill_fetches_replies_for_thread_parents() {
 
     // parent (from history + replies, idempotent) + reply = 2 distinct (channel, ts) keys
     assert_eq!(repo.messages.lock().unwrap().len(), 2);
+    // one weekly upsert per touched thread root
+    assert_eq!(repo.weekly_upserts.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]
