@@ -148,6 +148,14 @@ body:has(#page-loader.htmx-request) #threads {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Search highlight */
+.msg-text a.url-highlight,
+.thread-preview a.url-highlight {
+  text-decoration-line: underline;
+  text-decoration-color: #fca5a5;
+}
+.msg-text a.url-highlight:hover,
+.thread-preview a.url-highlight:hover { color: #fca5a5; }
+
 mark.search-highlight {
   background: rgba(239, 68, 68, 0.18);
   color: #fca5a5;

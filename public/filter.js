@@ -5,16 +5,33 @@
   const threadsEl = document.getElementById('threads');
   if (!form || !threadsEl) return;
 
-  // Highlight search term in already-rendered HTML, skipping over tags.
+  // Highlight search term in already-rendered HTML.
+  // Text nodes: wrap matches in <mark>. <a> tags: add url-highlight class if
+  // href or data-src contains the term (covers links whose label hides the match).
   function highlight(html, term) {
     if (!term) return html;
+    const sl = term.toLowerCase();
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return html.replace(/(<[^>]+>)|([^<]+)/g, (_, tag, text) =>
-      tag ? tag : text.replace(
-        new RegExp(escaped, 'gi'),
-        m => `<mark class="search-highlight">${m}</mark>`
-      )
-    );
+    const re = new RegExp(escaped, 'gi');
+    return html.replace(/(<[^>]+>)|([^<]+)/g, (_, tag, text) => {
+      if (tag) {
+        if (tag.toLowerCase().startsWith('<a ')) {
+          const tl = tag.toLowerCase();
+          const attrContains = (attr) => {
+            const idx = tl.indexOf(attr + '="');
+            if (idx === -1) return false;
+            const after = tl.slice(idx + attr.length + 2);
+            const end = after.indexOf('"');
+            return end !== -1 && after.slice(0, end).includes(sl);
+          };
+          if (attrContains('href') || attrContains('data-src')) {
+            return tag.replace('<a ', '<a class="url-highlight" ');
+          }
+        }
+        return tag;
+      }
+      return text.replace(re, m => `<mark class="search-highlight">${m}</mark>`);
+    });
   }
 
   function applyFilters() {

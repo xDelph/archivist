@@ -148,7 +148,30 @@ fn render_token(
 
     // URL: <https://...|label> or <https://...>
     if inner.starts_with("http://") || inner.starts_with("https://") {
+        let has_label = inner.contains('|');
         let (url, label) = split_pipe(inner);
+
+        // Rewrite internal Slack thread links to archiver URLs
+        let workspace = std::env::var("SLACK_WORKSPACE_URL").ok();
+        if let Some((channel_id, ts)) = parse_slack_thread_url(url, workspace.as_deref()) {
+            let display = if has_label {
+                escape_html(label)
+            } else {
+                let ch_name = channels
+                    .get(&channel_id)
+                    .map(|n| format!("#{n}"))
+                    .unwrap_or_else(|| channel_id.clone());
+                format!("↗ thread in {}", escape_html(&ch_name))
+            };
+            return format!(
+                r#"<a href="/record/thread?channel_id={}&ts={}" data-src="{}" target="_blank" rel="noopener">{}</a>"#,
+                channel_id,
+                ts,
+                escape_html(url),
+                display
+            );
+        }
+
         return format!(
             r#"<a href="{}" target="_blank" rel="noopener">{}</a>"#,
             escape_html(url),
@@ -158,6 +181,30 @@ fn render_token(
 
     // Unknown — escape and render as literal
     format!("&lt;{}&gt;", escape_html(inner))
+}
+
+/// If `tag` is an `<a href="...">` whose href contains `needle`, inject `class="url-highlight"`.
+/// Otherwise returns the tag unchanged.
+fn highlight_link_href(tag: &str, needle: &str) -> String {
+    if needle.is_empty() {
+        return tag.to_owned();
+    }
+    let tag_lower = tag.to_lowercase();
+    if !tag_lower.starts_with("<a ") {
+        return tag.to_owned();
+    }
+    let href_match = tag_lower.find("href=\"").and_then(|i| {
+        let after = &tag_lower[i + 6..];
+        after.find('"').map(|e| after[..e].contains(needle))
+    });
+    let src_match = tag_lower.find("data-src=\"").and_then(|i| {
+        let after = &tag_lower[i + 10..];
+        after.find('"').map(|e| after[..e].contains(needle))
+    });
+    if href_match.unwrap_or(false) || src_match.unwrap_or(false) {
+        return tag.replacen("<a ", "<a class=\"url-highlight\" ", 1);
+    }
+    tag.to_owned()
 }
 
 /// Wrap occurrences of `search` in `<mark class="search-highlight">` inside pre-rendered HTML.
@@ -175,7 +222,8 @@ pub fn highlight_search(html: &str, search: &str) -> String {
 
     while i < len {
         if bytes[i] == b'<' {
-            // Copy HTML tag verbatim — never replace inside tags
+            // Copy HTML tag verbatim — never replace inside tags.
+            // Exception: <a> tags whose href contains the needle get a url-highlight class.
             let tag_start = i;
             i += 1;
             while i < len && bytes[i] != b'>' {
@@ -184,7 +232,8 @@ pub fn highlight_search(html: &str, search: &str) -> String {
             if i < len {
                 i += 1;
             }
-            result.push_str(&html[tag_start..i]);
+            let tag = &html[tag_start..i];
+            result.push_str(&highlight_link_href(tag, &needle));
         } else {
             // Text node: collect until next '<' then replace matches
             let text_start = i;
@@ -223,6 +272,53 @@ fn decode_slack_entities(s: &str) -> String {
     s.replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&amp;", "&")
+}
+
+/// Parse an internal Slack thread URL into `(channel_id, ts)` when it matches
+/// `workspace`. Returns `None` for external or unrecognised URLs.
+///
+/// Slack archive URL formats:
+///   root message : `https://{host}/archives/{channel_id}/p{ts_no_dot}`
+///   thread reply : `https://{host}/archives/{channel_id}/p{ts}?thread_ts={root_ts}&cid=...`
+pub(crate) fn parse_slack_thread_url(
+    url: &str,
+    workspace: Option<&str>,
+) -> Option<(String, String)> {
+    let host = workspace?
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/');
+
+    let rest = url.strip_prefix(&format!("https://{}/archives/", host))?;
+
+    let slash = rest.find('/')?;
+    let channel_id = rest[..slash].to_owned();
+    let ts_part = &rest[slash + 1..];
+    let ts_digits = ts_part.strip_prefix('p')?;
+
+    let ts = if let Some(q) = ts_digits.find('?') {
+        // Reply URL: thread_ts query param holds the root message ts (already dotted)
+        let query = &ts_digits[q + 1..];
+        query
+            .split('&')
+            .find_map(|p| p.strip_prefix("thread_ts="))
+            .map(|v| v.to_owned())
+            .unwrap_or_else(|| p_digits_to_ts(&ts_digits[..q]))
+    } else {
+        p_digits_to_ts(ts_digits)
+    };
+
+    Some((channel_id, ts))
+}
+
+/// Convert p-format timestamp digits (dot removed) back to Slack ts.
+/// "1700000000123456" → "1700000000.123456"
+fn p_digits_to_ts(digits: &str) -> String {
+    if digits.len() > 10 {
+        format!("{}.{}", &digits[..10], &digits[10..])
+    } else {
+        digits.to_owned()
+    }
 }
 
 fn split_pipe(s: &str) -> (&str, &str) {
