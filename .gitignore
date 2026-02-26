@@ -1,6 +1,14 @@
-/target
+.DS_Store
 .env
 .env.local
 .vercel
-/v0
-.DS_Store
+.turbo
+backup/
+
+target/
+**/target/
+
+node_modules/
+apps/*/node_modules/
+apps/frontend-v0/.next/
+.pnpm-store/
