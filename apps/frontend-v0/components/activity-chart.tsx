@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import type { ActivityPoint } from "@/lib/mock-data"
+import type { ActivityPoint } from "@/lib/types"
 
 interface ActivityChartProps {
   data: ActivityPoint[]

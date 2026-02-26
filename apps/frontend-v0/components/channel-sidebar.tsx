@@ -1,4 +1,4 @@
-import type { ChannelStat } from "@/lib/mock-data"
+import type { ChannelStat } from "@/lib/types"
 import { Hash } from "lucide-react"
 
 interface ChannelSidebarProps {
