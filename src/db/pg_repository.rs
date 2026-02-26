@@ -463,27 +463,27 @@ impl Repository for PgPool {
                    ))
                 GROUP BY m.channel_id, m.ts, m.user_id, m.text, m.created_at
             ),
+            bounds AS (
+                SELECT
+                    date_trunc('week', CURRENT_DATE)::timestamp AS period_start,
+                    (date_trunc('week', CURRENT_DATE)::timestamp + INTERVAL '7 days') AS period_end
+            ),
             cur AS (
                 SELECT
-                    channel_id,
-                    thread_ts,
-                    score_week,
-                    score_total,
+                    s.channel_id,
+                    s.thread_ts,
+                    (s.reaction_count * 2 + s.reply_count + s.participant_count)::bigint AS score_period,
                     RANK() OVER (
-                        ORDER BY score_week DESC, score_total DESC, channel_id, thread_ts
+                        ORDER BY
+                            (s.reaction_count * 2 + s.reply_count + s.participant_count) DESC,
+                            s.channel_id,
+                            s.thread_ts
                     ) AS rank
-                FROM thread_weekly_scores
-                WHERE week_start = date_trunc('week', CURRENT_DATE)::date
-            ),
-            prev AS (
-                SELECT
-                    channel_id,
-                    thread_ts,
-                    RANK() OVER (
-                        ORDER BY score_week DESC, score_total DESC, channel_id, thread_ts
-                    ) AS rank
-                FROM thread_weekly_scores
-                WHERE week_start = (date_trunc('week', CURRENT_DATE)::date - INTERVAL '7 days')::date
+                FROM stats s
+                CROSS JOIN bounds b
+                WHERE s.thread_ts ~ '^[0-9]+(\.[0-9]+)?$'
+                  AND to_timestamp(s.thread_ts::double precision) >= b.period_start
+                  AND to_timestamp(s.thread_ts::double precision) < b.period_end
             )
             SELECT
                 cur.channel_id,
@@ -496,10 +496,10 @@ impl Repository for PgPool {
                 s.reaction_count,
                 s.reply_count,
                 s.participant_count,
-                cur.score_week::bigint                                     AS score,
-                cur.score_week::bigint                                     AS rank_score,
+                cur.score_period::bigint                                   AS score,
+                cur.score_period::bigint                                   AS rank_score,
                 cur.rank::bigint                                           AS rank,
-                prev.rank::bigint                                          AS prev_rank
+                NULL::bigint                                               AS prev_rank
             FROM cur
             JOIN stats s
                 ON s.channel_id = cur.channel_id
@@ -508,9 +508,6 @@ impl Repository for PgPool {
                 ON u.user_id = s.user_id
             LEFT JOIN channels ch
                 ON ch.channel_id = cur.channel_id
-            LEFT JOIN prev
-                ON prev.channel_id = cur.channel_id
-               AND prev.thread_ts = cur.thread_ts
             WHERE COALESCE(ch.name, cur.channel_id) != 'intro'
             ORDER BY cur.rank ASC
             LIMIT $1
@@ -570,42 +567,26 @@ impl Repository for PgPool {
                 GROUP BY m.channel_id, m.ts, m.user_id, m.text, m.created_at
             ),
             bounds AS (
-                SELECT date_trunc('month', CURRENT_DATE)::date AS month_start
+                SELECT
+                    date_trunc('month', CURRENT_DATE)::timestamp AS period_start,
+                    (date_trunc('month', CURRENT_DATE)::timestamp + INTERVAL '1 month') AS period_end
             ),
             cur AS (
                 SELECT
-                    tws.channel_id,
-                    tws.thread_ts,
-                    SUM(tws.score_week)::bigint AS score_month,
+                    s.channel_id,
+                    s.thread_ts,
+                    (s.reaction_count * 2 + s.reply_count + s.participant_count)::bigint AS score_period,
                     RANK() OVER (
                         ORDER BY
-                            SUM(tws.score_week) DESC,
-                            MAX(tws.score_total) DESC,
-                            tws.channel_id,
-                            tws.thread_ts
+                            (s.reaction_count * 2 + s.reply_count + s.participant_count) DESC,
+                            s.channel_id,
+                            s.thread_ts
                     ) AS rank
-                FROM thread_weekly_scores tws
+                FROM stats s
                 CROSS JOIN bounds b
-                WHERE tws.week_start >= b.month_start
-                  AND tws.week_start < (b.month_start + INTERVAL '1 month')::date
-                GROUP BY tws.channel_id, tws.thread_ts
-            ),
-            prev AS (
-                SELECT
-                    tws.channel_id,
-                    tws.thread_ts,
-                    RANK() OVER (
-                        ORDER BY
-                            SUM(tws.score_week) DESC,
-                            MAX(tws.score_total) DESC,
-                            tws.channel_id,
-                            tws.thread_ts
-                    ) AS rank
-                FROM thread_weekly_scores tws
-                CROSS JOIN bounds b
-                WHERE tws.week_start >= (b.month_start - INTERVAL '1 month')::date
-                  AND tws.week_start < b.month_start
-                GROUP BY tws.channel_id, tws.thread_ts
+                WHERE s.thread_ts ~ '^[0-9]+(\.[0-9]+)?$'
+                  AND to_timestamp(s.thread_ts::double precision) >= b.period_start
+                  AND to_timestamp(s.thread_ts::double precision) < b.period_end
             )
             SELECT
                 cur.channel_id,
@@ -618,10 +599,10 @@ impl Repository for PgPool {
                 s.reaction_count,
                 s.reply_count,
                 s.participant_count,
-                cur.score_month::bigint                                    AS score,
-                cur.score_month::bigint                                    AS rank_score,
+                cur.score_period::bigint                                   AS score,
+                cur.score_period::bigint                                   AS rank_score,
                 cur.rank::bigint                                           AS rank,
-                prev.rank::bigint                                          AS prev_rank
+                NULL::bigint                                               AS prev_rank
             FROM cur
             JOIN stats s
                 ON s.channel_id = cur.channel_id
@@ -630,9 +611,6 @@ impl Repository for PgPool {
                 ON u.user_id = s.user_id
             LEFT JOIN channels ch
                 ON ch.channel_id = cur.channel_id
-            LEFT JOIN prev
-                ON prev.channel_id = cur.channel_id
-               AND prev.thread_ts = cur.thread_ts
             WHERE COALESCE(ch.name, cur.channel_id) != 'intro'
             ORDER BY cur.rank ASC
             LIMIT $1

@@ -53,19 +53,14 @@ fn make_top_thread_with_weekly(
     }
 }
 
-fn make_ranked_thread(
-    rank_score: i64,
-    rank: i64,
-    prev_rank: Option<i64>,
-    channel_name: &str,
-) -> PeriodRankedThread {
+fn make_ranked_thread(rank_score: i64, channel_name: &str) -> PeriodRankedThread {
     let mut thread = make_thread(rank_score, channel_name);
     thread.score = rank_score;
     PeriodRankedThread {
         thread,
         rank_score,
-        rank,
-        prev_rank,
+        rank: 1,
+        prev_rank: None,
     }
 }
 
@@ -455,9 +450,9 @@ async fn test_weekly_page_with_trailing_slash_returns_tabs() {
 }
 
 #[tokio::test]
-async fn test_weekly_page_week_tab_shows_new_badge() {
+async fn test_weekly_page_week_tab_has_no_position_change_badge() {
     let repo = InMemoryRepository::default();
-    *repo.weekly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(13, 1, None, "eng")];
+    *repo.weekly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(13, "eng")];
 
     let resp = process(&repo, make_get("/record/weekly?tab=week"))
         .await
@@ -466,15 +461,16 @@ async fn test_weekly_page_week_tab_shows_new_badge() {
 
     let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
     assert!(body.contains("This week"));
-    assert!(body.contains("NEW"));
+    assert!(!body.contains("rank-new"));
+    assert!(!body.contains("rank-up"));
+    assert!(!body.contains("rank-down"));
     assert!(body.contains("id=\"filter-form\""));
 }
 
 #[tokio::test]
-async fn test_weekly_page_month_tab_shows_rank_up_badge() {
+async fn test_weekly_page_month_tab_has_no_position_change_badge() {
     let repo = InMemoryRepository::default();
-    *repo.monthly_ranked_threads.lock().unwrap() =
-        vec![make_ranked_thread(21, 1, Some(3), "general")];
+    *repo.monthly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(21, "general")];
 
     let resp = process(&repo, make_get("/record/weekly?tab=month"))
         .await
@@ -483,7 +479,9 @@ async fn test_weekly_page_month_tab_shows_rank_up_badge() {
 
     let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
     assert!(body.contains("This month"));
-    assert!(body.contains("↑2"));
+    assert!(!body.contains("rank-new"));
+    assert!(!body.contains("rank-up"));
+    assert!(!body.contains("rank-down"));
 }
 
 #[tokio::test]

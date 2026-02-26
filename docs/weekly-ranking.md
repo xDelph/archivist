@@ -50,44 +50,23 @@ Threads with **zero activity this week** and not reached by the backfill have no
 -- optional: LEFT JOIN thread_weekly_scores for current week to show score_week badge
 ```
 
-**Weekly ranking** (hot this week):
+**Weekly top threads** (created this week):
 ```sql
-SELECT channel_id, thread_ts, score_week, score_total
-FROM thread_weekly_scores
-WHERE week_start = date_trunc('week', CURRENT_DATE)
-ORDER BY score_week DESC
+SELECT channel_id, thread_ts, score
+FROM top_thread_stats
+WHERE to_timestamp(thread_ts::double precision) >= date_trunc('week', CURRENT_DATE)
+  AND to_timestamp(thread_ts::double precision) <  date_trunc('week', CURRENT_DATE) + INTERVAL '7 days'
+ORDER BY score DESC
 LIMIT 50;
 ```
 
-**Position change** (this week vs last week):
+**Monthly top threads** (created this month):
 ```sql
-WITH cur AS (
-  SELECT *, RANK() OVER (ORDER BY score_week DESC) AS rank
-  FROM thread_weekly_scores
-  WHERE week_start = date_trunc('week', CURRENT_DATE)
-),
-prev AS (
-  SELECT channel_id, thread_ts,
-         RANK() OVER (ORDER BY score_week DESC) AS rank
-  FROM thread_weekly_scores
-  WHERE week_start = date_trunc('week', CURRENT_DATE) - INTERVAL '7 days'
-)
-SELECT cur.*, prev.rank AS prev_rank
-FROM cur LEFT JOIN prev USING (channel_id, thread_ts)
-ORDER BY cur.rank;
-```
-
-- No `prev_rank` → **NEW** badge
-- Not in `cur` → dropped out (not shown)
-
-**Monthly ranking** (sum of weekly deltas within the month):
-```sql
-SELECT channel_id, thread_ts, SUM(score_week) AS score_month
-FROM thread_weekly_scores
-WHERE week_start >= date_trunc('month', CURRENT_DATE)
-  AND week_start <  date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
-GROUP BY channel_id, thread_ts
-ORDER BY score_month DESC
+SELECT channel_id, thread_ts, score
+FROM top_thread_stats
+WHERE to_timestamp(thread_ts::double precision) >= date_trunc('month', CURRENT_DATE)
+  AND to_timestamp(thread_ts::double precision) <  date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
+ORDER BY score DESC
 LIMIT 50;
 ```
 
@@ -95,13 +74,13 @@ LIMIT 50;
 
 A new `/record/weekly` page with three tabs:
 
-| Tab | Ranked by | Position change |
-|---|---|---|
-| **Top threads** | all-time `score` (existing) | optional `score_week` badge |
-| **This week** | `score_week` for current week | vs previous week rank |
-| **This month** | `SUM(score_week)` for current month | vs previous month rank |
+| Tab | Ranked by |
+|---|---|
+| **Top threads** | all-time `score` (existing, optional current-week badge) |
+| **This week** | all-time `score` for threads created in current week |
+| **This month** | all-time `score` for threads created in current month |
 
-Same thread card design as `/record`. Badges: **↑3** (green), **↓2** (red), **NEW** (neutral).
+Same thread card design as `/record`, without previous-period movement badges.
 
 ## Backfill behaviour (DB cost)
 
