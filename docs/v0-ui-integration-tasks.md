@@ -76,7 +76,7 @@ Selected decisions:
 
 ## Phase 2 - Workspace Tooling
 
-- [ ] 2.1 Configure Rust workspace (`Cargo.toml`) if backend app is no longer at root.
+- [x] 2.1 Configure Rust app package at `apps/backend-rust/` (Cargo manifest + scripts) after move from root.
 - [x] 2.2 Configure Node workspace for frontend (`pnpm-workspace.yaml` or npm workspaces).
 - [x] 2.3 Add root scripts for `build`, `test`, `lint`, `dev` per app.
 - [ ] 2.4 Decide CI strategy: split backend/frontend pipelines with independent checks.
@@ -86,14 +86,14 @@ Selected decisions:
 - [x] 3.1 Remove mock-data dependency from frontend (`lib/mock-data.ts`).
 - [x] 3.2 Add typed API client in frontend for Archivist endpoints.
 - [x] 3.3 Connect tabs, filters, sort, and thread expansion to backend data.
-- [ ] 3.4 Implement real file preview/download behavior from archived files.
-- [ ] 3.5 Keep local preferences (theme/density) in frontend.
+- [x] 3.4 Implement real file preview/download behavior from archived files.
+- [x] 3.5 Keep local preferences (theme/density) in frontend.
 
 ## Phase 4 - Backend API for Frontend
 
 - [x] 4.1 Add JSON endpoints in Rust for overview, thread list, filters, thread details.
 - [x] 4.2 Keep existing HTML endpoints during transition for rollback safety.
-- [ ] 4.3 Reuse current cache strategy (5-minute TTL where applicable).
+- [x] 4.3 Reuse current cache strategy (5-minute TTL where applicable).
 - [x] 4.4 Add tests for new request/response contracts.
 
 ## Phase 5 - Deploy + Cutover
@@ -108,7 +108,5 @@ Selected decisions:
 
 ## Current Gaps to Address During Migration
 
-- Frontend currently links files directly; legacy modal gallery parity is still pending.
 - Dashboard change metrics (`messagesChange`, etc.) are placeholder values (0.0).
-- JSON endpoints currently query DB directly; parity with existing in-process TTL cache is pending.
-- User filter control (present in legacy UI) is not yet exposed in v0 UI.
+- CI split strategy and deploy/cutover tasks in Phase 5 are still pending.
