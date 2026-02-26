@@ -17,6 +17,9 @@ interface SearchBarProps {
   onSortChange: (sort: string) => void
   period: string
   onPeriodChange: (period: string) => void
+  users: string[]
+  selectedUser: string | null
+  onUserChange: (user: string | null) => void
 }
 
 export function SearchBar({
@@ -26,6 +29,9 @@ export function SearchBar({
   onSortChange,
   period,
   onPeriodChange,
+  users,
+  selectedUser,
+  onUserChange,
 }: SearchBarProps) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -59,6 +65,22 @@ export function SearchBar({
             <SelectItem value="all">All time</SelectItem>
             <SelectItem value="30d">30 days</SelectItem>
             <SelectItem value="7d">7 days</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={selectedUser ?? "__all__"}
+          onValueChange={(value) => onUserChange(value === "__all__" ? null : value)}
+        >
+          <SelectTrigger className="h-9 w-40 bg-secondary text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All users</SelectItem>
+            {users.map((user) => (
+              <SelectItem key={user} value={user}>
+                {user}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

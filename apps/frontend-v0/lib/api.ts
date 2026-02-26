@@ -74,6 +74,7 @@ interface ApiThreadsResponse {
   tab: "top" | "week" | "month"
   workspaceUrl: string | null
   threads: ApiThread[]
+  users: string[]
   channelStats: ApiChannelStat[]
   activityData: ApiActivityPoint[]
   overviewStats: ApiOverviewStats
@@ -194,7 +195,7 @@ export async function fetchDashboardData(
   })
   if (options.sort) params.set("sort", options.sort)
   if (options.period) params.set("period", options.period)
-  if (options.channel) params.set("channel", options.channel)
+  if (options.channel) params.set("channel", options.channel.replace(/^#/, ""))
   if (options.user) params.set("user", options.user)
   if (options.search) params.set("search", options.search)
 
@@ -208,6 +209,7 @@ export async function fetchDashboardData(
     tab: payload.tab,
     workspaceUrl: payload.workspaceUrl ?? null,
     threads: payload.threads.map(mapThread),
+    users: payload.users ?? [],
     channelStats: mapChannelStats(payload.channelStats),
     activityData: mapActivityData(payload.activityData),
     overviewStats: mapOverviewStats(payload.overviewStats),

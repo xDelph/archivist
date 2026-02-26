@@ -68,6 +68,7 @@ export interface DashboardData {
   tab: "top" | "week" | "month"
   workspaceUrl: string | null
   threads: SlackThread[]
+  users: string[]
   channelStats: ChannelStat[]
   activityData: ActivityPoint[]
   overviewStats: OverviewStats

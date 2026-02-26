@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Archive, ExternalLink, LoaderCircle } from "lucide-react"
+import { Archive, ExternalLink, LoaderCircle, Moon, Sun, Rows3, Rows2 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatCard } from "@/components/stat-card"
 import { ThreadCard } from "@/components/thread-card"
@@ -12,11 +12,17 @@ import { fetchDashboardData, fetchThreadMessages } from "@/lib/api"
 import type { DashboardData, SlackThread, ThreadMessage } from "@/lib/types"
 
 type DashboardTab = "top" | "week" | "month"
+type ThemePref = "dark" | "light"
+type DensityPref = "normal" | "compact"
+
+const THEME_KEY = "archivist_theme"
+const DENSITY_KEY = "archivist_density"
 
 const EMPTY_DASHBOARD: DashboardData = {
   tab: "top",
   workspaceUrl: null,
   threads: [],
+  users: [],
   channelStats: [],
   activityData: [],
   overviewStats: {
@@ -57,9 +63,12 @@ export default function ArchivistDashboard() {
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const [sortBy, setSortBy] = useState("score")
   const [period, setPeriod] = useState("all")
+  const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<DashboardTab>("top")
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
+  const [theme, setTheme] = useState<ThemePref>("dark")
+  const [density, setDensity] = useState<DensityPref>("normal")
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
@@ -70,9 +79,22 @@ export default function ArchivistDashboard() {
     setActiveTab(parseTab(params.get("tab")))
     setSortBy(parseSort(params.get("sort")))
     setPeriod(parsePeriod(params.get("period")))
+    setSelectedUser(params.get("user"))
     setSelectedChannel(params.get("channel"))
     setQuery(params.get("search") ?? "")
     setDebouncedQuery(params.get("search") ?? "")
+
+    try {
+      const storedTheme = localStorage.getItem(THEME_KEY)
+      if (storedTheme === "dark" || storedTheme === "light") {
+        setTheme(storedTheme)
+      }
+      const storedDensity = localStorage.getItem(DENSITY_KEY)
+      if (storedDensity === "normal" || storedDensity === "compact") {
+        setDensity(storedDensity)
+      }
+    } catch (_err) {}
+
     setReady(true)
   }, [])
 
@@ -86,26 +108,41 @@ export default function ArchivistDashboard() {
   }, [query])
 
   useEffect(() => {
-    if (!ready) {
-      return
-    }
+    if (!ready) return
+    const root = document.documentElement
+    root.classList.toggle("theme-light", theme === "light")
+    try {
+      localStorage.setItem(THEME_KEY, theme)
+    } catch (_err) {}
+  }, [ready, theme])
+
+  useEffect(() => {
+    if (!ready) return
+    const root = document.documentElement
+    root.classList.toggle("compact-mode", density === "compact")
+    try {
+      localStorage.setItem(DENSITY_KEY, density)
+    } catch (_err) {}
+  }, [ready, density])
+
+  useEffect(() => {
+    if (!ready) return
 
     const params = new URLSearchParams()
     if (activeTab !== "top") params.set("tab", activeTab)
     if (sortBy !== "score") params.set("sort", sortBy)
     if (period !== "all") params.set("period", period)
+    if (selectedUser) params.set("user", selectedUser)
     if (selectedChannel) params.set("channel", selectedChannel)
     if (debouncedQuery) params.set("search", debouncedQuery)
 
     const next = params.toString()
     const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
     window.history.replaceState(null, "", url)
-  }, [ready, activeTab, sortBy, period, selectedChannel, debouncedQuery])
+  }, [ready, activeTab, sortBy, period, selectedUser, selectedChannel, debouncedQuery])
 
   useEffect(() => {
-    if (!ready) {
-      return
-    }
+    if (!ready) return
 
     let cancelled = false
     setLoading(true)
@@ -115,20 +152,17 @@ export default function ArchivistDashboard() {
       tab: activeTab,
       sort: sortBy,
       period,
+      user: selectedUser ?? undefined,
       channel: selectedChannel ?? undefined,
       search: debouncedQuery || undefined,
       limit: 200,
     })
       .then((nextDashboard) => {
-        if (cancelled) {
-          return
-        }
+        if (cancelled) return
         setDashboard(nextDashboard)
       })
       .catch(() => {
-        if (cancelled) {
-          return
-        }
+        if (cancelled) return
         setLoadError("Failed to load dashboard data.")
       })
       .finally(() => {
@@ -145,6 +179,7 @@ export default function ArchivistDashboard() {
     activeTab,
     sortBy,
     period,
+    selectedUser,
     selectedChannel,
     debouncedQuery,
     reloadToken,
@@ -192,7 +227,24 @@ export default function ArchivistDashboard() {
             </TabsList>
           </Tabs>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDensity((prev) => (prev === "compact" ? "normal" : "compact"))}
+              className="hidden items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+            >
+              {density === "compact" ? <Rows2 className="size-3.5" /> : <Rows3 className="size-3.5" />}
+              {density === "compact" ? "Compact" : "Normal"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+              className="hidden items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+            >
+              {theme === "dark" ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
+              {theme === "dark" ? "Dark" : "Light"}
+            </button>
+
             {currentDashboard.workspaceUrl && (
               <a
                 href={
@@ -283,6 +335,9 @@ export default function ArchivistDashboard() {
             onSortChange={setSortBy}
             period={period}
             onPeriodChange={setPeriod}
+            users={currentDashboard.users}
+            selectedUser={selectedUser}
+            onUserChange={setSelectedUser}
           />
         </section>
 
@@ -313,6 +368,7 @@ export default function ArchivistDashboard() {
                   setQuery("")
                   setDebouncedQuery("")
                   setPeriod("all")
+                  setSelectedUser(null)
                   setSelectedChannel(null)
                 }}
                 className="text-xs text-primary hover:underline"
@@ -327,6 +383,7 @@ export default function ArchivistDashboard() {
               key={thread.id}
               thread={thread}
               rank={index + 1}
+              density={density}
               onLoadThreadMessages={loadThreadMessages}
             />
           ))}
