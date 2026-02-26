@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Archive, ExternalLink, LoaderCircle } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatCard } from "@/components/stat-card"
@@ -31,49 +31,69 @@ const EMPTY_DASHBOARD: DashboardData = {
   },
 }
 
-function sortThreads(threads: SlackThread[], sortBy: string): SlackThread[] {
-  return [...threads].sort((a, b) => {
-    switch (sortBy) {
-      case "replies":
-        return b.replies - a.replies
-      case "reactions":
-        return b.reactions - a.reactions
-      case "date":
-        return Number.parseFloat(b.ts) - Number.parseFloat(a.ts)
-      default:
-        return b.score - a.score
-    }
-  })
+function parseTab(value: string | null): DashboardTab {
+  if (value === "week" || value === "month") {
+    return value
+  }
+  return "top"
 }
 
-function filterThreads(
-  threads: SlackThread[],
-  query: string,
-  channel: string | null
-): SlackThread[] {
-  return threads.filter((thread) => {
-    const normalized = query.toLowerCase()
-    const matchesQuery =
-      !normalized ||
-      thread.message.toLowerCase().includes(normalized) ||
-      thread.author.name.toLowerCase().includes(normalized) ||
-      thread.channel.toLowerCase().includes(normalized)
-    const matchesChannel = !channel || thread.channel === channel
-    return matchesQuery && matchesChannel
-  })
+function parseSort(value: string | null): string {
+  if (value === "date" || value === "reactions" || value === "replies") {
+    return value
+  }
+  return "score"
 }
 
 export default function ArchivistDashboard() {
   const [query, setQuery] = useState("")
+  const [debouncedQuery, setDebouncedQuery] = useState("")
   const [sortBy, setSortBy] = useState("score")
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<DashboardTab>("top")
-  const [dashboards, setDashboards] = useState<Partial<Record<DashboardTab, DashboardData>>>({})
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [ready, setReady] = useState(false)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
-    if (dashboards[activeTab]) {
+    const params = new URLSearchParams(window.location.search)
+    setActiveTab(parseTab(params.get("tab")))
+    setSortBy(parseSort(params.get("sort")))
+    setSelectedChannel(params.get("channel"))
+    setQuery(params.get("search") ?? "")
+    setDebouncedQuery(params.get("search") ?? "")
+    setReady(true)
+  }, [])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedQuery(query.trim())
+    }, 300)
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [query])
+
+  useEffect(() => {
+    if (!ready) {
+      return
+    }
+
+    const params = new URLSearchParams()
+    if (activeTab !== "top") params.set("tab", activeTab)
+    if (sortBy !== "score") params.set("sort", sortBy)
+    if (selectedChannel) params.set("channel", selectedChannel)
+    if (debouncedQuery) params.set("search", debouncedQuery)
+
+    const next = params.toString()
+    const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
+    window.history.replaceState(null, "", url)
+  }, [ready, activeTab, sortBy, selectedChannel, debouncedQuery])
+
+  useEffect(() => {
+    if (!ready) {
       return
     }
 
@@ -81,12 +101,18 @@ export default function ArchivistDashboard() {
     setLoading(true)
     setLoadError(null)
 
-    fetchDashboardData(activeTab)
-      .then((dashboard) => {
+    fetchDashboardData({
+      tab: activeTab,
+      sort: sortBy,
+      channel: selectedChannel ?? undefined,
+      search: debouncedQuery || undefined,
+      limit: 200,
+    })
+      .then((nextDashboard) => {
         if (cancelled) {
           return
         }
-        setDashboards((prev) => ({ ...prev, [activeTab]: dashboard }))
+        setDashboard(nextDashboard)
       })
       .catch(() => {
         if (cancelled) {
@@ -103,13 +129,10 @@ export default function ArchivistDashboard() {
     return () => {
       cancelled = true
     }
-  }, [activeTab, dashboards])
+  }, [ready, activeTab, sortBy, selectedChannel, debouncedQuery, reloadToken])
 
-  const currentDashboard = dashboards[activeTab] ?? EMPTY_DASHBOARD
-  const currentThreads = useMemo(() => {
-    const filtered = filterThreads(currentDashboard.threads, query, selectedChannel)
-    return sortThreads(filtered, sortBy)
-  }, [currentDashboard.threads, query, selectedChannel, sortBy])
+  const currentDashboard = dashboard ?? EMPTY_DASHBOARD
+  const currentThreads = currentDashboard.threads
 
   const loadThreadMessages = useCallback(
     async (thread: SlackThread): Promise<ThreadMessage[]> =>
@@ -118,12 +141,7 @@ export default function ArchivistDashboard() {
   )
 
   function retryCurrentTab(): void {
-    setDashboards((prev) => {
-      const next = { ...prev }
-      delete next[activeTab]
-      return next
-    })
-    setLoadError(null)
+    setReloadToken((value) => value + 1)
   }
 
   return (
@@ -137,7 +155,11 @@ export default function ArchivistDashboard() {
             <span className="text-base font-semibold text-foreground">Archivist</span>
           </div>
 
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DashboardTab)} className="ml-4 hidden sm:flex">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as DashboardTab)}
+            className="ml-4 hidden sm:flex"
+          >
             <TabsList className="h-8 bg-secondary">
               <TabsTrigger value="top" className="px-3 text-xs">
                 Top Threads
@@ -244,20 +266,17 @@ export default function ArchivistDashboard() {
         </section>
 
         <section className="flex flex-col gap-2">
-          {loading && currentDashboard.threads.length === 0 && (
+          {loading && currentThreads.length === 0 && (
             <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
               <LoaderCircle className="size-4 animate-spin" />
               Loading dashboard...
             </div>
           )}
 
-          {loadError && currentDashboard.threads.length === 0 && (
+          {loadError && currentThreads.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-center">
               <p className="text-sm text-muted-foreground">{loadError}</p>
-              <button
-                onClick={retryCurrentTab}
-                className="text-xs text-primary hover:underline"
-              >
+              <button onClick={retryCurrentTab} className="text-xs text-primary hover:underline">
                 Retry
               </button>
             </div>
@@ -271,6 +290,7 @@ export default function ArchivistDashboard() {
               <button
                 onClick={() => {
                   setQuery("")
+                  setDebouncedQuery("")
                   setSelectedChannel(null)
                 }}
                 className="text-xs text-primary hover:underline"

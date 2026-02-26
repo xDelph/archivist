@@ -101,6 +101,16 @@ interface ApiThreadResponse {
   messages: ApiThreadMessage[]
 }
 
+interface DashboardFetchOptions {
+  tab: "top" | "week" | "month"
+  sort?: string
+  period?: string
+  channel?: string
+  user?: string
+  search?: string
+  limit?: number
+}
+
 function buildUrl(path: string): string {
   return `${API_BASE_URL}${path}`
 }
@@ -176,9 +186,19 @@ function ensureOk(response: Response): void {
 }
 
 export async function fetchDashboardData(
-  tab: "top" | "week" | "month"
+  options: DashboardFetchOptions
 ): Promise<DashboardData> {
-  const response = await fetch(buildUrl(`/api/record/threads?tab=${tab}&limit=200`), {
+  const params = new URLSearchParams({
+    tab: options.tab,
+    limit: String(options.limit ?? 200),
+  })
+  if (options.sort) params.set("sort", options.sort)
+  if (options.period) params.set("period", options.period)
+  if (options.channel) params.set("channel", options.channel)
+  if (options.user) params.set("user", options.user)
+  if (options.search) params.set("search", options.search)
+
+  const response = await fetch(buildUrl(`/api/record/threads?${params.toString()}`), {
     cache: "no-store",
   })
   ensureOk(response)
