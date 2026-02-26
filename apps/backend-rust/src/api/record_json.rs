@@ -104,8 +104,33 @@ struct ApiThreadResponse {
 }
 
 struct RootFileSummary {
-    threads_with_files: HashSet<(String, String)>,
+    file_counts_by_thread: HashMap<(String, String), i64>,
     total_files: i64,
+}
+
+#[derive(Default)]
+struct OverviewChanges {
+    messages_change: f64,
+    threads_change: f64,
+    files_change: f64,
+    users_change: f64,
+}
+
+#[derive(Default)]
+struct MetricAccumulator {
+    messages: i64,
+    threads: i64,
+    files: i64,
+    users: HashSet<String>,
+}
+
+impl MetricAccumulator {
+    fn add(&mut self, thread: &ThreadSummary, file_count: i64) {
+        self.threads += 1;
+        self.messages += thread.reply_count + 1;
+        self.files += file_count;
+        self.users.insert(thread.display_name.clone());
+    }
 }
 
 pub(crate) async fn process<R: Repository>(
@@ -142,18 +167,30 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
         .unwrap_or(200)
         .min(200);
 
-    let mut candidate_threads = load_threads_for_tab(repo, tab).await?;
-    apply_common_filters(&mut candidate_threads, period, channel, search);
+    let base_threads = load_threads_for_tab(repo, tab).await?;
 
-    let users = build_user_options(&candidate_threads);
+    let mut filtered_for_users = base_threads.clone();
+    apply_channel_and_search_filters(&mut filtered_for_users, channel, search);
+    apply_period_filter(&mut filtered_for_users, period);
+    let users = build_user_options(&filtered_for_users);
+
+    let mut candidate_threads = base_threads;
+    apply_channel_and_search_filters(&mut candidate_threads, channel, search);
     apply_user_filter(&mut candidate_threads, user);
+    apply_period_filter(&mut candidate_threads, period);
     apply_sort(&mut candidate_threads, sort);
     candidate_threads.truncate(limit);
 
     let root_files = fetch_root_file_summary(repo, &candidate_threads).await?;
+    let overview_changes =
+        compute_overview_changes(repo, tab, period, user, channel, search).await?;
     let channel_stats = build_channel_stats(&candidate_threads);
     let activity_data = build_activity_data(&candidate_threads);
-    let overview_stats = build_overview_stats(&candidate_threads, root_files.total_files);
+    let overview_stats = build_overview_stats(
+        &candidate_threads,
+        root_files.total_files,
+        &overview_changes,
+    );
 
     let threads = candidate_threads
         .iter()
@@ -173,8 +210,8 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
             participants: thread.participant_count,
             score: thread.score,
             has_files: root_files
-                .threads_with_files
-                .contains(&(thread.channel_id.clone(), thread.thread_ts.clone())),
+                .file_counts_by_thread
+                .contains_key(&(thread.channel_id.clone(), thread.thread_ts.clone())),
             url: extract_first_url(&thread.text),
         })
         .collect();
@@ -288,17 +325,16 @@ fn normalize_ranked_threads(rows: Vec<PeriodRankedThread>) -> Vec<ThreadSummary>
         .collect()
 }
 
-fn apply_common_filters(
-    threads: &mut Vec<ThreadSummary>,
-    period: &str,
-    channel: &str,
-    search: &str,
-) {
-    if period != "all" {
-        let days: i64 = if period == "7d" { 7 } else { 30 };
-        let cutoff_secs = (Utc::now() - chrono::Duration::days(days)).timestamp() as f64;
-        threads.retain(|thread| thread.thread_ts.parse::<f64>().unwrap_or(0.0) >= cutoff_secs);
+fn apply_period_filter(threads: &mut Vec<ThreadSummary>, period: &str) {
+    if period == "all" {
+        return;
     }
+    let days = if period == "7d" { 7 } else { 30 };
+    let cutoff_secs = (Utc::now() - chrono::Duration::days(days)).timestamp() as f64;
+    threads.retain(|thread| thread.thread_ts.parse::<f64>().unwrap_or(0.0) >= cutoff_secs);
+}
+
+fn apply_channel_and_search_filters(threads: &mut Vec<ThreadSummary>, channel: &str, search: &str) {
     if !channel.is_empty() {
         threads.retain(|thread| thread.channel_name == channel);
     }
@@ -350,7 +386,7 @@ async fn fetch_root_file_summary<R: Repository>(
             .push(thread.thread_ts.clone());
     }
 
-    let mut threads_with_files = HashSet::new();
+    let mut file_counts_by_thread: HashMap<(String, String), i64> = HashMap::new();
     let mut total_files: i64 = 0;
 
     for (channel_id, tss) in roots_by_channel {
@@ -361,12 +397,14 @@ async fn fetch_root_file_summary<R: Repository>(
 
         for file in files {
             total_files += 1;
-            threads_with_files.insert((channel_id.clone(), file.message_ts));
+            *file_counts_by_thread
+                .entry((channel_id.clone(), file.message_ts))
+                .or_insert(0) += 1;
         }
     }
 
     Ok(RootFileSummary {
-        threads_with_files,
+        file_counts_by_thread,
         total_files,
     })
 }
@@ -416,7 +454,11 @@ fn build_activity_data(threads: &[ThreadSummary]) -> Vec<ApiActivityPoint> {
         .collect()
 }
 
-fn build_overview_stats(threads: &[ThreadSummary], total_files: i64) -> ApiOverviewStats {
+fn build_overview_stats(
+    threads: &[ThreadSummary],
+    total_files: i64,
+    changes: &OverviewChanges,
+) -> ApiOverviewStats {
     let total_threads = threads.len() as i64;
     let total_messages: i64 = threads.iter().map(|thread| thread.reply_count + 1).sum();
     let total_users = threads
@@ -430,11 +472,87 @@ fn build_overview_stats(threads: &[ThreadSummary], total_files: i64) -> ApiOverv
         total_threads,
         total_files,
         total_users,
-        messages_change: 0.0,
-        threads_change: 0.0,
-        files_change: 0.0,
-        users_change: 0.0,
+        messages_change: changes.messages_change,
+        threads_change: changes.threads_change,
+        files_change: changes.files_change,
+        users_change: changes.users_change,
     }
+}
+
+async fn compute_overview_changes<R: Repository>(
+    repo: &R,
+    tab: &str,
+    period: &str,
+    user: &str,
+    channel: &str,
+    search: &str,
+) -> Result<OverviewChanges, Error> {
+    let Some(window_days) = change_window_days(tab, period) else {
+        return Ok(OverviewChanges::default());
+    };
+
+    let mut baseline_threads = crate::api::record::cached_threads(repo)
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+    apply_channel_and_search_filters(&mut baseline_threads, channel, search);
+    apply_user_filter(&mut baseline_threads, user);
+
+    let file_summary = fetch_root_file_summary(repo, &baseline_threads).await?;
+    let now = Utc::now().timestamp() as f64;
+    let current_start = now - (window_days as f64 * 86_400.0);
+    let previous_start = now - ((window_days * 2) as f64 * 86_400.0);
+
+    let mut current = MetricAccumulator::default();
+    let mut previous = MetricAccumulator::default();
+
+    for thread in &baseline_threads {
+        let thread_ts = thread.thread_ts.parse::<f64>().unwrap_or(0.0);
+        let file_count = file_summary
+            .file_counts_by_thread
+            .get(&(thread.channel_id.clone(), thread.thread_ts.clone()))
+            .copied()
+            .unwrap_or(0);
+
+        if thread_ts >= current_start {
+            current.add(thread, file_count);
+        } else if thread_ts >= previous_start {
+            previous.add(thread, file_count);
+        }
+    }
+
+    let current_users = current.users.len() as i64;
+    let previous_users = previous.users.len() as i64;
+
+    Ok(OverviewChanges {
+        messages_change: percentage_change(current.messages, previous.messages),
+        threads_change: percentage_change(current.threads, previous.threads),
+        files_change: percentage_change(current.files, previous.files),
+        users_change: percentage_change(current_users, previous_users),
+    })
+}
+
+fn change_window_days(tab: &str, period: &str) -> Option<i64> {
+    if period == "7d" {
+        return Some(7);
+    }
+    if period == "30d" {
+        return Some(30);
+    }
+
+    match tab {
+        "week" => Some(7),
+        "month" => Some(30),
+        "top" => Some(30),
+        _ => None,
+    }
+}
+
+fn percentage_change(current: i64, previous: i64) -> f64 {
+    if previous == 0 {
+        return if current == 0 { 0.0 } else { 100.0 };
+    }
+    let delta = ((current - previous) as f64 / previous as f64) * 100.0;
+    (delta * 10.0).round() / 10.0
 }
 
 fn extract_first_url(text: &str) -> Option<String> {

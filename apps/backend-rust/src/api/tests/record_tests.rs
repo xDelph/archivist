@@ -43,6 +43,29 @@ fn make_thread(score: i64, channel_name: &str) -> ThreadSummary {
     }
 }
 
+fn make_thread_days_ago(
+    score: i64,
+    channel_name: &str,
+    display_name: &str,
+    days_ago: i64,
+    reply_count: i64,
+) -> ThreadSummary {
+    let ts = (Utc::now() - chrono::Duration::days(days_ago)).timestamp() as f64;
+    ThreadSummary {
+        channel_id: "C123".to_owned(),
+        channel_name: channel_name.to_owned(),
+        thread_ts: format!("{ts:.6}"),
+        text: "Hello :thumbsup:".to_owned(),
+        created_at: Utc::now(),
+        display_name: display_name.to_owned(),
+        avatar_url: String::new(),
+        reaction_count: 0,
+        reply_count,
+        participant_count: 1,
+        score,
+    }
+}
+
 fn make_top_thread_with_weekly(
     score: i64,
     score_week: i64,
@@ -476,6 +499,38 @@ async fn test_api_record_threads_accepts_hashed_channel_filter() {
             .and_then(Value::as_array)
             .map(std::vec::Vec::len),
         Some(1)
+    );
+}
+
+#[tokio::test]
+async fn test_api_record_threads_overview_changes_are_computed() {
+    let repo = InMemoryRepository::default();
+    *repo.threads.lock().unwrap() = vec![
+        make_thread_days_ago(10, "eng", "Alice", 2, 1),
+        make_thread_days_ago(9, "eng", "Bob", 5, 0),
+        make_thread_days_ago(8, "eng", "Alice", 35, 0),
+    ];
+
+    let resp = process(&repo, make_get("/api/record/threads?tab=top&period=all"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    let payload: Value = serde_json::from_str(&body).unwrap();
+    let overview = payload.get("overviewStats").unwrap();
+
+    assert_eq!(
+        overview.get("messagesChange").and_then(Value::as_f64),
+        Some(200.0)
+    );
+    assert_eq!(
+        overview.get("threadsChange").and_then(Value::as_f64),
+        Some(100.0)
+    );
+    assert_eq!(
+        overview.get("usersChange").and_then(Value::as_f64),
+        Some(100.0)
     );
 }
 
