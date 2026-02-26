@@ -1,0 +1,51 @@
+name: CI Frontend v0
+
+on:
+  pull_request:
+    paths:
+      - "apps/frontend-v0/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".github/workflows/ci-frontend.yml"
+  push:
+    branches:
+      - develop
+      - feat/monorepo
+    paths:
+      - "apps/frontend-v0/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".github/workflows/ci-frontend.yml"
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck frontend
+        run: pnpm --filter @archivist/frontend-v0 run typecheck
+
+      - name: Build frontend
+        run: pnpm --filter @archivist/frontend-v0 run build

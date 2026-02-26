@@ -1,0 +1,43 @@
+name: CI Backend Rust
+
+on:
+  pull_request:
+    paths:
+      - "apps/backend-rust/**"
+      - ".github/workflows/ci-backend.yml"
+  push:
+    branches:
+      - develop
+      - feat/monorepo
+    paths:
+      - "apps/backend-rust/**"
+      - ".github/workflows/ci-backend.yml"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend-rust
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/backend-rust
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build
+        run: cargo check
+
+      - name: Test
+        run: cargo test

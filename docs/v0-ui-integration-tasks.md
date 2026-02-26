@@ -79,7 +79,7 @@ Selected decisions:
 - [x] 2.1 Configure Rust app package at `apps/backend-rust/` (Cargo manifest + scripts) after move from root.
 - [x] 2.2 Configure Node workspace for frontend (`pnpm-workspace.yaml` or npm workspaces).
 - [x] 2.3 Add root scripts for `build`, `test`, `lint`, `dev` per app.
-- [ ] 2.4 Decide CI strategy: split backend/frontend pipelines with independent checks.
+- [x] 2.4 Decide CI strategy: split backend/frontend pipelines with independent checks.
 
 ## Phase 3 - Frontend Integration
 
@@ -109,4 +109,4 @@ Selected decisions:
 ## Current Gaps to Address During Migration
 
 - Dashboard change metrics (`messagesChange`, etc.) are placeholder values (0.0).
-- CI split strategy and deploy/cutover tasks in Phase 5 are still pending.
+- Deploy/cutover tasks in Phase 5 are still pending.
