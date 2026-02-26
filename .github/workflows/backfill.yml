@@ -8,10 +8,23 @@ on:
 jobs:
   backfill:
     runs-on: ubuntu-latest
+    env:
+      BACKEND_APP_URL: ${{ secrets.BACKEND_APP_URL }}
+      APP_URL: ${{ secrets.APP_URL }}
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
       - name: Trigger backfill
         run: |
-          curl -s -X POST "${{ secrets.APP_URL }}/api/admin/backfill" \
-            -H "Authorization: Bearer ${{ secrets.ADMIN_TOKEN }}" \
-            --max-time 10 || true
+          BASE_URL="${BACKEND_APP_URL:-$APP_URL}"
+          if [ -z "$BASE_URL" ]; then
+            echo "Missing BACKEND_APP_URL/APP_URL secret"
+            exit 1
+          fi
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "Missing ADMIN_TOKEN secret"
+            exit 1
+          fi
+          curl -s -X POST "${BASE_URL%/}/api/admin/backfill" \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            --max-time 10
           echo "Backfill triggered"
