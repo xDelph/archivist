@@ -162,18 +162,23 @@ pub(crate) async fn process<R: Repository>(
     } else {
         raw_path.trim_end_matches('/')
     };
+    let query = req.uri().query().unwrap_or("");
+
+    if path.starts_with("/api/record") {
+        return crate::api::record_json::process(repo, path, query).await;
+    }
 
     if path.ends_with("/thread") {
         let is_htmx = req.headers().contains_key("hx-request");
-        return thread_fragment(repo, req.uri().query().unwrap_or(""), is_htmx).await;
+        return thread_fragment(repo, query, is_htmx).await;
     }
 
     if path.ends_with("/threads") {
-        return threads_fragment(repo, req.uri().query().unwrap_or("")).await;
+        return threads_fragment(repo, query).await;
     }
 
     if path.ends_with("/weekly") {
-        return weekly_page_handler(repo, req.uri().query().unwrap_or("")).await;
+        return weekly_page_handler(repo, query).await;
     }
 
     page_handler(repo).await

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use bytes::Bytes;
 use chrono::Utc;
+use serde_json::Value;
 
 use crate::api::record::process;
 use crate::db::{InMemoryRepository, PeriodRankedThread, ThreadSummary, ThreadWithWeeklyScore};
@@ -415,6 +416,67 @@ async fn test_record_page_returns_html() {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
             .contains("text/html")
+    );
+}
+
+#[tokio::test]
+async fn test_api_record_threads_returns_json() {
+    let repo = InMemoryRepository::default();
+    *repo.threads.lock().unwrap() = vec![make_thread(10, "eng"), make_thread(5, "general")];
+
+    let resp = process(&repo, make_get("/api/record/threads?tab=top"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .contains("application/json")
+    );
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    let payload: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(payload.get("tab").and_then(Value::as_str), Some("top"));
+    assert_eq!(
+        payload
+            .get("threads")
+            .and_then(Value::as_array)
+            .map(std::vec::Vec::len),
+        Some(2)
+    );
+}
+
+#[tokio::test]
+async fn test_api_record_thread_returns_json() {
+    let repo = InMemoryRepository::default();
+    let resp = process(
+        &repo,
+        make_get("/api/record/thread?channel_id=C123&ts=1700000000.000000"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .contains("application/json")
+    );
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    let payload: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        payload.get("channelId").and_then(Value::as_str),
+        Some("C123")
+    );
+    assert!(
+        payload
+            .get("messages")
+            .and_then(Value::as_array)
+            .is_some_and(std::vec::Vec::is_empty)
     );
 }
 
