@@ -9,7 +9,9 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "check": "turbo run check",
-    "fmt": "turbo run fmt"
+    "fmt": "turbo run fmt",
+    "release:preflight": "bash scripts/release/preflight-check.sh",
+    "release:smoke": "bash scripts/release/smoke-test.sh"
   },
   "devDependencies": {
     "turbo": "^2.5.8"

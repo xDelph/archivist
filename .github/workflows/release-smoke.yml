@@ -1,0 +1,23 @@
+name: Release Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: "Backend base URL (example: https://archivist-backend.vercel.app)"
+        required: true
+        type: string
+      frontend_url:
+        description: "Frontend base URL (example: https://archivist-frontend.vercel.app)"
+        required: true
+        type: string
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run smoke test
+        run: bash scripts/release/smoke-test.sh "${{ inputs.backend_url }}" "${{ inputs.frontend_url }}"
