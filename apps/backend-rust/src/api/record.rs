@@ -71,7 +71,7 @@ fn app_cache() -> &'static RwLock<AppCache> {
 }
 
 #[cfg(not(test))]
-async fn cached_threads<R: Repository>(
+pub(crate) async fn cached_threads<R: Repository>(
     repo: &R,
 ) -> std::result::Result<Vec<ThreadSummary>, anyhow::Error> {
     {
@@ -88,7 +88,7 @@ async fn cached_threads<R: Repository>(
 }
 
 #[cfg(test)]
-async fn cached_threads<R: Repository>(
+pub(crate) async fn cached_threads<R: Repository>(
     repo: &R,
 ) -> std::result::Result<Vec<ThreadSummary>, anyhow::Error> {
     repo.get_top_threads(200).await

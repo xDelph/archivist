@@ -70,6 +70,7 @@ struct ApiThreadsResponse {
     tab: String,
     workspace_url: Option<String>,
     threads: Vec<ApiThread>,
+    users: Vec<String>,
     channel_stats: Vec<ApiChannelStat>,
     activity_data: Vec<ApiActivityPoint>,
     overview_stats: ApiOverviewStats,
@@ -127,8 +128,13 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
     };
     let sort = params.get("sort").map(String::as_str).unwrap_or("score");
     let period = params.get("period").map(String::as_str).unwrap_or("all");
-    let user = params.get("user").map(String::as_str).unwrap_or("");
-    let channel = params.get("channel").map(String::as_str).unwrap_or("");
+    let user = params.get("user").map(String::as_str).unwrap_or("").trim();
+    let channel = params
+        .get("channel")
+        .map(String::as_str)
+        .unwrap_or("")
+        .trim_start_matches('#')
+        .trim();
     let search = params.get("search").map(String::as_str).unwrap_or("");
     let limit = params
         .get("limit")
@@ -136,16 +142,20 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
         .unwrap_or(200)
         .min(200);
 
-    let mut threads = load_threads_for_tab(repo, tab).await?;
-    apply_thread_filters_and_sort(&mut threads, sort, period, user, channel, search);
-    threads.truncate(limit);
+    let mut candidate_threads = load_threads_for_tab(repo, tab).await?;
+    apply_common_filters(&mut candidate_threads, period, channel, search);
 
-    let root_files = fetch_root_file_summary(repo, &threads).await?;
-    let channel_stats = build_channel_stats(&threads);
-    let activity_data = build_activity_data(&threads);
-    let overview_stats = build_overview_stats(&threads, root_files.total_files);
+    let users = build_user_options(&candidate_threads);
+    apply_user_filter(&mut candidate_threads, user);
+    apply_sort(&mut candidate_threads, sort);
+    candidate_threads.truncate(limit);
 
-    let threads = threads
+    let root_files = fetch_root_file_summary(repo, &candidate_threads).await?;
+    let channel_stats = build_channel_stats(&candidate_threads);
+    let activity_data = build_activity_data(&candidate_threads);
+    let overview_stats = build_overview_stats(&candidate_threads, root_files.total_files);
+
+    let threads = candidate_threads
         .iter()
         .map(|thread| ApiThread {
             id: format!("{}:{}", thread.channel_id, thread.thread_ts),
@@ -173,6 +183,7 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
         tab: tab.to_owned(),
         workspace_url: env::var("SLACK_WORKSPACE_URL").ok(),
         threads,
+        users,
         channel_stats,
         activity_data,
         overview_stats,
@@ -262,7 +273,7 @@ async fn load_threads_for_tab<R: Repository>(
         return Ok(normalize_ranked_threads(rows));
     }
 
-    repo.get_top_threads(200)
+    crate::api::record::cached_threads(repo)
         .await
         .map_err(|e| Error::from(e.to_string()))
 }
@@ -277,11 +288,9 @@ fn normalize_ranked_threads(rows: Vec<PeriodRankedThread>) -> Vec<ThreadSummary>
         .collect()
 }
 
-fn apply_thread_filters_and_sort(
+fn apply_common_filters(
     threads: &mut Vec<ThreadSummary>,
-    sort: &str,
     period: &str,
-    user: &str,
     channel: &str,
     search: &str,
 ) {
@@ -290,9 +299,6 @@ fn apply_thread_filters_and_sort(
         let cutoff_secs = (Utc::now() - chrono::Duration::days(days)).timestamp() as f64;
         threads.retain(|thread| thread.thread_ts.parse::<f64>().unwrap_or(0.0) >= cutoff_secs);
     }
-    if !user.is_empty() {
-        threads.retain(|thread| thread.display_name == user);
-    }
     if !channel.is_empty() {
         threads.retain(|thread| thread.channel_name == channel);
     }
@@ -300,7 +306,15 @@ fn apply_thread_filters_and_sort(
         let query = search.to_lowercase();
         threads.retain(|thread| thread.text.to_lowercase().contains(&query));
     }
+}
 
+fn apply_user_filter(threads: &mut Vec<ThreadSummary>, user: &str) {
+    if !user.is_empty() {
+        threads.retain(|thread| thread.display_name == user);
+    }
+}
+
+fn apply_sort(threads: &mut Vec<ThreadSummary>, sort: &str) {
     match sort {
         "date" => threads.sort_by(|a, b| {
             let a_ts = a.thread_ts.parse::<f64>().unwrap_or(0.0);
@@ -311,6 +325,17 @@ fn apply_thread_filters_and_sort(
         "replies" => threads.sort_by(|a, b| b.reply_count.cmp(&a.reply_count)),
         _ => {}
     }
+}
+
+fn build_user_options(threads: &[ThreadSummary]) -> Vec<String> {
+    let mut users: Vec<String> = threads
+        .iter()
+        .map(|thread| thread.display_name.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    users.sort_by_key(|name| name.to_lowercase());
+    users
 }
 
 async fn fetch_root_file_summary<R: Repository>(

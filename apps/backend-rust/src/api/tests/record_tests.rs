@@ -446,6 +446,37 @@ async fn test_api_record_threads_returns_json() {
             .map(std::vec::Vec::len),
         Some(2)
     );
+    assert_eq!(
+        payload
+            .get("users")
+            .and_then(Value::as_array)
+            .map(std::vec::Vec::len),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn test_api_record_threads_accepts_hashed_channel_filter() {
+    let repo = InMemoryRepository::default();
+    *repo.threads.lock().unwrap() = vec![make_thread(10, "eng"), make_thread(5, "general")];
+
+    let resp = process(
+        &repo,
+        make_get("/api/record/threads?tab=top&channel=%23eng"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    let payload: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        payload
+            .get("threads")
+            .and_then(Value::as_array)
+            .map(std::vec::Vec::len),
+        Some(1)
+    );
 }
 
 #[tokio::test]
