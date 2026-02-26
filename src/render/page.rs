@@ -4,8 +4,8 @@ use maud::{DOCTYPE, Markup, html};
 
 use crate::db::{FileRow, PeriodRankedThread, ThreadMessage, ThreadSummary, ThreadWithWeeklyScore};
 use crate::render::components::{
-    PositionChange, render_filter_bar, render_header, render_header_with_subtitle,
-    render_thread_card_with_meta, render_threads_content,
+    render_filter_bar, render_header, render_header_with_subtitle, render_thread_card_with_meta,
+    render_threads_content,
 };
 use crate::render::thread::render_thread_fragment;
 
@@ -119,15 +119,6 @@ pub fn render_page(
     }
 }
 
-fn change_from_rank(rank: i64, prev_rank: Option<i64>) -> Option<PositionChange> {
-    match prev_rank {
-        None => Some(PositionChange::New),
-        Some(prev) if prev > rank => Some(PositionChange::Up(prev - rank)),
-        Some(prev) if prev < rank => Some(PositionChange::Down(rank - prev)),
-        _ => None,
-    }
-}
-
 pub fn render_weekly_page(
     tab: &str,
     top_threads: &[ThreadWithWeeklyScore],
@@ -150,7 +141,7 @@ pub fn render_weekly_page(
             head {
                 meta charset="UTF-8";
                 meta name="viewport" content="width=device-width, initial-scale=1.0";
-                title { "Archivist — Weekly Rankings" }
+                title { "Archivist — Weekly Top Threads" }
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 link rel="stylesheet" href="/record.css";
                 script src="https://unpkg.com/htmx.org@2.0.4" defer {}
@@ -179,7 +170,7 @@ pub fn render_weekly_page(
                             }
                         }
                     } @else if ranked_threads.is_empty() {
-                        p class="empty" { "No ranking data for this period yet." }
+                        p class="empty" { "No threads for this period yet." }
                     } @else {
                         @for row in ranked_threads {
                             (render_thread_card_with_meta(
@@ -188,7 +179,7 @@ pub fn render_weekly_page(
                                 users,
                                 Some(row.rank_score),
                                 None,
-                                change_from_rank(row.rank, row.prev_rank),
+                                None,
                             ))
                         }
                     }

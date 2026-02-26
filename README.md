@@ -15,7 +15,8 @@ GET  /record
   → render full HTML page (maud + HTMX) with filter/sort/search bar
 GET  /record/weekly?tab=top|week|month
   → render weekly ranking page with tabs:
-    top threads (all-time + current-week badge), this week (rank delta), this month (rank delta)
+    top threads (all-time + current-week badge), top week (thread date in current ISO week),
+    top month (thread date in current calendar month)
   → fetch top-200 for the selected tab (first 50 visible initially; filters/search use the full 200 client-side)
 GET  /record/threads?sort=&period=&channel=&user=&search=
   → filter + sort in Rust, return HTML fragment (HTMX swaps #threads)
