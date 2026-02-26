@@ -2,3 +2,5 @@
 .env
 .env.local
 .vercel
+/v0
+.DS_Store
