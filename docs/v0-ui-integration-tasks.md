@@ -108,5 +108,4 @@ Selected decisions:
 
 ## Current Gaps to Address During Migration
 
-- Dashboard change metrics (`messagesChange`, etc.) are placeholder values (0.0).
 - Deploy/cutover tasks in Phase 5 are still pending.
