@@ -8,10 +8,10 @@ Selected decisions:
 
 ## Mandatory Inputs (Requested)
 
-- [ ] Start from branch `feat/monorepo`, created from `develop`.
-- [ ] Store a full pre-migration snapshot under `/backup` before moving files.
-- [ ] Rust codebase becomes the backend app.
-- [ ] v0 codebase becomes the frontend app.
+- [x] Start from branch `feat/monorepo`, created from `develop`.
+- [x] Store a full pre-migration snapshot under `/backup` before moving files.
+- [x] Rust codebase becomes the backend app.
+- [x] v0 codebase becomes the frontend app.
 
 ## Monorepo Architecture Options
 
@@ -77,24 +77,24 @@ Selected decisions:
 ## Phase 2 - Workspace Tooling
 
 - [ ] 2.1 Configure Rust workspace (`Cargo.toml`) if backend app is no longer at root.
-- [ ] 2.2 Configure Node workspace for frontend (`pnpm-workspace.yaml` or npm workspaces).
-- [ ] 2.3 Add root scripts for `build`, `test`, `lint`, `dev` per app.
+- [x] 2.2 Configure Node workspace for frontend (`pnpm-workspace.yaml` or npm workspaces).
+- [x] 2.3 Add root scripts for `build`, `test`, `lint`, `dev` per app.
 - [ ] 2.4 Decide CI strategy: split backend/frontend pipelines with independent checks.
 
 ## Phase 3 - Frontend Integration
 
-- [ ] 3.1 Remove mock-data dependency from frontend (`lib/mock-data.ts`).
-- [ ] 3.2 Add typed API client in frontend for Archivist endpoints.
-- [ ] 3.3 Connect tabs, filters, sort, and thread expansion to backend data.
+- [x] 3.1 Remove mock-data dependency from frontend (`lib/mock-data.ts`).
+- [x] 3.2 Add typed API client in frontend for Archivist endpoints.
+- [x] 3.3 Connect tabs, filters, sort, and thread expansion to backend data.
 - [ ] 3.4 Implement real file preview/download behavior from archived files.
 - [ ] 3.5 Keep local preferences (theme/density) in frontend.
 
 ## Phase 4 - Backend API for Frontend
 
-- [ ] 4.1 Add JSON endpoints in Rust for overview, thread list, filters, thread details.
-- [ ] 4.2 Keep existing HTML endpoints during transition for rollback safety.
+- [x] 4.1 Add JSON endpoints in Rust for overview, thread list, filters, thread details.
+- [x] 4.2 Keep existing HTML endpoints during transition for rollback safety.
 - [ ] 4.3 Reuse current cache strategy (5-minute TTL where applicable).
-- [ ] 4.4 Add tests for new request/response contracts.
+- [x] 4.4 Add tests for new request/response contracts.
 
 ## Phase 5 - Deploy + Cutover
 
@@ -108,6 +108,7 @@ Selected decisions:
 
 ## Current Gaps to Address During Migration
 
-- `v0` is mock-data driven and needs backend wiring.
-- `v0/next.config.mjs` currently sets `typescript.ignoreBuildErrors: true`.
-- Root `.gitignore` currently contains `/v0`.
+- Frontend currently links files directly; legacy modal gallery parity is still pending.
+- Dashboard change metrics (`messagesChange`, etc.) are placeholder values (0.0).
+- JSON endpoints currently query DB directly; parity with existing in-process TTL cache is pending.
+- User filter control (present in legacy UI) is not yet exposed in v0 UI.
