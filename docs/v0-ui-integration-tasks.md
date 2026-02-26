@@ -98,6 +98,8 @@ Selected decisions:
 
 ## Phase 5 - Deploy + Cutover
 
+Runbook reference: `docs/phase5-deploy-cutover.md`
+
 - [ ] 5.1 Create two Vercel projects from the monorepo:
   - backend app (Rust)
   - frontend app (v0 Next.js)
