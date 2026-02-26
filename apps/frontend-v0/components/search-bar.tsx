@@ -15,6 +15,8 @@ interface SearchBarProps {
   onQueryChange: (q: string) => void
   sortBy: string
   onSortChange: (sort: string) => void
+  period: string
+  onPeriodChange: (period: string) => void
 }
 
 export function SearchBar({
@@ -22,6 +24,8 @@ export function SearchBar({
   onQueryChange,
   sortBy,
   onSortChange,
+  period,
+  onPeriodChange,
 }: SearchBarProps) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -45,6 +49,16 @@ export function SearchBar({
             <SelectItem value="replies">Replies</SelectItem>
             <SelectItem value="reactions">Reactions</SelectItem>
             <SelectItem value="date">Date</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={period} onValueChange={onPeriodChange}>
+          <SelectTrigger className="h-9 w-32 bg-secondary text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All time</SelectItem>
+            <SelectItem value="30d">30 days</SelectItem>
+            <SelectItem value="7d">7 days</SelectItem>
           </SelectContent>
         </Select>
       </div>

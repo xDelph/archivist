@@ -45,10 +45,18 @@ function parseSort(value: string | null): string {
   return "score"
 }
 
+function parsePeriod(value: string | null): string {
+  if (value === "7d" || value === "30d") {
+    return value
+  }
+  return "all"
+}
+
 export default function ArchivistDashboard() {
   const [query, setQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const [sortBy, setSortBy] = useState("score")
+  const [period, setPeriod] = useState("all")
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<DashboardTab>("top")
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
@@ -61,6 +69,7 @@ export default function ArchivistDashboard() {
     const params = new URLSearchParams(window.location.search)
     setActiveTab(parseTab(params.get("tab")))
     setSortBy(parseSort(params.get("sort")))
+    setPeriod(parsePeriod(params.get("period")))
     setSelectedChannel(params.get("channel"))
     setQuery(params.get("search") ?? "")
     setDebouncedQuery(params.get("search") ?? "")
@@ -84,13 +93,14 @@ export default function ArchivistDashboard() {
     const params = new URLSearchParams()
     if (activeTab !== "top") params.set("tab", activeTab)
     if (sortBy !== "score") params.set("sort", sortBy)
+    if (period !== "all") params.set("period", period)
     if (selectedChannel) params.set("channel", selectedChannel)
     if (debouncedQuery) params.set("search", debouncedQuery)
 
     const next = params.toString()
     const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
     window.history.replaceState(null, "", url)
-  }, [ready, activeTab, sortBy, selectedChannel, debouncedQuery])
+  }, [ready, activeTab, sortBy, period, selectedChannel, debouncedQuery])
 
   useEffect(() => {
     if (!ready) {
@@ -104,6 +114,7 @@ export default function ArchivistDashboard() {
     fetchDashboardData({
       tab: activeTab,
       sort: sortBy,
+      period,
       channel: selectedChannel ?? undefined,
       search: debouncedQuery || undefined,
       limit: 200,
@@ -129,7 +140,15 @@ export default function ArchivistDashboard() {
     return () => {
       cancelled = true
     }
-  }, [ready, activeTab, sortBy, selectedChannel, debouncedQuery, reloadToken])
+  }, [
+    ready,
+    activeTab,
+    sortBy,
+    period,
+    selectedChannel,
+    debouncedQuery,
+    reloadToken,
+  ])
 
   const currentDashboard = dashboard ?? EMPTY_DASHBOARD
   const currentThreads = currentDashboard.threads
@@ -262,6 +281,8 @@ export default function ArchivistDashboard() {
             onQueryChange={setQuery}
             sortBy={sortBy}
             onSortChange={setSortBy}
+            period={period}
+            onPeriodChange={setPeriod}
           />
         </section>
 
@@ -291,6 +312,7 @@ export default function ArchivistDashboard() {
                 onClick={() => {
                   setQuery("")
                   setDebouncedQuery("")
+                  setPeriod("all")
                   setSelectedChannel(null)
                 }}
                 className="text-xs text-primary hover:underline"
