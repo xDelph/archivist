@@ -28,6 +28,7 @@ interface ThreadCardProps {
   maxScore?: number
   density?: "normal" | "compact"
   onLoadThreadMessages?: (thread: SlackThread) => Promise<ThreadMessage[]>
+  onMentionClick?: (userName: string) => void
 }
 
 interface ViewerFile extends ThreadFile {
@@ -85,11 +86,32 @@ function ThreadMessageItem({
   msg,
   compact,
   onOpenFile,
+  onMentionClick,
 }: {
   msg: ThreadMessage
   compact: boolean
   onOpenFile: (fileKey: string) => void
+  onMentionClick?: (userName: string) => void
 }) {
+  function handleMentionClick(event: React.MouseEvent<HTMLElement>): void {
+    if (!onMentionClick) return
+    const target = event.target as HTMLElement
+    const mention = target.closest(".mention")
+    if (!mention) return
+
+    const raw = mention.textContent?.trim() ?? ""
+    if (!raw.startsWith("@")) return
+
+    const userName = raw.slice(1).trim()
+    if (!userName || userName === "here" || userName === "channel" || userName === "everyone") {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    onMentionClick(userName)
+  }
+
   return (
     <div className={`flex gap-3 ${compact ? "py-2.5" : "py-3"}`}>
       <Avatar className={`${compact ? "size-6" : "size-7"} shrink-0`}>
@@ -113,6 +135,7 @@ function ThreadMessageItem({
           className={`slack-text break-words text-secondary-foreground ${
             compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"
           } [&_.mention]:font-medium [&_.mention]:text-primary [&_a]:text-blue-500 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-blue-400 [&_a.url-highlight]:text-red-500 [&_a.url-highlight:hover]:text-red-400 [&_mark.search-highlight]:rounded-sm [&_mark.search-highlight]:bg-red-500/20 [&_mark.search-highlight]:px-0.5 [&_mark.search-highlight]:text-red-500 [&_code.slack-inline-code]:rounded [&_code.slack-inline-code]:bg-secondary [&_code.slack-inline-code]:px-1 [&_code.slack-inline-code]:py-0.5 [&_code.slack-inline-code]:font-mono [&_code.slack-inline-code]:text-[0.85em] [&_pre.slack-code]:mt-2 [&_pre.slack-code]:overflow-x-auto [&_pre.slack-code]:rounded-md [&_pre.slack-code]:border [&_pre.slack-code]:border-border/70 [&_pre.slack-code]:bg-secondary/70 [&_pre.slack-code]:p-3 [&_pre.slack-code]:font-mono [&_pre.slack-code]:text-[12px]`}
+          onClickCapture={handleMentionClick}
           dangerouslySetInnerHTML={{ __html: msg.messageHtml }}
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -174,6 +197,7 @@ export function ThreadCard({
   maxScore,
   density = "normal",
   onLoadThreadMessages,
+  onMentionClick,
 }: ThreadCardProps) {
   const compact = density === "compact"
 
@@ -334,6 +358,28 @@ export function ThreadCard({
               className={`slack-text break-words text-secondary-foreground ${
                 compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"
               } ${expanded ? "" : "line-clamp-2"} [&_.mention]:font-medium [&_.mention]:text-primary [&_a]:text-blue-500 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-blue-400 [&_a.url-highlight]:text-red-500 [&_a.url-highlight:hover]:text-red-400 [&_mark.search-highlight]:rounded-sm [&_mark.search-highlight]:bg-red-500/20 [&_mark.search-highlight]:px-0.5 [&_mark.search-highlight]:text-red-500 [&_code.slack-inline-code]:rounded [&_code.slack-inline-code]:bg-secondary [&_code.slack-inline-code]:px-1 [&_code.slack-inline-code]:py-0.5 [&_code.slack-inline-code]:font-mono [&_code.slack-inline-code]:text-[0.85em] [&_pre.slack-code]:mt-2 [&_pre.slack-code]:overflow-x-auto [&_pre.slack-code]:rounded-md [&_pre.slack-code]:border [&_pre.slack-code]:border-border/70 [&_pre.slack-code]:bg-secondary/70 [&_pre.slack-code]:p-3 [&_pre.slack-code]:font-mono [&_pre.slack-code]:text-[12px]`}
+              onClickCapture={(event) => {
+                if (!onMentionClick) return
+                const target = event.target as HTMLElement
+                const mention = target.closest(".mention")
+                if (!mention) return
+
+                const raw = mention.textContent?.trim() ?? ""
+                if (!raw.startsWith("@")) return
+                const userName = raw.slice(1).trim()
+                if (
+                  !userName ||
+                  userName === "here" ||
+                  userName === "channel" ||
+                  userName === "everyone"
+                ) {
+                  return
+                }
+
+                event.preventDefault()
+                event.stopPropagation()
+                onMentionClick(userName)
+              }}
               dangerouslySetInnerHTML={{ __html: thread.messageHtml }}
             />
 
@@ -437,6 +483,7 @@ export function ThreadCard({
                       msg={message}
                       compact={compact}
                       onOpenFile={openFileByKey}
+                      onMentionClick={onMentionClick}
                     />
                   ))}
                 </div>

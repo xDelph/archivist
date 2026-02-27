@@ -33,6 +33,9 @@ export function SearchBar({
   selectedUser,
   onUserChange,
 }: SearchBarProps) {
+  const userOptions =
+    selectedUser && !users.includes(selectedUser) ? [selectedUser, ...users] : users
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
       <div className="relative flex-1">
@@ -82,7 +85,7 @@ export function SearchBar({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All users</SelectItem>
-            {users.map((user) => (
+            {userOptions.map((user) => (
               <SelectItem key={user} value={user}>
                 {user}
               </SelectItem>

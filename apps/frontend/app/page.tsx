@@ -298,6 +298,10 @@ export default function ArchivistDashboard() {
     [debouncedQuery]
   )
 
+  const applyUserFilterFromMention = useCallback((userName: string) => {
+    setSelectedUser(userName)
+  }, [])
+
   function retryCurrentTab(): void {
     setTabCache((prev) => {
       const next = { ...prev }
@@ -513,6 +517,7 @@ export default function ArchivistDashboard() {
               maxScore={scoreScaleMax}
               density={density}
               onLoadThreadMessages={loadThreadMessages}
+              onMentionClick={applyUserFilterFromMention}
             />
           ))}
         </section>
