@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Archive, ExternalLink, LoaderCircle, Moon, Sun, Rows3, Rows2 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatCard } from "@/components/stat-card"
@@ -18,6 +18,7 @@ type DensityPref = "normal" | "compact"
 const THEME_KEY = "archivist_theme"
 const DENSITY_KEY = "archivist_density"
 const SEARCH_DEBOUNCE_MS = 250
+const TABS: DashboardTab[] = ["top", "week", "month"]
 
 const EMPTY_DASHBOARD: DashboardData = {
   tab: "top",
@@ -59,6 +60,36 @@ function parsePeriod(value: string | null): string {
   return "all"
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function highlightHtml(html: string, term: string): string {
+  if (!term) return html
+  const lowerTerm = term.toLowerCase()
+  const regex = new RegExp(escapeRegex(term), "gi")
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (_all, tag: string, text: string) => {
+    if (tag) {
+      if (tag.toLowerCase().startsWith("<a ")) {
+        const lowerTag = tag.toLowerCase()
+        const hasAttrMatch = (attr: string): boolean => {
+          const marker = `${attr}="`
+          const idx = lowerTag.indexOf(marker)
+          if (idx === -1) return false
+          const after = lowerTag.slice(idx + marker.length)
+          const end = after.indexOf('"')
+          return end !== -1 && after.slice(0, end).includes(lowerTerm)
+        }
+        if (hasAttrMatch("href") || hasAttrMatch("data-src")) {
+          return tag.replace("<a ", '<a class="url-highlight" ')
+        }
+      }
+      return tag
+    }
+    return text.replace(regex, (match) => `<mark class="search-highlight">${match}</mark>`)
+  })
+}
+
 export default function ArchivistDashboard() {
   const [query, setQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
@@ -67,13 +98,14 @@ export default function ArchivistDashboard() {
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<DashboardTab>("top")
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null)
+  const [tabCache, setTabCache] = useState<Partial<Record<DashboardTab, DashboardData>>>({})
+  const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
   const [theme, setTheme] = useState<ThemePref>("dark")
   const [density, setDensity] = useState<DensityPref>("normal")
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
-  const [reloadToken, setReloadToken] = useState(0)
+  const inFlightTabs = useRef<Set<DashboardTab>>(new Set())
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -142,52 +174,111 @@ export default function ArchivistDashboard() {
     window.history.replaceState(null, "", url)
   }, [ready, activeTab, sortBy, period, selectedUser, selectedChannel, debouncedQuery])
 
-  useEffect(() => {
-    if (!ready) return
+  const fetchTabData = useCallback(async (tab: DashboardTab, withLoader: boolean) => {
+    if (inFlightTabs.current.has(tab)) return
+    inFlightTabs.current.add(tab)
+    if (withLoader) {
+      setLoading(true)
+      setLoadError(null)
+    }
 
-    let cancelled = false
-    setLoading(true)
-    setLoadError(null)
-
-    fetchDashboardData({
-      tab: activeTab,
-      sort: sortBy,
-      period,
-      user: selectedUser ?? undefined,
-      channel: selectedChannel ?? undefined,
-      search: debouncedQuery || undefined,
-      limit: 200,
-    })
-      .then((nextDashboard) => {
-        if (cancelled) return
-        setDashboard(nextDashboard)
-      })
-      .catch(() => {
-        if (cancelled) return
+    try {
+      const nextDashboard = await fetchDashboardData({ tab, limit: 200 })
+      setTabCache((prev) => ({ ...prev, [tab]: nextDashboard }))
+      if (withLoader) {
+        setLoadError(null)
+      }
+    } catch (_err) {
+      if (withLoader) {
         setLoadError("Failed to load dashboard data.")
+      }
+    } finally {
+      inFlightTabs.current.delete(tab)
+      if (withLoader) {
+        setLoading(false)
+      }
+    }
+  }, [])
+
+  const activeDashboard = tabCache[activeTab] ?? null
+
+  useEffect(() => {
+    if (!ready || activeDashboard) return
+    void fetchTabData(activeTab, true)
+  }, [ready, activeDashboard, activeTab, fetchTabData])
+
+  useEffect(() => {
+    if (activeDashboard) {
+      setLastDashboard(activeDashboard)
+      setLoadError(null)
+    }
+  }, [activeDashboard])
+
+  useEffect(() => {
+    if (!ready || !activeDashboard) return
+    const missingTabs = TABS.filter((tab) => tab !== activeTab && !tabCache[tab])
+    if (missingTabs.length === 0) return
+
+    const timeout = window.setTimeout(() => {
+      missingTabs.forEach((tab) => {
+        void fetchTabData(tab, false)
       })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      })
+    }, 200)
 
     return () => {
-      cancelled = true
+      window.clearTimeout(timeout)
     }
-  }, [
-    ready,
-    activeTab,
-    sortBy,
-    period,
-    selectedUser,
-    selectedChannel,
-    debouncedQuery,
-    reloadToken,
-  ])
+  }, [ready, activeDashboard, activeTab, tabCache, fetchTabData])
 
-  const currentDashboard = dashboard ?? EMPTY_DASHBOARD
-  const currentThreads = currentDashboard.threads
+  const currentDashboard = activeDashboard ?? lastDashboard ?? EMPTY_DASHBOARD
+  const currentThreads = useMemo(() => {
+    const threads = [...currentDashboard.threads]
+    const searchTerm = debouncedQuery.toLowerCase()
+    const selectedChannelNormalized = selectedChannel?.replace(/^#/, "") ?? null
+    const cutoffSecs =
+      period === "7d"
+        ? Date.now() / 1000 - 7 * 86_400
+        : period === "30d"
+          ? Date.now() / 1000 - 30 * 86_400
+          : 0
+
+    const filtered = threads.filter((thread) => {
+      if (cutoffSecs > 0 && Number.parseFloat(thread.ts) < cutoffSecs) return false
+      if (selectedUser && thread.author.name !== selectedUser) return false
+      if (
+        selectedChannelNormalized &&
+        thread.channel.replace(/^#/, "") !== selectedChannelNormalized
+      ) {
+        return false
+      }
+      if (
+        searchTerm &&
+        !thread.message.toLowerCase().includes(searchTerm) &&
+        !thread.author.name.toLowerCase().includes(searchTerm) &&
+        !thread.channel.toLowerCase().includes(searchTerm)
+      ) {
+        return false
+      }
+      return true
+    })
+
+    filtered.sort((a, b) => {
+      if (sortBy === "date") return Number.parseFloat(b.ts) - Number.parseFloat(a.ts)
+      if (sortBy === "reactions") return b.reactions - a.reactions
+      if (sortBy === "replies") return b.replies - a.replies
+      return b.score - a.score
+    })
+
+    if (!debouncedQuery) {
+      return filtered
+    }
+
+    return filtered.map((thread) => ({
+      ...thread,
+      messageHtml: highlightHtml(thread.messageHtml, debouncedQuery),
+    }))
+  }, [currentDashboard.threads, debouncedQuery, period, selectedChannel, selectedUser, sortBy])
+
   const scoreScaleMax = useMemo(
     () => Math.max(1, ...currentThreads.map((thread) => thread.score)),
     [currentThreads]
@@ -200,7 +291,12 @@ export default function ArchivistDashboard() {
   )
 
   function retryCurrentTab(): void {
-    setReloadToken((value) => value + 1)
+    setTabCache((prev) => {
+      const next = { ...prev }
+      delete next[activeTab]
+      return next
+    })
+    setLoadError(null)
   }
 
   return (
@@ -347,6 +443,13 @@ export default function ArchivistDashboard() {
         </section>
 
         <section className="flex flex-col gap-2">
+          {loading && currentThreads.length > 0 && (
+            <div className="mb-2 flex items-center gap-2 rounded-md border border-border/70 bg-card/80 px-3 py-2 text-xs text-muted-foreground">
+              <LoaderCircle className="size-3.5 animate-spin" />
+              Updating {activeTab === "top" ? "top threads" : activeTab} data...
+            </div>
+          )}
+
           {loading && currentThreads.length === 0 && (
             <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
               <LoaderCircle className="size-4 animate-spin" />
