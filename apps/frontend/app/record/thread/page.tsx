@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Heart, LoaderCircle, Paperclip } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -12,7 +12,20 @@ function messageHtmlClassName(): string {
   return "slack-text break-words text-sm leading-relaxed text-secondary-foreground [&_.mention]:font-medium [&_.mention]:text-primary [&_a]:text-blue-500 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-blue-400 [&_a.url-highlight]:text-red-500 [&_a.url-highlight:hover]:text-red-400 [&_mark.search-highlight]:rounded-sm [&_mark.search-highlight]:bg-red-500/20 [&_mark.search-highlight]:px-0.5 [&_mark.search-highlight]:text-red-500 [&_code.slack-inline-code]:rounded [&_code.slack-inline-code]:bg-secondary [&_code.slack-inline-code]:px-1 [&_code.slack-inline-code]:py-0.5 [&_code.slack-inline-code]:font-mono [&_code.slack-inline-code]:text-[0.85em] [&_pre.slack-code]:mt-2 [&_pre.slack-code]:overflow-x-auto [&_pre.slack-code]:rounded-md [&_pre.slack-code]:border [&_pre.slack-code]:border-border/70 [&_pre.slack-code]:bg-secondary/70 [&_pre.slack-code]:p-3 [&_pre.slack-code]:font-mono [&_pre.slack-code]:text-[12px]"
 }
 
-export default function ThreadPage() {
+function ThreadPageFallback() {
+  return (
+    <div className="min-h-screen bg-background">
+      <main className="mx-auto max-w-4xl px-4 py-6 lg:px-6">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-12 text-sm text-muted-foreground">
+          <LoaderCircle className="size-4 animate-spin" />
+          Loading thread messages...
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function ThreadPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [channelLabel, setChannelLabel] = useState("")
@@ -193,5 +206,13 @@ export default function ThreadPage() {
         )}
       </main>
     </div>
+  )
+}
+
+export default function ThreadPage() {
+  return (
+    <Suspense fallback={<ThreadPageFallback />}>
+      <ThreadPageContent />
+    </Suspense>
   )
 }
