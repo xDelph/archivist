@@ -26,12 +26,13 @@ import type { SlackThread, ThreadFile, ThreadMessage } from "@/lib/types"
 interface ThreadCardProps {
   thread: SlackThread
   rank: number
+  expanded: boolean
+  onExpandedChange: (nextExpanded: boolean) => void
   maxScore?: number
   density?: "normal" | "compact"
   onLoadThreadMessages?: (thread: SlackThread) => Promise<ThreadMessage[]>
   onMentionClick?: (userName: string) => void
   onChannelClick?: (channelName: string) => void
-  collapseSignal?: number
 }
 
 interface ViewerFile extends ThreadFile {
@@ -250,17 +251,17 @@ function ThreadMessageItem({
 export function ThreadCard({
   thread,
   rank,
+  expanded,
+  onExpandedChange,
   maxScore,
   density = "normal",
   onLoadThreadMessages,
   onMentionClick,
   onChannelClick,
-  collapseSignal,
 }: ThreadCardProps) {
   const router = useRouter()
   const compact = density === "compact"
 
-  const [expanded, setExpanded] = useState(false)
   const [messages, setMessages] = useState<ThreadMessage[] | null>(
     thread.threadMessages ?? null
   )
@@ -269,17 +270,11 @@ export function ThreadCard({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
 
   useEffect(() => {
-    setExpanded(false)
     setMessages(thread.threadMessages ?? null)
     setLoading(false)
     setLoadError(null)
     setViewerIndex(null)
   }, [thread.id, thread.threadMessages])
-
-  useEffect(() => {
-    if (collapseSignal == null) return
-    setExpanded(false)
-  }, [collapseSignal])
 
   const scoreScaleMax = Math.max(maxScore ?? thread.score, 1)
   const scorePercent = Math.min((thread.score / scoreScaleMax) * 100, 100)
@@ -337,7 +332,7 @@ export function ThreadCard({
 
   async function toggleExpanded(): Promise<void> {
     const next = !expanded
-    setExpanded(next)
+    onExpandedChange(next)
 
     if (!next || !canExpand || messages !== null || !onLoadThreadMessages || loading) {
       return
@@ -592,7 +587,7 @@ export function ThreadCard({
                 <button
                   type="button"
                   className="flex w-full items-center justify-between border-t border-border/50 px-4 py-2.5 pl-14 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground sm:pl-[4.25rem]"
-                  onClick={() => setExpanded(false)}
+                  onClick={() => onExpandedChange(false)}
                 >
                   <span>End of thread</span>
                   <span className="flex items-center gap-1">

@@ -103,7 +103,7 @@ export default function ArchivistDashboard() {
   const [period, setPeriod] = useState("all")
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
-  const [collapseSignal, setCollapseSignal] = useState(0)
+  const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<DashboardTab>("top")
   const [tabCache, setTabCache] = useState<Partial<Record<DashboardTab, DashboardData>>>({})
   const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
@@ -304,6 +304,14 @@ export default function ArchivistDashboard() {
     }))
   }, [currentDashboard.threads, debouncedQuery, period, selectedChannel, selectedUser, sortBy])
 
+  useEffect(() => {
+    if (!expandedThreadId) return
+    const existsInCurrentList = currentThreads.some((thread) => thread.id === expandedThreadId)
+    if (!existsInCurrentList) {
+      setExpandedThreadId(null)
+    }
+  }, [currentThreads, expandedThreadId])
+
   const scoreScaleMax = useMemo(
     () => Math.max(1, ...currentThreads.map((thread) => thread.score)),
     [currentThreads]
@@ -317,6 +325,7 @@ export default function ArchivistDashboard() {
 
   const toggleUserFilter = useCallback((userName: string | null) => {
     const nextUser = userName?.trim() ?? ""
+    setExpandedThreadId(null)
     setSelectedUser((prev) => {
       if (!nextUser) return null
       return prev === nextUser ? null : nextUser
@@ -325,6 +334,7 @@ export default function ArchivistDashboard() {
 
   const toggleChannelFilter = useCallback((channelName: string | null) => {
     const nextNormalized = channelName?.replace(/^#/, "").trim() ?? ""
+    setExpandedThreadId(null)
     setSelectedChannel((prev) => {
       if (!nextNormalized) return null
       const prevNormalized = prev?.replace(/^#/, "").trim() ?? ""
@@ -335,12 +345,10 @@ export default function ArchivistDashboard() {
   }, [])
 
   const applyUserFilterFromMention = useCallback((userName: string) => {
-    setCollapseSignal((value) => value + 1)
     toggleUserFilter(userName)
   }, [toggleUserFilter])
 
   const applyChannelFilterFromMention = useCallback((channelName: string) => {
-    setCollapseSignal((value) => value + 1)
     toggleChannelFilter(channelName)
   }, [toggleChannelFilter])
 
@@ -543,6 +551,7 @@ export default function ArchivistDashboard() {
                   setPeriod("all")
                   setSelectedUser(null)
                   setSelectedChannel(null)
+                  setExpandedThreadId(null)
                 }}
                 className="text-xs text-primary hover:underline"
               >
@@ -556,12 +565,15 @@ export default function ArchivistDashboard() {
               key={thread.id}
               thread={thread}
               rank={index + 1}
+              expanded={expandedThreadId === thread.id}
+              onExpandedChange={(nextExpanded) =>
+                setExpandedThreadId(nextExpanded ? thread.id : null)
+              }
               maxScore={scoreScaleMax}
               density={density}
               onLoadThreadMessages={loadThreadMessages}
               onMentionClick={applyUserFilterFromMention}
               onChannelClick={applyChannelFilterFromMention}
-              collapseSignal={collapseSignal}
             />
           ))}
         </section>
