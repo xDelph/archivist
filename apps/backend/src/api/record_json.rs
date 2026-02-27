@@ -15,6 +15,7 @@ use crate::db::{FileRow, PeriodRankedThread, Repository, ThreadMessage, ThreadSu
 struct ApiAuthor {
     name: String,
     initials: String,
+    avatar_url: String,
 }
 
 #[derive(Serialize)]
@@ -88,9 +89,11 @@ struct ApiThreadFile {
 #[serde(rename_all = "camelCase")]
 struct ApiThreadMessage {
     id: String,
+    ts: String,
     author: ApiAuthor,
     message: String,
     timestamp: String,
+    timestamp_iso: String,
     reactions: i64,
     files: Vec<ApiThreadFile>,
 }
@@ -201,6 +204,7 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
             author: ApiAuthor {
                 name: thread.display_name.clone(),
                 initials: initials(&thread.display_name),
+                avatar_url: thread.avatar_url.clone(),
             },
             channel: format!("#{}", thread.channel_name),
             message: thread.text.clone(),
@@ -267,8 +271,16 @@ fn map_thread_message(
     message: ThreadMessage,
     files_by_ts: &mut HashMap<String, Vec<FileRow>>,
 ) -> ApiThreadMessage {
+    let ThreadMessage {
+        ts,
+        text,
+        display_name,
+        avatar_url,
+        reactions,
+    } = message;
+
     let files = files_by_ts
-        .remove(&message.ts)
+        .remove(&ts)
         .unwrap_or_default()
         .into_iter()
         .map(|file| ApiThreadFile {
@@ -279,14 +291,17 @@ fn map_thread_message(
         .collect();
 
     ApiThreadMessage {
-        id: message.ts.clone(),
+        id: ts.clone(),
         author: ApiAuthor {
-            name: message.display_name.clone(),
-            initials: initials(&message.display_name),
+            name: display_name.clone(),
+            initials: initials(&display_name),
+            avatar_url,
         },
-        message: message.text,
-        timestamp: format_time(&message.ts),
-        reactions: reaction_total(&message.reactions),
+        ts: ts.clone(),
+        message: text,
+        timestamp: format_time_24h(&ts),
+        timestamp_iso: format_time_iso(&ts),
+        reactions: reaction_total(&reactions),
         files,
     }
 }
@@ -576,8 +591,12 @@ fn format_day_date(ts: &str) -> String {
     timestamp_to_datetime(ts).format("%d %b %Y").to_string()
 }
 
-fn format_time(ts: &str) -> String {
-    timestamp_to_datetime(ts).format("%-I:%M %p").to_string()
+fn format_time_24h(ts: &str) -> String {
+    timestamp_to_datetime(ts).format("%d %b %Y %H:%M").to_string()
+}
+
+fn format_time_iso(ts: &str) -> String {
+    timestamp_to_datetime(ts).to_rfc3339()
 }
 
 fn timestamp_to_datetime(ts: &str) -> chrono::DateTime<Utc> {

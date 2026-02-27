@@ -6,13 +6,16 @@ export interface ThreadFile {
 
 export interface ThreadMessage {
   id: string
+  ts: string
   author: {
     name: string
     initials: string
     color: string
+    avatarUrl: string
   }
   message: string
   timestamp: string
+  timestampIso: string
   reactions?: number
   files?: ThreadFile[]
 }
@@ -25,6 +28,7 @@ export interface SlackThread {
     name: string
     initials: string
     color: string
+    avatarUrl: string
   }
   channel: string
   channelColor: string

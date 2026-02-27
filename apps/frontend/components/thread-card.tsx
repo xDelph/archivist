@@ -18,7 +18,7 @@ import {
   Download,
   X,
 } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import type { SlackThread, ThreadFile, ThreadMessage } from "@/lib/types"
 
@@ -92,6 +92,9 @@ function ThreadMessageItem({
   return (
     <div className={`flex gap-3 ${compact ? "py-2.5" : "py-3"}`}>
       <Avatar className={`${compact ? "size-6" : "size-7"} shrink-0`}>
+        {msg.author.avatarUrl && (
+          <AvatarImage src={msg.author.avatarUrl} alt={msg.author.name} />
+        )}
         <AvatarFallback
           className={`${msg.author.color} text-[10px] font-medium text-foreground`}
         >
@@ -101,7 +104,9 @@ function ThreadMessageItem({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-foreground">{msg.author.name}</span>
-          <span className="text-[10px] text-muted-foreground">{msg.timestamp}</span>
+          <span className="text-[10px] text-muted-foreground" title={msg.timestampIso}>
+            {msg.timestamp}
+          </span>
         </div>
         <p className={`text-secondary-foreground ${compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"}`}>
           {msg.message}
@@ -162,7 +167,7 @@ export function ThreadCard({
   const loadedMessages = messages ?? []
 
   const participants = loadedMessages.reduce<ThreadMessage["author"][]>((acc, message) => {
-    if (!acc.find((author) => author.initials === message.author.initials)) {
+    if (!acc.find((author) => author.name === message.author.name)) {
       acc.push(message.author)
     }
     return acc
@@ -265,6 +270,9 @@ export function ThreadCard({
           </div>
 
           <Avatar className={`${compact ? "size-8" : "size-9"} shrink-0`}>
+            {thread.author.avatarUrl && (
+              <AvatarImage src={thread.author.avatarUrl} alt={thread.author.name} />
+            )}
             <AvatarFallback
               className={`${thread.author.color} text-xs font-medium text-foreground`}
             >
@@ -373,9 +381,12 @@ export function ThreadCard({
                   <div className="ml-auto flex -space-x-1.5">
                     {participants.slice(0, 5).map((author) => (
                       <Avatar
-                        key={`${thread.id}:${author.initials}`}
+                        key={`${thread.id}:${author.name}`}
                         className="size-5 ring-1 ring-card"
                       >
+                        {author.avatarUrl && (
+                          <AvatarImage src={author.avatarUrl} alt={author.name} />
+                        )}
                         <AvatarFallback
                           className={`${author.color} text-[8px] font-medium text-foreground`}
                         >

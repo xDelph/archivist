@@ -35,6 +35,7 @@ interface ApiThread {
   author: {
     name: string
     initials: string
+    avatarUrl: string
   }
   channel: string
   message: string
@@ -88,12 +89,15 @@ interface ApiThreadFile {
 
 interface ApiThreadMessage {
   id: string
+  ts: string
   author: {
     name: string
     initials: string
+    avatarUrl: string
   }
   message: string
   timestamp: string
+  timestampIso: string
   reactions: number
   files: ApiThreadFile[]
 }
@@ -136,6 +140,7 @@ function mapThread(apiThread: ApiThread): SlackThread {
       name: apiThread.author.name,
       initials: apiThread.author.initials,
       color: authorColor,
+      avatarUrl: apiThread.author.avatarUrl ?? "",
     },
     channel: apiThread.channel,
     channelColor,
@@ -232,13 +237,16 @@ export async function fetchThreadMessages(
   const payload = (await response.json()) as ApiThreadResponse
   return payload.messages.map((message) => ({
     id: message.id,
+    ts: message.ts,
     author: {
       name: message.author.name,
       initials: message.author.initials,
       color: AUTHOR_COLORS[hashIndex(message.author.name, AUTHOR_COLORS.length)],
+      avatarUrl: message.author.avatarUrl ?? "",
     },
     message: message.message,
     timestamp: message.timestamp,
+    timestampIso: message.timestampIso,
     reactions: message.reactions,
     files: message.files.map((file) => ({
       name: file.name,
