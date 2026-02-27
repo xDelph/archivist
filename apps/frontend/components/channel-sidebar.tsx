@@ -12,8 +12,6 @@ export function ChannelSidebar({
   selected,
   onSelect,
 }: ChannelSidebarProps) {
-  const topChannels = channels.slice(0, 5)
-  const remainingChannels = channels.slice(5)
   const totalThreads = channels.reduce((sum, channel) => sum + channel.count, 0)
 
   function renderChannelButton(channel: ChannelStat) {
@@ -58,20 +56,9 @@ export function ChannelSidebar({
           <span className="flex-1">All channels</span>
           <span className="text-xs tabular-nums">{totalThreads.toLocaleString()}</span>
         </button>
-        {topChannels.map(renderChannelButton)}
-
-        {remainingChannels.length > 0 && (
-          <>
-            <div className="mt-1 border-t border-border/60 pt-2">
-              <p className="px-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-                More channels
-              </p>
-            </div>
-            <div className="max-h-40 overflow-y-auto pr-1 sm:max-h-48">
-              <div className="flex flex-col gap-1">{remainingChannels.map(renderChannelButton)}</div>
-            </div>
-          </>
-        )}
+        <div className="max-h-[13.75rem] overflow-y-auto pr-1">
+          <div className="flex flex-col gap-1">{channels.map(renderChannelButton)}</div>
+        </div>
       </div>
     </div>
   )
