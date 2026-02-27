@@ -35,16 +35,6 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
-    let pool = match pool().await {
-        Ok(p) => p,
-        Err(e) => {
-            let body = format!(r#"{{"ok":false,"error":"db: {}"}}"#, e);
-            return Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header("Content-Type", "application/json")
-                .body(ResponseBody::from(Bytes::from(body)))?);
-        }
-    };
     let resp = match process(&admin_token, req).await {
         Ok(r) => r,
         Err(e) => {
@@ -57,9 +47,15 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     };
     if resp.status() == StatusCode::ACCEPTED {
         let backfill_token = slack_token;
-        let backfill_repo = pool;
-        let backfill_storage = R2Client::from_env().await.ok();
         tokio::spawn(async move {
+            let backfill_repo = match pool().await {
+                Ok(p) => p,
+                Err(err) => {
+                    warn!(error = %err, "background backfill failed to initialize db pool");
+                    return;
+                }
+            };
+            let backfill_storage = R2Client::from_env().await.ok();
             let client = SlackClient::new(backfill_token.clone());
             info!("background backfill started");
             match crate::slack::backfill::run_backfill(
