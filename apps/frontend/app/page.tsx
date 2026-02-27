@@ -309,15 +309,34 @@ export default function ArchivistDashboard() {
     [debouncedQuery]
   )
 
+  const toggleUserFilter = useCallback((userName: string | null) => {
+    const nextUser = userName?.trim() ?? ""
+    setSelectedUser((prev) => {
+      if (!nextUser) return null
+      return prev === nextUser ? null : nextUser
+    })
+  }, [])
+
+  const toggleChannelFilter = useCallback((channelName: string | null) => {
+    const nextNormalized = channelName?.replace(/^#/, "").trim() ?? ""
+    setSelectedChannel((prev) => {
+      if (!nextNormalized) return null
+      const prevNormalized = prev?.replace(/^#/, "").trim() ?? ""
+      return prevNormalized.toLowerCase() === nextNormalized.toLowerCase()
+        ? null
+        : `#${nextNormalized}`
+    })
+  }, [])
+
   const applyUserFilterFromMention = useCallback((userName: string) => {
     setCollapseSignal((value) => value + 1)
-    setSelectedUser(userName)
-  }, [])
+    toggleUserFilter(userName)
+  }, [toggleUserFilter])
 
   const applyChannelFilterFromMention = useCallback((channelName: string) => {
     setCollapseSignal((value) => value + 1)
-    setSelectedChannel(channelName)
-  }, [])
+    toggleChannelFilter(channelName)
+  }, [toggleChannelFilter])
 
   function retryCurrentTab(): void {
     setTabCache((prev) => {
@@ -455,7 +474,7 @@ export default function ArchivistDashboard() {
             <ChannelSidebar
               channels={currentDashboard.channelStats}
               selected={selectedChannel}
-              onSelect={setSelectedChannel}
+              onSelect={toggleChannelFilter}
             />
           </div>
         </section>
@@ -464,7 +483,7 @@ export default function ArchivistDashboard() {
           <ChannelSidebar
             channels={currentDashboard.channelStats}
             selected={selectedChannel}
-            onSelect={setSelectedChannel}
+            onSelect={toggleChannelFilter}
           />
         </div>
 
@@ -478,7 +497,7 @@ export default function ArchivistDashboard() {
             onPeriodChange={setPeriod}
             users={currentDashboard.users}
             selectedUser={selectedUser}
-            onUserChange={setSelectedUser}
+            onUserChange={toggleUserFilter}
           />
         </section>
 
