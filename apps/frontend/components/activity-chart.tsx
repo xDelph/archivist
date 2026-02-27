@@ -13,6 +13,7 @@ import type { ActivityPoint } from "@/lib/types"
 
 interface ActivityChartProps {
   data: ActivityPoint[]
+  tab: "top" | "week" | "month"
 }
 
 function CustomTooltip({
@@ -45,16 +46,35 @@ function CustomTooltip({
   )
 }
 
-export function ActivityChart({ data }: ActivityChartProps) {
+function getChartHeading(tab: "top" | "week" | "month"): { title: string; subtitle: string } {
+  if (tab === "week") {
+    return {
+      title: "Weekly Activity",
+      subtitle: "Messages and threads by weekday for this week's ranking",
+    }
+  }
+  if (tab === "month") {
+    return {
+      title: "Monthly Activity",
+      subtitle: "Messages and threads by weekday for this month's ranking",
+    }
+  }
+  return {
+    title: "Top Threads Activity",
+    subtitle: "Messages and threads by weekday for current top threads",
+  }
+}
+
+export function ActivityChart({ data, tab }: ActivityChartProps) {
+  const heading = getChartHeading(tab)
+
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium text-foreground">
-            Weekly Activity
-          </h3>
+          <h3 className="text-sm font-medium text-foreground">{heading.title}</h3>
           <p className="text-xs text-muted-foreground">
-            Messages and threads over the past week
+            {heading.subtitle}
           </p>
         </div>
         <div className="flex items-center gap-3">

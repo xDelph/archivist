@@ -314,7 +314,7 @@ export default function ArchivistDashboard() {
         </section>
 
         <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_260px]">
-          <ActivityChart data={currentDashboard.activityData} />
+          <ActivityChart data={currentDashboard.activityData} tab={activeTab} />
           <div className="hidden lg:block">
             <ChannelSidebar
               channels={currentDashboard.channelStats}
