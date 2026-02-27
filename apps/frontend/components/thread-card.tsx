@@ -128,6 +128,8 @@ function ThreadMessageItem({
   onChannelClick?: (channelName: string) => void
   onNavigateToThread?: (path: string) => void
 }) {
+  const reactionDetails = (msg.reactionDetails ?? []).filter((reaction) => reaction.count > 0)
+
   function handleMessageClick(event: React.MouseEvent<HTMLElement>): void {
     const mention = getClosestFromTarget(event.target, ".mention")
     if (mention) {
@@ -236,7 +238,21 @@ function ThreadMessageItem({
               })}
             </div>
           )}
-          {msg.reactions != null && msg.reactions > 0 && (
+          {reactionDetails.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              {reactionDetails.map((reaction) => (
+                <span
+                  key={`${msg.id}:rx:${reaction.name}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-secondary/70 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                  title={reaction.name}
+                >
+                  <span aria-hidden>{reaction.emoji}</span>
+                  <span>{reaction.count}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {reactionDetails.length === 0 && msg.reactions != null && msg.reactions > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
               <Heart className="size-3" />
               {msg.reactions}

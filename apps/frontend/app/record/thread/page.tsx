@@ -191,7 +191,19 @@ function ThreadPageContent() {
                           {file.name}
                         </a>
                       ))}
-                      {msg.reactions != null && msg.reactions > 0 && (
+                      {(msg.reactionDetails ?? []).filter((reaction) => reaction.count > 0).map((reaction) => (
+                        <span
+                          key={`${msg.id}:rx:${reaction.name}`}
+                          className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-secondary/70 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                          title={reaction.name}
+                        >
+                          <span aria-hidden>{reaction.emoji}</span>
+                          <span>{reaction.count}</span>
+                        </span>
+                      ))}
+                      {(!(msg.reactionDetails ?? []).some((reaction) => reaction.count > 0)) &&
+                        msg.reactions != null &&
+                        msg.reactions > 0 && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                           <Heart className="size-3" />
                           {msg.reactions}

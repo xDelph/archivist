@@ -88,6 +88,12 @@ interface ApiThreadFile {
   url: string
 }
 
+interface ApiReactionDetail {
+  name: string
+  emoji: string
+  count: number
+}
+
 interface ApiThreadMessage {
   id: string
   ts: string
@@ -101,6 +107,7 @@ interface ApiThreadMessage {
   timestamp: string
   timestampIso: string
   reactions: number
+  reactionDetails: ApiReactionDetail[]
   files: ApiThreadFile[]
 }
 
@@ -264,6 +271,11 @@ export async function fetchThreadMessages(
     timestamp: message.timestamp,
     timestampIso: message.timestampIso,
     reactions: message.reactions,
+    reactionDetails: (message.reactionDetails ?? []).map((reaction) => ({
+      name: reaction.name,
+      emoji: reaction.emoji,
+      count: reaction.count,
+    })),
     files: message.files.map((file) => ({
       name: file.name,
       mimetype: file.mimetype,
@@ -306,6 +318,11 @@ export async function fetchThreadDetail(
       timestamp: message.timestamp,
       timestampIso: message.timestampIso,
       reactions: message.reactions,
+      reactionDetails: (message.reactionDetails ?? []).map((reaction) => ({
+        name: reaction.name,
+        emoji: reaction.emoji,
+        count: reaction.count,
+      })),
       files: message.files.map((file) => ({
         name: file.name,
         mimetype: file.mimetype,

@@ -4,6 +4,12 @@ export interface ThreadFile {
   url: string
 }
 
+export interface ReactionDetail {
+  name: string
+  emoji: string
+  count: number
+}
+
 export interface ThreadMessage {
   id: string
   ts: string
@@ -18,6 +24,7 @@ export interface ThreadMessage {
   timestamp: string
   timestampIso: string
   reactions?: number
+  reactionDetails?: ReactionDetail[]
   files?: ThreadFile[]
 }
 
