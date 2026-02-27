@@ -80,6 +80,10 @@ path = "src/bin/archive_files_local.rs"
 name = "record"
 path = "api/record.rs"
 
+[[bin]]
+name = "index"
+path = "api/index.rs"
+
 [dev-dependencies]
 tokio-test = "0.4"
 wiremock = "0.6"
