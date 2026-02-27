@@ -902,15 +902,15 @@ impl Repository for PgPool {
         channel_id: &str,
         thread_ts: &str,
     ) -> Result<Vec<ThreadMessage>> {
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             r#"
             SELECT
                 m.ts,
                 m.text,
-                COALESCE(u.display_name, m.user_id, '') AS "display_name!",
-                COALESCE(u.avatar_url, '')               AS "avatar_url!",
+                COALESCE(u.display_name, m.user_id, '') AS display_name,
+                COALESCE(u.avatar_url, '')               AS avatar_url,
                 COALESCE(
-                    (SELECT json_agg(
+                    (SELECT jsonb_agg(
                                 jsonb_build_object('name', reaction_name, 'count', cnt)
                                 ORDER BY cnt DESC
                             )
@@ -920,29 +920,51 @@ impl Repository for PgPool {
                          WHERE  channel_id = m.channel_id
                            AND  message_ts = m.ts
                          GROUP  BY reaction_name
-                     ) rc)::jsonb,
+                     ) rc),
+                    (SELECT jsonb_agg(
+                                jsonb_build_object('name', rr.name, 'count', rr.cnt)
+                                ORDER BY rr.cnt DESC
+                            )
+                     FROM (
+                         SELECT
+                             rr_elem->>'name' AS name,
+                             CASE
+                                 WHEN (rr_elem->>'count') ~ '^[0-9]+$'
+                                 THEN (rr_elem->>'count')::int
+                                 ELSE 0
+                             END AS cnt
+                         FROM jsonb_array_elements(
+                             CASE
+                                 WHEN jsonb_typeof(m.raw_json->'reactions') = 'array'
+                                 THEN m.raw_json->'reactions'
+                                 ELSE '[]'::jsonb
+                             END
+                         ) AS rr_elem
+                     ) rr
+                     WHERE COALESCE(rr.name, '') <> ''
+                       AND rr.cnt > 0),
                     '[]'::jsonb
-                )                                        AS "reactions!: serde_json::Value"
+                )                                        AS reactions
             FROM messages m
             LEFT JOIN users u ON u.user_id = m.user_id
             WHERE m.channel_id = $1
               AND (m.thread_ts = $2 OR m.ts = $2)
             ORDER BY m.ts ASC
             "#,
-            channel_id,
-            thread_ts,
         )
+        .bind(channel_id)
+        .bind(thread_ts)
         .fetch_all(self)
         .await?;
 
         Ok(rows
             .into_iter()
             .map(|r| ThreadMessage {
-                ts: r.ts,
-                text: r.text,
-                display_name: r.display_name,
-                avatar_url: r.avatar_url,
-                reactions: r.reactions,
+                ts: r.get("ts"),
+                text: r.get("text"),
+                display_name: r.get("display_name"),
+                avatar_url: r.get("avatar_url"),
+                reactions: r.get("reactions"),
             })
             .collect())
     }
