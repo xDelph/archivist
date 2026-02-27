@@ -95,7 +95,7 @@ pub(crate) async fn cached_threads<R: Repository>(
 }
 
 #[cfg(not(test))]
-async fn cached_users<R: Repository>(
+pub(crate) async fn cached_users<R: Repository>(
     repo: &R,
 ) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
     {
@@ -112,14 +112,14 @@ async fn cached_users<R: Repository>(
 }
 
 #[cfg(test)]
-async fn cached_users<R: Repository>(
+pub(crate) async fn cached_users<R: Repository>(
     repo: &R,
 ) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
     repo.get_all_users().await
 }
 
 #[cfg(not(test))]
-async fn cached_channels<R: Repository>(
+pub(crate) async fn cached_channels<R: Repository>(
     repo: &R,
 ) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
     {
@@ -136,7 +136,7 @@ async fn cached_channels<R: Repository>(
 }
 
 #[cfg(test)]
-async fn cached_channels<R: Repository>(
+pub(crate) async fn cached_channels<R: Repository>(
     repo: &R,
 ) -> std::result::Result<Vec<(String, String)>, anyhow::Error> {
     repo.get_all_channels().await

@@ -185,31 +185,31 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
     apply_channel_and_search_filters(&mut candidate_threads, channel, search);
     apply_user_filter(&mut candidate_threads, user);
     apply_period_filter(&mut candidate_threads, period);
+
+    let root_files = fetch_root_file_summary(repo, &candidate_threads).await?;
     apply_sort(&mut candidate_threads, sort);
     candidate_threads.truncate(limit);
 
-    let root_files = fetch_root_file_summary(repo, &candidate_threads).await?;
-    let overview_changes =
-        compute_overview_changes(repo, tab, period, user, channel, search).await?;
+    let total_files = sum_files_for_threads(&candidate_threads, &root_files.file_counts_by_thread);
+    let overview_changes = compute_overview_changes(
+        &candidate_threads,
+        &root_files.file_counts_by_thread,
+        tab,
+        period,
+    );
     let channel_stats = build_channel_stats(&candidate_threads);
     let activity_data = build_activity_data(&candidate_threads);
-    let users_map: HashMap<String, String> = repo
-        .get_all_users()
+    let users_map: HashMap<String, String> = crate::api::record::cached_users(repo)
         .await
         .map_err(|e| Error::from(e.to_string()))?
         .into_iter()
         .collect();
-    let channels_map: HashMap<String, String> = repo
-        .get_all_channels()
+    let channels_map: HashMap<String, String> = crate::api::record::cached_channels(repo)
         .await
         .map_err(|e| Error::from(e.to_string()))?
         .into_iter()
         .collect();
-    let overview_stats = build_overview_stats(
-        &candidate_threads,
-        root_files.total_files,
-        &overview_changes,
-    );
+    let overview_stats = build_overview_stats(&candidate_threads, total_files, &overview_changes);
 
     let threads = candidate_threads
         .iter()
@@ -273,8 +273,8 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
 
     let (messages, users_vec, channels_vec) = tokio::try_join!(
         repo.get_thread_messages(&channel_id, &ts),
-        repo.get_all_users(),
-        repo.get_all_channels(),
+        crate::api::record::cached_users(repo),
+        crate::api::record::cached_channels(repo),
     )
     .map_err(|e| Error::from(e.to_string()))?;
     let users_map: HashMap<String, String> = users_vec.into_iter().collect();
@@ -545,25 +545,15 @@ fn build_overview_stats(
     }
 }
 
-async fn compute_overview_changes<R: Repository>(
-    repo: &R,
+fn compute_overview_changes(
+    baseline_threads: &[ThreadSummary],
+    file_counts_by_thread: &HashMap<(String, String), i64>,
     tab: &str,
     period: &str,
-    user: &str,
-    channel: &str,
-    search: &str,
-) -> Result<OverviewChanges, Error> {
+) -> OverviewChanges {
     let Some(window_days) = change_window_days(tab, period) else {
-        return Ok(OverviewChanges::default());
+        return OverviewChanges::default();
     };
-
-    let mut baseline_threads = crate::api::record::cached_threads(repo)
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
-    apply_channel_and_search_filters(&mut baseline_threads, channel, search);
-    apply_user_filter(&mut baseline_threads, user);
-
-    let file_summary = fetch_root_file_summary(repo, &baseline_threads).await?;
     let now = Utc::now().timestamp() as f64;
     let current_start = now - (window_days as f64 * 86_400.0);
     let previous_start = now - ((window_days * 2) as f64 * 86_400.0);
@@ -573,8 +563,7 @@ async fn compute_overview_changes<R: Repository>(
 
     for thread in &baseline_threads {
         let thread_ts = thread.thread_ts.parse::<f64>().unwrap_or(0.0);
-        let file_count = file_summary
-            .file_counts_by_thread
+        let file_count = file_counts_by_thread
             .get(&(thread.channel_id.clone(), thread.thread_ts.clone()))
             .copied()
             .unwrap_or(0);
@@ -589,12 +578,27 @@ async fn compute_overview_changes<R: Repository>(
     let current_users = current.users.len() as i64;
     let previous_users = previous.users.len() as i64;
 
-    Ok(OverviewChanges {
+    OverviewChanges {
         messages_change: percentage_change(current.messages, previous.messages),
         threads_change: percentage_change(current.threads, previous.threads),
         files_change: percentage_change(current.files, previous.files),
         users_change: percentage_change(current_users, previous_users),
-    })
+    }
+}
+
+fn sum_files_for_threads(
+    threads: &[ThreadSummary],
+    file_counts_by_thread: &HashMap<(String, String), i64>,
+) -> i64 {
+    threads
+        .iter()
+        .map(|thread| {
+            file_counts_by_thread
+                .get(&(thread.channel_id.clone(), thread.thread_ts.clone()))
+                .copied()
+                .unwrap_or(0)
+        })
+        .sum()
 }
 
 fn change_window_days(tab: &str, period: &str) -> Option<i64> {
