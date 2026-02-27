@@ -144,7 +144,17 @@ export default function ArchivistDashboard() {
   useEffect(() => {
     if (!ready) return
     const root = document.documentElement
+    const suppressTransitions = document.createElement("style")
+    suppressTransitions.appendChild(
+      document.createTextNode("*{transition:none !important; animation:none !important;}")
+    )
+    document.head.appendChild(suppressTransitions)
     root.classList.toggle("theme-light", theme === "light")
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        suppressTransitions.remove()
+      })
+    })
     try {
       localStorage.setItem(THEME_KEY, theme)
     } catch (_err) {}
