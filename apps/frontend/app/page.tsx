@@ -60,6 +60,12 @@ function parsePeriod(value: string | null): string {
   return "all"
 }
 
+function parseOptionalFilter(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
@@ -113,8 +119,8 @@ export default function ArchivistDashboard() {
     setActiveTab(parseTab(params.get("tab")))
     setSortBy(parseSort(params.get("sort")))
     setPeriod(parsePeriod(params.get("period")))
-    setSelectedUser(params.get("user"))
-    setSelectedChannel(params.get("channel"))
+    setSelectedUser(parseOptionalFilter(params.get("user")))
+    setSelectedChannel(parseOptionalFilter(params.get("channel")))
     setQuery(params.get("search") ?? "")
     setDebouncedQuery(params.get("search") ?? "")
 

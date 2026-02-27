@@ -458,7 +458,14 @@ fn apply_sort(threads: &mut [ThreadSummary], sort: &str) {
 fn build_user_options(threads: &[ThreadSummary]) -> Vec<String> {
     let mut users: Vec<String> = threads
         .iter()
-        .map(|thread| thread.display_name.clone())
+        .filter_map(|thread| {
+            let display_name = thread.display_name.trim();
+            if display_name.is_empty() {
+                None
+            } else {
+                Some(display_name.to_owned())
+            }
+        })
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();

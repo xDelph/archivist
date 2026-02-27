@@ -33,8 +33,18 @@ export function SearchBar({
   selectedUser,
   onUserChange,
 }: SearchBarProps) {
+  const normalizedSelectedUser = selectedUser?.trim() ? selectedUser.trim() : null
+  const normalizedUsers = Array.from(
+    new Set(
+      users
+        .map((user) => user.trim())
+        .filter((user) => user.length > 0)
+    )
+  )
   const userOptions =
-    selectedUser && !users.includes(selectedUser) ? [selectedUser, ...users] : users
+    normalizedSelectedUser && !normalizedUsers.includes(normalizedSelectedUser)
+      ? [normalizedSelectedUser, ...normalizedUsers]
+      : normalizedUsers
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -77,7 +87,7 @@ export function SearchBar({
           </SelectContent>
         </Select>
         <Select
-          value={selectedUser ?? "__all__"}
+          value={normalizedSelectedUser ?? "__all__"}
           onValueChange={(value) => onUserChange(value === "__all__" ? null : value)}
         >
           <SelectTrigger className="h-9 w-40 bg-secondary text-sm">
