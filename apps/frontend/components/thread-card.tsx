@@ -102,7 +102,7 @@ function ThreadMessageItem({
         </AvatarFallback>
       </Avatar>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-xs font-medium text-foreground">{msg.author.name}</span>
           <span className="text-[10px] text-muted-foreground" title={msg.timestampIso}>
             {msg.timestamp}
@@ -115,17 +115,46 @@ function ThreadMessageItem({
           dangerouslySetInnerHTML={{ __html: msg.messageHtml }}
         />
         <div className="flex flex-wrap items-center gap-2">
-          {(msg.files ?? []).map((file, idx) => (
-            <button
-              key={`${msg.id}:${idx}`}
-              type="button"
-              onClick={() => onOpenFile(`${msg.id}:${idx}`)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Paperclip className="size-3" />
-              {file.name}
-            </button>
-          ))}
+          {(msg.files ?? []).length > 0 && (
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+              {(msg.files ?? []).map((file, idx) => {
+                const fileType = inferFileType(file.mimetype)
+                return (
+                  <button
+                    key={`${msg.id}:${idx}`}
+                    type="button"
+                    onClick={() => onOpenFile(`${msg.id}:${idx}`)}
+                    className="overflow-hidden rounded-md border border-border/70 bg-secondary/50 text-left transition-colors hover:border-primary/50 hover:bg-secondary"
+                  >
+                    {fileType === "image" ? (
+                      <>
+                        <img
+                          src={file.url}
+                          alt={file.name}
+                          loading="lazy"
+                          className="h-28 w-full object-cover"
+                        />
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-muted-foreground">
+                          <Paperclip className="size-3" />
+                          <span className="truncate">{file.name}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex min-h-[3.5rem] items-center gap-2 px-2.5 py-2">
+                        <FileIcon type={fileType} />
+                        <div className="min-w-0">
+                          <p className="truncate text-xs text-foreground">{file.name}</p>
+                          <p className="truncate text-[10px] text-muted-foreground">
+                            {file.mimetype}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {msg.reactions != null && msg.reactions > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
               <Heart className="size-3" />
@@ -410,17 +439,17 @@ export function ThreadCard({
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between border-t border-border/50 px-4 py-2.5 pl-14 sm:pl-[4.25rem]">
-                  <span className="text-[11px] text-muted-foreground">End of thread</span>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                    onClick={() => setExpanded(false)}
-                  >
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between border-t border-border/50 px-4 py-2.5 pl-14 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground sm:pl-[4.25rem]"
+                  onClick={() => setExpanded(false)}
+                >
+                  <span>End of thread</span>
+                  <span className="flex items-center gap-1">
                     Collapse
                     <ChevronDown className="size-3 rotate-180" />
-                  </button>
-                </div>
+                  </span>
+                </button>
               </>
             )}
 
