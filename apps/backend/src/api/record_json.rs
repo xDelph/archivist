@@ -9,7 +9,7 @@ use serde_json::Value;
 use vercel_runtime::{Error, Response};
 
 use crate::db::{FileRow, PeriodRankedThread, Repository, ThreadMessage, ThreadSummary};
-use crate::render::text::{demojify, render_slack_text};
+use crate::render::text::{demojify, highlight_search, render_slack_text};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -212,7 +212,16 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
 
     let threads = candidate_threads
         .iter()
-        .map(|thread| ApiThread {
+        .map(|thread| {
+            let base_message_html =
+                demojify(&render_slack_text(&thread.text, &users_map, &channels_map).into_string());
+            let message_html = if search.is_empty() {
+                base_message_html
+            } else {
+                highlight_search(&base_message_html, search)
+            };
+
+            ApiThread {
             id: format!("{}:{}", thread.channel_id, thread.thread_ts),
             channel_id: thread.channel_id.clone(),
             ts: thread.thread_ts.clone(),
@@ -223,9 +232,7 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
             },
             channel: format!("#{}", thread.channel_name),
             message: thread.text.clone(),
-            message_html: demojify(
-                &render_slack_text(&thread.text, &users_map, &channels_map).into_string(),
-            ),
+            message_html,
             date: format_day_date(&thread.thread_ts),
             replies: thread.reply_count,
             reactions: thread.reaction_count,
@@ -235,7 +242,7 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
                 .file_counts_by_thread
                 .contains_key(&(thread.channel_id.clone(), thread.thread_ts.clone())),
             url: extract_first_url(&thread.text),
-        })
+        }})
         .collect();
 
     let resp = ApiThreadsResponse {
@@ -260,6 +267,7 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
         Some(v) => v.clone(),
         None => return error_response(StatusCode::BAD_REQUEST, "missing ts"),
     };
+    let search = params.get("search").map(String::as_str).unwrap_or("");
 
     let (messages, users_vec, channels_vec) = tokio::try_join!(
         repo.get_thread_messages(&channel_id, &ts),
@@ -279,7 +287,15 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
 
     let messages = messages
         .into_iter()
-        .map(|message| map_thread_message(message, &mut files_by_ts, &users_map, &channels_map))
+        .map(|message| {
+            map_thread_message(
+                message,
+                &mut files_by_ts,
+                &users_map,
+                &channels_map,
+                search,
+            )
+        })
         .collect();
 
     let resp = ApiThreadResponse {
@@ -295,6 +311,7 @@ fn map_thread_message(
     files_by_ts: &mut HashMap<String, Vec<FileRow>>,
     users: &HashMap<String, String>,
     channels: &HashMap<String, String>,
+    search: &str,
 ) -> ApiThreadMessage {
     let ThreadMessage {
         ts,
@@ -314,7 +331,12 @@ fn map_thread_message(
             url: file.storage_url,
         })
         .collect();
-    let message_html = demojify(&render_slack_text(&text, users, channels).into_string());
+    let base_message_html = demojify(&render_slack_text(&text, users, channels).into_string());
+    let message_html = if search.is_empty() {
+        base_message_html
+    } else {
+        highlight_search(&base_message_html, search)
+    };
 
     ApiThreadMessage {
         id: ts.clone(),

@@ -226,12 +226,16 @@ export async function fetchDashboardData(
 
 export async function fetchThreadMessages(
   channelId: string,
-  ts: string
+  ts: string,
+  search?: string
 ): Promise<ThreadMessage[]> {
   const qs = new URLSearchParams({
     channel_id: channelId,
     ts,
   })
+  if (search) {
+    qs.set("search", search)
+  }
   const response = await fetch(buildUrl(`/api/record/thread?${qs.toString()}`), {
     cache: "no-store",
   })

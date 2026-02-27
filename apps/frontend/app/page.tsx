@@ -190,8 +190,8 @@ export default function ArchivistDashboard() {
 
   const loadThreadMessages = useCallback(
     async (thread: SlackThread): Promise<ThreadMessage[]> =>
-      fetchThreadMessages(thread.channelId, thread.ts),
-    []
+      fetchThreadMessages(thread.channelId, thread.ts, debouncedQuery || undefined),
+    [debouncedQuery]
   )
 
   function retryCurrentTab(): void {
