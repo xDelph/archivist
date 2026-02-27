@@ -663,7 +663,7 @@ async fn test_weekly_page_month_tab_has_no_position_change_badge() {
 async fn test_weekly_top_page_renders_more_than_fifty_cards_when_available() {
     let repo = InMemoryRepository::default();
     *repo.top_threads_with_weekly.lock().unwrap() = (0..60)
-        .map(|i| make_top_thread_with_weekly(100 - i, i as i64, &format!("ch{i}")))
+        .map(|i| make_top_thread_with_weekly(100 - i, i, &format!("ch{i}")))
         .collect();
 
     let resp = process(&repo, make_get("/record/weekly?tab=top"))

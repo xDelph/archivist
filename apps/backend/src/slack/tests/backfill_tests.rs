@@ -166,12 +166,14 @@ fn make_message(ts: &str, thread_ts: Option<&str>) -> SlackMessage {
 }
 
 /// Minimal mock that serves preset channel/history/reply data.
+type HistoryCalls = Arc<Mutex<Vec<(String, Option<String>)>>>;
+
 struct MockSlackApi {
     channels: Vec<Channel>,
     history: HashMap<String, Vec<SlackMessage>>,
     replies: HashMap<(String, String), Vec<SlackMessage>>,
     /// Records (channel_id, oldest) for each conversations_history call.
-    history_calls: Arc<Mutex<Vec<(String, Option<String>)>>>,
+    history_calls: HistoryCalls,
 }
 
 impl MockSlackApi {

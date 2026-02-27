@@ -112,7 +112,6 @@ struct ApiThreadResponse {
 
 struct RootFileSummary {
     file_counts_by_thread: HashMap<(String, String), i64>,
-    total_files: i64,
 }
 
 #[derive(Default)]
@@ -416,7 +415,7 @@ fn apply_user_filter(threads: &mut Vec<ThreadSummary>, user: &str) {
     }
 }
 
-fn apply_sort(threads: &mut Vec<ThreadSummary>, sort: &str) {
+fn apply_sort(threads: &mut [ThreadSummary], sort: &str) {
     match sort {
         "date" => threads.sort_by(|a, b| {
             let a_ts = a.thread_ts.parse::<f64>().unwrap_or(0.0);
@@ -453,8 +452,6 @@ async fn fetch_root_file_summary<R: Repository>(
     }
 
     let mut file_counts_by_thread: HashMap<(String, String), i64> = HashMap::new();
-    let mut total_files: i64 = 0;
-
     for (channel_id, tss) in roots_by_channel {
         let files = repo
             .get_files_for_messages(&channel_id, &tss)
@@ -462,7 +459,6 @@ async fn fetch_root_file_summary<R: Repository>(
             .map_err(|e| Error::from(e.to_string()))?;
 
         for file in files {
-            total_files += 1;
             *file_counts_by_thread
                 .entry((channel_id.clone(), file.message_ts))
                 .or_insert(0) += 1;
@@ -471,7 +467,6 @@ async fn fetch_root_file_summary<R: Repository>(
 
     Ok(RootFileSummary {
         file_counts_by_thread,
-        total_files,
     })
 }
 
@@ -561,7 +556,7 @@ fn compute_overview_changes(
     let mut current = MetricAccumulator::default();
     let mut previous = MetricAccumulator::default();
 
-    for thread in &baseline_threads {
+    for thread in baseline_threads {
         let thread_ts = thread.thread_ts.parse::<f64>().unwrap_or(0.0);
         let file_count = file_counts_by_thread
             .get(&(thread.channel_id.clone(), thread.thread_ts.clone()))
