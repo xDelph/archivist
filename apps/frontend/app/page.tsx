@@ -17,6 +17,7 @@ type DensityPref = "normal" | "compact"
 
 const THEME_KEY = "archivist_theme"
 const DENSITY_KEY = "archivist_density"
+const SEARCH_DEBOUNCE_MS = 250
 
 const EMPTY_DASHBOARD: DashboardData = {
   tab: "top",
@@ -101,7 +102,7 @@ export default function ArchivistDashboard() {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedQuery(query.trim())
-    }, 300)
+    }, SEARCH_DEBOUNCE_MS)
     return () => {
       window.clearTimeout(timeout)
     }

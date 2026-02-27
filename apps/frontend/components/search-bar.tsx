@@ -41,6 +41,12 @@ export function SearchBar({
           placeholder="Search messages, users, channels..."
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
+          onInput={(e) => onQueryChange((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+            }
+          }}
           className="h-9 bg-secondary pl-9 text-sm text-foreground placeholder:text-muted-foreground"
         />
       </div>
