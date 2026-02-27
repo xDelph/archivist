@@ -25,8 +25,9 @@ GET  /record/thread?channel_id=&ts=[&search=]
   → return HTML fragment (loaded lazily by HTMX on first expand)
 
 POST /api/admin/backfill  (bearer-token protected)
-  → returns immediately (`202 Accepted`) and starts background backfill
-  → background job runs conversations.list → conversations.history → conversations.replies
+  → returns immediately (`202 Accepted`) and enqueues a backfill job in DB
+GET/POST /api/admin/backfill/run (bearer-token protected)
+  → claims one queued job and runs conversations.list → conversations.history → conversations.replies
 GET  /api/health
 ```
 
@@ -56,6 +57,7 @@ public/         Static assets (record.css, modal.js, og.png)
 | `POST /api/slack/events` | Receive Slack Events API payloads |
 | `GET /api/health` | Health check |
 | `POST /api/admin/backfill` | Queue channel backfill (bearer-token protected, immediate `202`) |
+| `GET/POST /api/admin/backfill/run` | Worker endpoint: claim and execute one queued backfill job |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
 | `GET /record/weekly?tab=top|week|month` | SSR ranking tabs (all-time, weekly, monthly) with rank-change badges |
 | `GET /record/threads?sort=&period=&channel=&user=&search=` | HTMX fragment: filtered/sorted thread list |
@@ -102,6 +104,7 @@ cargo test
 | `SLACK_BOT_TOKEN` | `xoxb-...` from Slack App → OAuth & Permissions |
 | `SLACK_USER_TOKEN` | `xoxp-...` — for backfill (full channel history) |
 | `ADMIN_TOKEN` | Shared secret for `POST /api/admin/backfill` |
+| `CRON_SECRET` | Optional bearer token accepted by `/api/admin/backfill/run` (for Vercel Cron security) |
 | `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
 | `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |
@@ -153,7 +156,11 @@ curl https://<your-project>.vercel.app/api/health
 
 ## Backfill scheduling
 
-Vercel cron is not available on the free tier. Backfill is triggered by a GitHub Actions workflow (`.github/workflows/backfill.yml`) on a nightly schedule (2am UTC). It can also be triggered manually from the GitHub Actions UI.
+Backfill now uses a queue + worker flow:
+
+- `POST /api/admin/backfill` inserts one queued job (deduplicated if a job is already queued/running).
+- `/api/admin/backfill/run` is executed by Vercel Cron every minute (`vercel.json`) and processes one queued job.
+- GitHub Actions still triggers `/api/admin/backfill` hourly and performs a short best-effort worker kick.
 
 Add these two secrets to the GitHub repository (`Settings → Secrets and variables → Actions`):
 
