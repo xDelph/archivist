@@ -38,8 +38,13 @@ interface ViewerFile extends ThreadFile {
   key: string
 }
 
-function getInternalThreadPathFromClickTarget(target: HTMLElement): string | null {
-  const anchor = target.closest("a")
+function getClosestFromTarget(target: EventTarget | null, selector: string): Element | null {
+  if (!(target instanceof Element)) return null
+  return target.closest(selector)
+}
+
+function getInternalThreadPathFromClickTarget(target: EventTarget | null): string | null {
+  const anchor = getClosestFromTarget(target, "a")
   if (!anchor) return null
   const href = anchor.getAttribute("href")
   if (!href) return null
@@ -118,8 +123,7 @@ function ThreadMessageItem({
   onNavigateToThread?: (path: string) => void
 }) {
   function handleMessageClick(event: React.MouseEvent<HTMLElement>): void {
-    const target = event.target as HTMLElement
-    const mention = target.closest(".mention")
+    const mention = getClosestFromTarget(event.target, ".mention")
     if (mention) {
       const raw = mention.textContent?.trim() ?? ""
       if (raw.startsWith("@") && onMentionClick) {
@@ -151,7 +155,7 @@ function ThreadMessageItem({
     }
 
     if (!onNavigateToThread) return
-    const nextPath = getInternalThreadPathFromClickTarget(target)
+    const nextPath = getInternalThreadPathFromClickTarget(event.target)
     if (!nextPath) return
 
     event.preventDefault()
@@ -364,8 +368,7 @@ export function ThreadCard({
   }
 
   function handlePreviewContentClick(event: React.MouseEvent<HTMLElement>): void {
-    const target = event.target as HTMLElement
-    const mention = target.closest(".mention")
+    const mention = getClosestFromTarget(event.target, ".mention")
     if (mention) {
       const raw = mention.textContent?.trim() ?? ""
       if (raw.startsWith("@") && onMentionClick) {
@@ -396,7 +399,7 @@ export function ThreadCard({
       }
     }
 
-    const nextPath = getInternalThreadPathFromClickTarget(target)
+    const nextPath = getInternalThreadPathFromClickTarget(event.target)
     if (!nextPath) return
 
     event.preventDefault()
