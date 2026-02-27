@@ -17,6 +17,12 @@ This repository uses a monorepo layout with Turborepo orchestration.
 - pnpm workspaces for JS package management
 - Cargo for Rust workspace/package management
 
+## Local Dev
+
+- Backend: `pnpm run dev:backend` (Vercel dev on `http://localhost:3100`)
+- Frontend: `pnpm run dev:frontend` (Next.js on `http://localhost:3001`)
+- Keep port `3000` free when running backend locally: current `vercel_runtime` binds function workers to `127.0.0.1:3000`.
+
 ## Release Prep
 
 - Env template: `.env.example`

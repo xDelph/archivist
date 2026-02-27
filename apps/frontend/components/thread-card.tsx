@@ -285,8 +285,13 @@ export function ThreadCard({
       const fetchedMessages = await onLoadThreadMessages(thread)
       setMessages(fetchedMessages)
     } catch (_err) {
-      setLoadError("Failed to load thread messages.")
-      setMessages([])
+      try {
+        const retryMessages = await onLoadThreadMessages(thread)
+        setMessages(retryMessages)
+      } catch (_retryErr) {
+        setLoadError("Failed to load thread messages.")
+        setMessages([])
+      }
     } finally {
       setLoading(false)
     }
