@@ -91,6 +91,14 @@ struct ApiThreadFile {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct ApiReactionDetail {
+    name: String,
+    emoji: String,
+    count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ApiThreadMessage {
     id: String,
     ts: String,
@@ -100,6 +108,7 @@ struct ApiThreadMessage {
     timestamp: String,
     timestamp_iso: String,
     reactions: i64,
+    reaction_details: Vec<ApiReactionDetail>,
     files: Vec<ApiThreadFile>,
 }
 
@@ -365,6 +374,7 @@ fn map_thread_message(
     } else {
         highlight_search(&base_message_html, search)
     };
+    let reaction_details = reaction_details(&reactions);
 
     ApiThreadMessage {
         id: ts.clone(),
@@ -379,6 +389,7 @@ fn map_thread_message(
         timestamp: format_time_24h(&ts),
         timestamp_iso: format_time_iso(&ts),
         reactions: reaction_total(&reactions),
+        reaction_details,
         files,
     }
 }
@@ -722,6 +733,37 @@ fn reaction_total(reactions: &Value) -> i64 {
                 .sum()
         })
         .unwrap_or(0)
+}
+
+fn reaction_details(reactions: &Value) -> Vec<ApiReactionDetail> {
+    reactions
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| {
+                    let name = item.get("name").and_then(Value::as_str)?.trim();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    let count = item.get("count").and_then(Value::as_i64).unwrap_or(0);
+                    if count <= 0 {
+                        return None;
+                    }
+                    Some(ApiReactionDetail {
+                        name: name.to_owned(),
+                        emoji: decode_reaction_shortcode(name),
+                        count,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn decode_reaction_shortcode(name: &str) -> String {
+    emojis::get_by_shortcode(name)
+        .map(|emoji| emoji.as_str().to_owned())
+        .unwrap_or_else(|| format!(":{}:", name))
 }
 
 fn initials(name: &str) -> String {
