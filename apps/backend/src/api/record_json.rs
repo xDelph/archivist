@@ -105,6 +105,7 @@ struct ApiThreadMessage {
 #[serde(rename_all = "camelCase")]
 struct ApiThreadResponse {
     channel_id: String,
+    channel: String,
     ts: String,
     messages: Vec<ApiThreadMessage>,
 }
@@ -298,8 +299,14 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
         })
         .collect();
 
+    let channel = channels_map
+        .get(&channel_id)
+        .map(|name| format!("#{}", name))
+        .unwrap_or_else(|| channel_id.clone());
+
     let resp = ApiThreadResponse {
         channel_id,
+        channel,
         ts,
         messages,
     };

@@ -105,7 +105,15 @@ interface ApiThreadMessage {
 }
 
 interface ApiThreadResponse {
+  channelId?: string
+  channel?: string
+  ts?: string
   messages: ApiThreadMessage[]
+}
+
+interface ThreadDetailResponse {
+  channel: string | null
+  messages: ThreadMessage[]
 }
 
 interface DashboardFetchOptions {
@@ -262,4 +270,47 @@ export async function fetchThreadMessages(
       url: file.url,
     })),
   }))
+}
+
+export async function fetchThreadDetail(
+  channelId: string,
+  ts: string,
+  search?: string
+): Promise<ThreadDetailResponse> {
+  const qs = new URLSearchParams({
+    channel_id: channelId,
+    ts,
+  })
+  if (search) {
+    qs.set("search", search)
+  }
+  const response = await fetch(buildUrl(`/api/record/thread?${qs.toString()}`), {
+    cache: "no-store",
+  })
+  ensureOk(response)
+
+  const payload = (await response.json()) as ApiThreadResponse
+  return {
+    channel: payload.channel ?? null,
+    messages: payload.messages.map((message) => ({
+      id: message.id,
+      ts: message.ts,
+      author: {
+        name: message.author.name,
+        initials: message.author.initials,
+        color: AUTHOR_COLORS[hashIndex(message.author.name, AUTHOR_COLORS.length)],
+        avatarUrl: message.author.avatarUrl ?? "",
+      },
+      message: message.message,
+      messageHtml: message.messageHtml,
+      timestamp: message.timestamp,
+      timestampIso: message.timestampIso,
+      reactions: message.reactions,
+      files: message.files.map((file) => ({
+        name: file.name,
+        mimetype: file.mimetype,
+        url: file.url,
+      })),
+    })),
+  }
 }

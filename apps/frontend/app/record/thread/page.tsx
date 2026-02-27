@@ -2,10 +2,10 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Heart, LoaderCircle, Paperclip } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { fetchThreadMessages } from "@/lib/api"
+import { fetchThreadDetail } from "@/lib/api"
 import type { ThreadMessage } from "@/lib/types"
 
 function messageHtmlClassName(): string {
@@ -13,8 +13,9 @@ function messageHtmlClassName(): string {
 }
 
 export default function ThreadPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const [channelId, setChannelId] = useState("")
+  const [channelLabel, setChannelLabel] = useState("")
   const [threadTs, setThreadTs] = useState("")
   const [search, setSearch] = useState("")
   const [messages, setMessages] = useState<ThreadMessage[]>([])
@@ -31,7 +32,7 @@ export default function ThreadPage() {
 
       if (!nextChannelId || !nextTs) {
         if (!cancelled) {
-          setChannelId(nextChannelId)
+          setChannelLabel(nextChannelId)
           setThreadTs(nextTs)
           setSearch(nextSearch)
           setMessages([])
@@ -41,7 +42,7 @@ export default function ThreadPage() {
       }
 
       if (!cancelled) {
-        setChannelId(nextChannelId)
+        setChannelLabel(nextChannelId)
         setThreadTs(nextTs)
         setSearch(nextSearch)
         setLoading(true)
@@ -49,9 +50,10 @@ export default function ThreadPage() {
       }
 
       try {
-        const nextMessages = await fetchThreadMessages(nextChannelId, nextTs, nextSearch || undefined)
+        const nextThread = await fetchThreadDetail(nextChannelId, nextTs, nextSearch || undefined)
         if (!cancelled) {
-          setMessages(nextMessages)
+          setMessages(nextThread.messages)
+          setChannelLabel(nextThread.channel ?? nextChannelId)
         }
       } catch (_err) {
         if (!cancelled) {
@@ -72,6 +74,24 @@ export default function ThreadPage() {
     }
   }, [searchParams])
 
+  function handleMessageClickCapture(event: React.MouseEvent<HTMLElement>): void {
+    const target = event.target as HTMLElement
+    const anchor = target.closest("a")
+    if (!anchor) return
+    const href = anchor.getAttribute("href")
+    if (!href) return
+
+    try {
+      const url = new URL(href, window.location.href)
+      if (url.origin !== window.location.origin || url.pathname !== "/record/thread") {
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      router.push(`${url.pathname}${url.search}${url.hash}`)
+    } catch (_err) {}
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-4xl px-4 py-6 lg:px-6">
@@ -84,7 +104,7 @@ export default function ThreadPage() {
             Back To Records
           </Link>
           <div className="text-xs text-muted-foreground">
-            {channelId && <span className="mr-3">Channel: {channelId}</span>}
+            {channelLabel && <span className="mr-3">Channel: {channelLabel}</span>}
             {threadTs && <span>Thread: {threadTs}</span>}
           </div>
         </div>
@@ -141,6 +161,7 @@ export default function ThreadPage() {
 
                     <div
                       className={messageHtmlClassName()}
+                      onClickCapture={handleMessageClickCapture}
                       dangerouslySetInnerHTML={{ __html: msg.messageHtml }}
                     />
 
