@@ -347,6 +347,67 @@ impl Repository for PgPool {
         Ok(())
     }
 
+    async fn enqueue_thread_aggregation(
+        &self,
+        channel_id: &str,
+        message_ts: &str,
+        requested_by: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            WITH resolved AS (
+                SELECT
+                    $1::text AS channel_id,
+                    COALESCE(
+                        (
+                            SELECT CASE
+                                WHEN m.thread_ts IS NULL OR m.thread_ts = '' THEN m.ts
+                                ELSE m.thread_ts
+                            END
+                            FROM messages m
+                            WHERE m.channel_id = $1
+                              AND m.ts = $2
+                            LIMIT 1
+                        ),
+                        $2::text
+                    ) AS thread_ts
+            )
+            INSERT INTO aggregation_jobs
+                (dedupe_key, job_kind, channel_id, thread_ts, status, requested_by, available_at, updated_at)
+            SELECT
+                ('thread_rollup:' || r.channel_id || ':' || r.thread_ts),
+                'thread_rollup',
+                r.channel_id,
+                r.thread_ts,
+                'queued',
+                $3,
+                NOW(),
+                NOW()
+            FROM resolved r
+            ON CONFLICT (dedupe_key)
+            DO UPDATE SET
+                status = CASE
+                    WHEN aggregation_jobs.status = 'running' THEN aggregation_jobs.status
+                    ELSE 'queued'
+                END,
+                requested_by = EXCLUDED.requested_by,
+                available_at = CASE
+                    WHEN aggregation_jobs.status = 'running' THEN aggregation_jobs.available_at
+                    ELSE NOW()
+                END,
+                finished_at = NULL,
+                last_error = NULL,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(channel_id)
+        .bind(message_ts)
+        .bind(requested_by)
+        .execute(self)
+        .await?;
+        Ok(())
+    }
+
     async fn get_top_threads_with_weekly(&self, limit: i64) -> Result<Vec<ThreadWithWeeklyScore>> {
         let rows = sqlx::query(
             r#"

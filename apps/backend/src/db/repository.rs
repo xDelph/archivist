@@ -22,6 +22,12 @@ pub trait Repository {
     async fn upsert_channel(&self, c: &ChannelRecord) -> Result<()>;
     async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>>;
     async fn upsert_thread_weekly_score(&self, channel_id: &str, message_ts: &str) -> Result<()>;
+    async fn enqueue_thread_aggregation(
+        &self,
+        channel_id: &str,
+        message_ts: &str,
+        requested_by: &str,
+    ) -> Result<()>;
     async fn get_top_threads_with_weekly(&self, limit: i64) -> Result<Vec<ThreadWithWeeklyScore>>;
     async fn get_weekly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>>;
     async fn get_monthly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>>;

@@ -23,6 +23,7 @@ pub struct InMemoryRepository {
     pub(crate) reactions: Mutex<HashSet<ReactionKey>>,
     pub threads: Mutex<Vec<ThreadSummary>>,
     pub weekly_upserts: Mutex<Vec<(String, String)>>,
+    pub aggregation_enqueues: Mutex<Vec<(String, String, String)>>,
     pub top_threads_with_weekly: Mutex<Vec<ThreadWithWeeklyScore>>,
     pub weekly_ranked_threads: Mutex<Vec<PeriodRankedThread>>,
     pub monthly_ranked_threads: Mutex<Vec<PeriodRankedThread>>,
@@ -114,6 +115,20 @@ impl Repository for InMemoryRepository {
             .lock()
             .unwrap()
             .push((channel_id.to_owned(), message_ts.to_owned()));
+        Ok(())
+    }
+
+    async fn enqueue_thread_aggregation(
+        &self,
+        channel_id: &str,
+        message_ts: &str,
+        requested_by: &str,
+    ) -> Result<()> {
+        self.aggregation_enqueues.lock().unwrap().push((
+            channel_id.to_owned(),
+            message_ts.to_owned(),
+            requested_by.to_owned(),
+        ));
         Ok(())
     }
 

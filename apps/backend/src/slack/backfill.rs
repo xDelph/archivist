@@ -252,6 +252,7 @@ struct BackfillRunStats {
     stale_threads: usize,
     touched_threads: usize,
     weekly_score_upserts: usize,
+    aggregation_jobs_enqueued: usize,
     message_upserts: usize,
 }
 
@@ -264,6 +265,7 @@ impl BackfillRunStats {
         self.stale_threads += stats.stale_threads;
         self.touched_threads += stats.touched_threads;
         self.weekly_score_upserts += stats.weekly_score_upserts;
+        self.aggregation_jobs_enqueued += stats.aggregation_jobs_enqueued;
         self.message_upserts += stats.message_upserts;
     }
 }
@@ -277,6 +279,7 @@ struct ChannelBackfillStats {
     stale_threads: usize,
     touched_threads: usize,
     weekly_score_upserts: usize,
+    aggregation_jobs_enqueued: usize,
     message_upserts: usize,
 }
 
@@ -356,6 +359,7 @@ where
         stale_threads = stats.stale_threads,
         touched_threads = stats.touched_threads,
         weekly_score_upserts = stats.weekly_score_upserts,
+        aggregation_jobs_enqueued = stats.aggregation_jobs_enqueued,
         channels_cached = cached_channels,
         users_cached = cached_users,
         "backfill complete"
@@ -460,6 +464,9 @@ where
         repo.upsert_thread_weekly_score(channel_id, &thread_ts)
             .await?;
         stats.weekly_score_upserts += 1;
+        repo.enqueue_thread_aggregation(channel_id, &thread_ts, "backfill")
+            .await?;
+        stats.aggregation_jobs_enqueued += 1;
     }
 
     info!(
@@ -472,6 +479,7 @@ where
         stale_threads = stats.stale_threads,
         touched_threads = stats.touched_threads,
         weekly_score_upserts = stats.weekly_score_upserts,
+        aggregation_jobs_enqueued = stats.aggregation_jobs_enqueued,
         "channel backfill complete"
     );
 

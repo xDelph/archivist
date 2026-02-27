@@ -8,6 +8,7 @@ use tokio::sync::OnceCell;
 use tracing::{info, warn};
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
+use crate::api::aggregation_jobs::run_aggregation_batch;
 use crate::api::backfill_jobs::{
     claim_next_backfill_job, mark_backfill_job_failed, mark_backfill_job_succeeded,
 };
@@ -44,44 +45,20 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     }
 
     let db_pool = pool().await?;
-    let Some(job_id) = claim_next_backfill_job(db_pool)
+    let mut backfill_ran = false;
+    let mut backfill_job_id: Option<String> = None;
+
+    if let Some(job_id) = claim_next_backfill_job(db_pool)
         .await
         .map_err(|e| Error::from(e.to_string()))?
-    else {
-        let body = serde_json::json!({
-            "ok": true,
-            "ran": false,
-            "reason": "no_queued_jobs_or_worker_busy",
-        })
-        .to_string();
-        return Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(ResponseBody::from(Bytes::from(body)))?);
-    };
+    {
+        backfill_ran = true;
+        backfill_job_id = Some(job_id.clone());
+        info!(job_id = %job_id, "backfill worker claimed job");
 
-    info!(job_id = %job_id, "backfill worker claimed job");
-    let storage = R2Client::from_env().await.ok();
-    let client = SlackClient::new(slack_token.clone());
-    match run_backfill(db_pool, &client, &slack_token, storage.as_ref()).await {
-        Ok(()) => {
-            mark_backfill_job_succeeded(db_pool, &job_id)
-                .await
-                .map_err(|e| Error::from(e.to_string()))?;
-            info!(job_id = %job_id, "backfill worker completed job");
-            let body = serde_json::json!({
-                "ok": true,
-                "ran": true,
-                "jobId": job_id,
-                "status": "succeeded",
-            })
-            .to_string();
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(ResponseBody::from(Bytes::from(body)))?)
-        }
-        Err(err) => {
+        let storage = R2Client::from_env().await.ok();
+        let client = SlackClient::new(slack_token.clone());
+        if let Err(err) = run_backfill(db_pool, &client, &slack_token, storage.as_ref()).await {
             let err_string = err.to_string();
             mark_backfill_job_failed(db_pool, &job_id, &err_string)
                 .await
@@ -99,12 +76,40 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
                 "error": err_string,
             })
             .to_string();
-            Ok(Response::builder()
+            return Ok(Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "application/json")
-                .body(ResponseBody::from(Bytes::from(body)))?)
+                .body(ResponseBody::from(Bytes::from(body)))?);
         }
+
+        mark_backfill_job_succeeded(db_pool, &job_id)
+            .await
+            .map_err(|e| Error::from(e.to_string()))?;
+        info!(job_id = %job_id, "backfill worker completed job");
     }
+
+    let aggregation = run_aggregation_batch(db_pool, 100)
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    let body = serde_json::json!({
+        "ok": true,
+        "ranBackfill": backfill_ran,
+        "backfillJobId": backfill_job_id,
+        "aggregation": {
+            "claimed": aggregation.claimed,
+            "succeeded": aggregation.succeeded,
+            "requeued": aggregation.requeued,
+            "failed": aggregation.failed
+        },
+        "ran": backfill_ran || aggregation.claimed > 0,
+    })
+    .to_string();
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(ResponseBody::from(Bytes::from(body)))?)
 }
 
 pub(crate) async fn process(

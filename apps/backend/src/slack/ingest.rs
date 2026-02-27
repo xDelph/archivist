@@ -100,6 +100,8 @@ pub async fn handle_event<R: Repository>(
             .await?;
 
             repo.upsert_thread_weekly_score(&m.channel, &ts).await?;
+            repo.enqueue_thread_aggregation(&m.channel, &ts, "slack_event")
+                .await?;
 
             // Archive any attached files to R2
             crate::slack::backfill::archive_files(
@@ -128,6 +130,8 @@ pub async fn handle_event<R: Repository>(
             .await?;
 
             repo.upsert_thread_weekly_score(&channel_id, &message_ts)
+                .await?;
+            repo.enqueue_thread_aggregation(&channel_id, &message_ts, "slack_event")
                 .await?;
         }
         SlackEvent::Unknown => {
