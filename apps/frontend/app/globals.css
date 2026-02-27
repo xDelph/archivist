@@ -126,3 +126,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+.channel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.channel-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.channel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.channel-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.channel-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: var(--muted-foreground);
+}

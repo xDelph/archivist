@@ -56,7 +56,7 @@ export function ChannelSidebar({
           <span className="flex-1">All channels</span>
           <span className="text-xs tabular-nums">{totalThreads.toLocaleString()}</span>
         </button>
-        <div className="max-h-[13.75rem] overflow-y-auto pr-1">
+        <div className="channel-scroll max-h-[10.75rem] overflow-y-auto pr-1">
           <div className="flex flex-col gap-1">{channels.map(renderChannelButton)}</div>
         </div>
       </div>
