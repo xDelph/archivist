@@ -14,6 +14,7 @@ export interface ThreadMessage {
     avatarUrl: string
   }
   message: string
+  messageHtml: string
   timestamp: string
   timestampIso: string
   reactions?: number
@@ -33,6 +34,7 @@ export interface SlackThread {
   channel: string
   channelColor: string
   message: string
+  messageHtml: string
   date: string
   replies: number
   reactions: number

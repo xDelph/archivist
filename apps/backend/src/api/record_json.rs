@@ -9,6 +9,7 @@ use serde_json::Value;
 use vercel_runtime::{Error, Response};
 
 use crate::db::{FileRow, PeriodRankedThread, Repository, ThreadMessage, ThreadSummary};
+use crate::render::text::{demojify, render_slack_text};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +28,7 @@ struct ApiThread {
     author: ApiAuthor,
     channel: String,
     message: String,
+    message_html: String,
     date: String,
     replies: i64,
     reactions: i64,
@@ -92,6 +94,7 @@ struct ApiThreadMessage {
     ts: String,
     author: ApiAuthor,
     message: String,
+    message_html: String,
     timestamp: String,
     timestamp_iso: String,
     reactions: i64,
@@ -189,6 +192,18 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
         compute_overview_changes(repo, tab, period, user, channel, search).await?;
     let channel_stats = build_channel_stats(&candidate_threads);
     let activity_data = build_activity_data(&candidate_threads);
+    let users_map: HashMap<String, String> = repo
+        .get_all_users()
+        .await
+        .map_err(|e| Error::from(e.to_string()))?
+        .into_iter()
+        .collect();
+    let channels_map: HashMap<String, String> = repo
+        .get_all_channels()
+        .await
+        .map_err(|e| Error::from(e.to_string()))?
+        .into_iter()
+        .collect();
     let overview_stats = build_overview_stats(
         &candidate_threads,
         root_files.total_files,
@@ -208,6 +223,9 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
             },
             channel: format!("#{}", thread.channel_name),
             message: thread.text.clone(),
+            message_html: demojify(
+                &render_slack_text(&thread.text, &users_map, &channels_map).into_string(),
+            ),
             date: format_day_date(&thread.thread_ts),
             replies: thread.reply_count,
             reactions: thread.reaction_count,
@@ -243,10 +261,15 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
         None => return error_response(StatusCode::BAD_REQUEST, "missing ts"),
     };
 
-    let messages = repo
-        .get_thread_messages(&channel_id, &ts)
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
+    let (messages, users_vec, channels_vec) = tokio::try_join!(
+        repo.get_thread_messages(&channel_id, &ts),
+        repo.get_all_users(),
+        repo.get_all_channels(),
+    )
+    .map_err(|e| Error::from(e.to_string()))?;
+    let users_map: HashMap<String, String> = users_vec.into_iter().collect();
+    let channels_map: HashMap<String, String> = channels_vec.into_iter().collect();
+
     let tss: Vec<String> = messages.iter().map(|m| m.ts.clone()).collect();
     let files = repo
         .get_files_for_messages(&channel_id, &tss)
@@ -256,7 +279,7 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
 
     let messages = messages
         .into_iter()
-        .map(|message| map_thread_message(message, &mut files_by_ts))
+        .map(|message| map_thread_message(message, &mut files_by_ts, &users_map, &channels_map))
         .collect();
 
     let resp = ApiThreadResponse {
@@ -270,6 +293,8 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
 fn map_thread_message(
     message: ThreadMessage,
     files_by_ts: &mut HashMap<String, Vec<FileRow>>,
+    users: &HashMap<String, String>,
+    channels: &HashMap<String, String>,
 ) -> ApiThreadMessage {
     let ThreadMessage {
         ts,
@@ -289,6 +314,7 @@ fn map_thread_message(
             url: file.storage_url,
         })
         .collect();
+    let message_html = demojify(&render_slack_text(&text, users, channels).into_string());
 
     ApiThreadMessage {
         id: ts.clone(),
@@ -299,6 +325,7 @@ fn map_thread_message(
         },
         ts: ts.clone(),
         message: text,
+        message_html,
         timestamp: format_time_24h(&ts),
         timestamp_iso: format_time_iso(&ts),
         reactions: reaction_total(&reactions),

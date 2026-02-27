@@ -73,6 +73,79 @@ fn render_slack_text_inner(
     users: &HashMap<String, String>,
     channels: &HashMap<String, String>,
 ) -> String {
+    let decoded = decode_slack_entities(text);
+    render_with_code_blocks(&decoded, users, channels)
+}
+
+fn render_with_code_blocks(
+    text: &str,
+    users: &HashMap<String, String>,
+    channels: &HashMap<String, String>,
+) -> String {
+    let mut out = String::with_capacity(text.len() * 2);
+    let mut remaining = text;
+
+    while let Some(open_idx) = remaining.find("```") {
+        out.push_str(&render_with_inline_code(
+            &remaining[..open_idx],
+            users,
+            channels,
+        ));
+        let after_open = &remaining[open_idx + 3..];
+
+        if let Some(close_idx) = after_open.find("```") {
+            let code_content = &after_open[..close_idx];
+            out.push_str(&render_code_block(code_content));
+            remaining = &after_open[close_idx + 3..];
+        } else {
+            out.push_str("```");
+            out.push_str(&render_with_inline_code(after_open, users, channels));
+            return out;
+        }
+    }
+
+    out.push_str(&render_with_inline_code(remaining, users, channels));
+    out
+}
+
+fn render_with_inline_code(
+    text: &str,
+    users: &HashMap<String, String>,
+    channels: &HashMap<String, String>,
+) -> String {
+    let mut out = String::with_capacity(text.len() * 2);
+    let mut remaining = text;
+
+    while let Some(open_idx) = remaining.find('`') {
+        out.push_str(&render_tokens_and_plain(
+            &remaining[..open_idx],
+            users,
+            channels,
+        ));
+        let after_open = &remaining[open_idx + 1..];
+
+        if let Some(close_idx) = after_open.find('`') {
+            let code = &after_open[..close_idx];
+            out.push_str(r#"<code class="slack-inline-code">"#);
+            out.push_str(&escape_html(code));
+            out.push_str("</code>");
+            remaining = &after_open[close_idx + 1..];
+        } else {
+            out.push('`');
+            out.push_str(&render_tokens_and_plain(after_open, users, channels));
+            return out;
+        }
+    }
+
+    out.push_str(&render_tokens_and_plain(remaining, users, channels));
+    out
+}
+
+fn render_tokens_and_plain(
+    text: &str,
+    users: &HashMap<String, String>,
+    channels: &HashMap<String, String>,
+) -> String {
     let mut out = String::with_capacity(text.len() * 2);
     let bytes = text.as_bytes();
     let len = bytes.len();
@@ -90,7 +163,6 @@ fn render_slack_text_inner(
                 out.push_str(&render_token(inner, users, channels));
                 i = end + 1;
             } else {
-                // No closing '>' — treat literal '<'
                 out.push_str("&lt;");
                 i += 1;
             }
@@ -98,18 +170,113 @@ fn render_slack_text_inner(
             out.push_str("<br>");
             i += 1;
         } else {
-            // Accumulate plain text until '<' or '\n', then HTML-escape it.
-            // Slack pre-encodes &, < and > as &amp;/&lt;/&gt; in message text,
-            // so decode those entities first to avoid double-encoding.
             let start = i;
             while i < len && bytes[i] != b'<' && bytes[i] != b'\n' {
                 i += 1;
             }
-            out.push_str(&escape_html(&decode_slack_entities(&text[start..i])));
+            out.push_str(&linkify_plain_text(&text[start..i], channels));
         }
     }
 
     out
+}
+
+fn render_code_block(raw: &str) -> String {
+    let mut content = raw;
+    if let Some(stripped) = content.strip_prefix('\n') {
+        content = stripped;
+    }
+
+    let mut language: Option<&str> = None;
+    if let Some((first_line, rest)) = content.split_once('\n')
+        && is_language_hint(first_line.trim())
+    {
+        language = Some(first_line.trim());
+        content = rest;
+    }
+
+    let mut out = String::from(r#"<pre class="slack-code"><code"#);
+    if let Some(lang) = language {
+        out.push_str(r#" data-lang=""#);
+        out.push_str(&escape_html(lang));
+        out.push('"');
+    }
+    out.push('>');
+    out.push_str(&escape_html(content));
+    out.push_str("</code></pre>");
+    out
+}
+
+fn is_language_hint(candidate: &str) -> bool {
+    !candidate.is_empty()
+        && candidate.len() <= 24
+        && candidate.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+' | '#' | '.')
+        })
+}
+
+fn linkify_plain_text(segment: &str, channels: &HashMap<String, String>) -> String {
+    let mut out = String::with_capacity(segment.len() + 16);
+    let mut idx = 0;
+
+    while idx < segment.len() {
+        let Some(url_start) = find_next_url_start(segment, idx) else {
+            out.push_str(&escape_html(&segment[idx..]));
+            break;
+        };
+
+        out.push_str(&escape_html(&segment[idx..url_start]));
+        let url_end = find_url_end(segment, url_start);
+        let token = &segment[url_start..url_end];
+        let trimmed = token.trim_end_matches(is_trailing_url_punctuation);
+        let trailing = &token[trimmed.len()..];
+
+        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            out.push_str(&render_url(trimmed, trimmed, channels, false));
+        } else {
+            out.push_str(&escape_html(token));
+        }
+        out.push_str(&escape_html(trailing));
+        idx = url_end;
+    }
+
+    out
+}
+
+fn find_next_url_start(segment: &str, mut from: usize) -> Option<usize> {
+    while from < segment.len() {
+        let http = segment[from..].find("http://").map(|idx| from + idx);
+        let https = segment[from..].find("https://").map(|idx| from + idx);
+        let next = match (http, https) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }?;
+
+        let prev = segment[..next].chars().next_back();
+        if prev
+            .map(|c| c.is_whitespace() || matches!(c, '(' | '[' | '{' | '"' | '\''))
+            .unwrap_or(true)
+        {
+            return Some(next);
+        }
+        from = next + 1;
+    }
+    None
+}
+
+fn find_url_end(segment: &str, start: usize) -> usize {
+    for (offset, ch) in segment[start..].char_indices() {
+        if ch.is_whitespace() {
+            return start + offset;
+        }
+    }
+    segment.len()
+}
+
+fn is_trailing_url_punctuation(c: char) -> bool {
+    matches!(c, ')' | ']' | '}' | ',' | '.' | ';' | '!' | '?')
 }
 
 fn render_token(
@@ -150,37 +317,40 @@ fn render_token(
     if inner.starts_with("http://") || inner.starts_with("https://") {
         let has_label = inner.contains('|');
         let (url, label) = split_pipe(inner);
-
-        // Rewrite internal Slack thread links to archiver URLs
-        let workspace = std::env::var("SLACK_WORKSPACE_URL").ok();
-        if let Some((channel_id, ts)) = parse_slack_thread_url(url, workspace.as_deref()) {
-            let display = if has_label {
-                escape_html(label)
-            } else {
-                let ch_name = channels
-                    .get(&channel_id)
-                    .map(|n| format!("#{n}"))
-                    .unwrap_or_else(|| channel_id.clone());
-                format!("↗ thread in {}", escape_html(&ch_name))
-            };
-            return format!(
-                r#"<a href="/record/thread?channel_id={}&ts={}" data-src="{}" target="_blank" rel="noopener">{}</a>"#,
-                channel_id,
-                ts,
-                escape_html(url),
-                display
-            );
-        }
-
-        return format!(
-            r#"<a href="{}" target="_blank" rel="noopener">{}</a>"#,
-            escape_html(url),
-            escape_html(label),
-        );
+        return render_url(url, label, channels, has_label);
     }
 
     // Unknown — escape and render as literal
     format!("&lt;{}&gt;", escape_html(inner))
+}
+
+fn render_url(url: &str, label: &str, channels: &HashMap<String, String>, has_label: bool) -> String {
+    // Rewrite internal Slack thread links to archiver URLs
+    let workspace = std::env::var("SLACK_WORKSPACE_URL").ok();
+    if let Some((channel_id, ts)) = parse_slack_thread_url(url, workspace.as_deref()) {
+        let display = if has_label {
+            escape_html(label)
+        } else {
+            let ch_name = channels
+                .get(&channel_id)
+                .map(|n| format!("#{n}"))
+                .unwrap_or_else(|| channel_id.clone());
+            format!("↗ thread in {}", escape_html(&ch_name))
+        };
+        return format!(
+            r#"<a href="/record/thread?channel_id={}&ts={}" data-src="{}" target="_blank" rel="noopener">{}</a>"#,
+            channel_id,
+            ts,
+            escape_html(url),
+            display
+        );
+    }
+
+    format!(
+        r#"<a href="{}" target="_blank" rel="noopener">{}</a>"#,
+        escape_html(url),
+        escape_html(label),
+    )
 }
 
 /// If `tag` is an `<a href="...">` whose href contains `needle`, inject `class="url-highlight"`.

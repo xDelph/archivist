@@ -39,6 +39,7 @@ interface ApiThread {
   }
   channel: string
   message: string
+  messageHtml: string
   date: string
   replies: number
   reactions: number
@@ -96,6 +97,7 @@ interface ApiThreadMessage {
     avatarUrl: string
   }
   message: string
+  messageHtml: string
   timestamp: string
   timestampIso: string
   reactions: number
@@ -145,6 +147,7 @@ function mapThread(apiThread: ApiThread): SlackThread {
     channel: apiThread.channel,
     channelColor,
     message: apiThread.message,
+    messageHtml: apiThread.messageHtml,
     date: apiThread.date,
     replies: apiThread.replies,
     reactions: apiThread.reactions,
@@ -245,6 +248,7 @@ export async function fetchThreadMessages(
       avatarUrl: message.author.avatarUrl ?? "",
     },
     message: message.message,
+    messageHtml: message.messageHtml,
     timestamp: message.timestamp,
     timestampIso: message.timestampIso,
     reactions: message.reactions,

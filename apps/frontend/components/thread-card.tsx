@@ -108,9 +108,12 @@ function ThreadMessageItem({
             {msg.timestamp}
           </span>
         </div>
-        <p className={`text-secondary-foreground ${compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"}`}>
-          {msg.message}
-        </p>
+        <div
+          className={`slack-text break-words text-secondary-foreground ${
+            compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"
+          } [&_.mention]:font-medium [&_.mention]:text-primary [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:opacity-90 [&_code.slack-inline-code]:rounded [&_code.slack-inline-code]:bg-secondary [&_code.slack-inline-code]:px-1 [&_code.slack-inline-code]:py-0.5 [&_code.slack-inline-code]:font-mono [&_code.slack-inline-code]:text-[0.85em] [&_pre.slack-code]:mt-2 [&_pre.slack-code]:overflow-x-auto [&_pre.slack-code]:rounded-md [&_pre.slack-code]:border [&_pre.slack-code]:border-border/70 [&_pre.slack-code]:bg-secondary/70 [&_pre.slack-code]:p-3 [&_pre.slack-code]:font-mono [&_pre.slack-code]:text-[12px]`}
+          dangerouslySetInnerHTML={{ __html: msg.messageHtml }}
+        />
         <div className="flex flex-wrap items-center gap-2">
           {(msg.files ?? []).map((file, idx) => (
             <button
@@ -296,13 +299,12 @@ export function ThreadCard({
               <span className="ml-auto text-xs text-muted-foreground">{thread.date}</span>
             </div>
 
-            <p
-              className={`text-secondary-foreground ${
+            <div
+              className={`slack-text break-words text-secondary-foreground ${
                 compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"
-              } ${expanded ? "" : "line-clamp-2"}`}
-            >
-              {thread.message}
-            </p>
+              } ${expanded ? "" : "line-clamp-2"} [&_.mention]:font-medium [&_.mention]:text-primary [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:opacity-90 [&_code.slack-inline-code]:rounded [&_code.slack-inline-code]:bg-secondary [&_code.slack-inline-code]:px-1 [&_code.slack-inline-code]:py-0.5 [&_code.slack-inline-code]:font-mono [&_code.slack-inline-code]:text-[0.85em] [&_pre.slack-code]:mt-2 [&_pre.slack-code]:overflow-x-auto [&_pre.slack-code]:rounded-md [&_pre.slack-code]:border [&_pre.slack-code]:border-border/70 [&_pre.slack-code]:bg-secondary/70 [&_pre.slack-code]:p-3 [&_pre.slack-code]:font-mono [&_pre.slack-code]:text-[12px]`}
+              dangerouslySetInnerHTML={{ __html: thread.messageHtml }}
+            />
 
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
