@@ -40,6 +40,7 @@ interface ApiThread {
   channel: string
   message: string
   messageHtml: string
+  searchText?: string
   date: string
   replies: number
   reactions: number
@@ -163,6 +164,7 @@ function mapThread(apiThread: ApiThread): SlackThread {
     channelColor,
     message: apiThread.message,
     messageHtml: apiThread.messageHtml,
+    searchText: apiThread.searchText ?? "",
     date: apiThread.date,
     replies: apiThread.replies,
     reactions: apiThread.reactions,

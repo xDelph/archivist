@@ -298,6 +298,7 @@ export default function ArchivistDashboard() {
         searchTerm &&
         !normalizeSearchValue(thread.message).includes(searchTerm) &&
         !normalizeSearchValue(stripHtmlForSearch(thread.messageHtml)).includes(searchTerm) &&
+        !normalizeSearchValue(thread.searchText ?? "").includes(searchTerm) &&
         !normalizeSearchValue(thread.author.name).includes(searchTerm) &&
         !normalizeSearchValue(thread.channel).includes(searchTerm)
       ) {

@@ -42,6 +42,7 @@ export interface SlackThread {
   channelColor: string
   message: string
   messageHtml: string
+  searchText?: string
   date: string
   replies: number
   reactions: number
