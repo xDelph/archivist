@@ -25,6 +25,7 @@ import type { SlackThread, ThreadFile, ThreadMessage } from "@/lib/types"
 interface ThreadCardProps {
   thread: SlackThread
   rank: number
+  maxScore?: number
   density?: "normal" | "compact"
   onLoadThreadMessages?: (thread: SlackThread) => Promise<ThreadMessage[]>
 }
@@ -170,6 +171,7 @@ function ThreadMessageItem({
 export function ThreadCard({
   thread,
   rank,
+  maxScore,
   density = "normal",
   onLoadThreadMessages,
 }: ThreadCardProps) {
@@ -191,8 +193,8 @@ export function ThreadCard({
     setViewerIndex(null)
   }, [thread.id, thread.threadMessages])
 
-  const maxScore = 2000
-  const scorePercent = Math.min((thread.score / maxScore) * 100, 100)
+  const scoreScaleMax = Math.max(maxScore ?? thread.score, 1)
+  const scorePercent = Math.min((thread.score / scoreScaleMax) * 100, 100)
   const fallbackCount = thread.threadMessages?.length ?? thread.replies
   const messageCount = messages?.length ?? fallbackCount
   const canExpand = fallbackCount > 0

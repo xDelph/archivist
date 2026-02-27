@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Archive, ExternalLink, LoaderCircle, Moon, Sun, Rows3, Rows2 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatCard } from "@/components/stat-card"
@@ -188,6 +188,10 @@ export default function ArchivistDashboard() {
 
   const currentDashboard = dashboard ?? EMPTY_DASHBOARD
   const currentThreads = currentDashboard.threads
+  const scoreScaleMax = useMemo(
+    () => Math.max(1, ...currentThreads.map((thread) => thread.score)),
+    [currentThreads]
+  )
 
   const loadThreadMessages = useCallback(
     async (thread: SlackThread): Promise<ThreadMessage[]> =>
@@ -384,6 +388,7 @@ export default function ArchivistDashboard() {
               key={thread.id}
               thread={thread}
               rank={index + 1}
+              maxScore={scoreScaleMax}
               density={density}
               onLoadThreadMessages={loadThreadMessages}
             />
