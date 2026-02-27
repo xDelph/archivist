@@ -70,6 +70,24 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+function normalizeSearchValue(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+}
+
+function stripHtmlForSearch(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 function highlightHtml(html: string, term: string): string {
   if (!term) return html
   const lowerTerm = term.toLowerCase()
@@ -258,7 +276,7 @@ export default function ArchivistDashboard() {
 
   const currentThreads = useMemo(() => {
     const threads = [...currentDashboard.threads]
-    const searchTerm = debouncedQuery.toLowerCase()
+    const searchTerm = normalizeSearchValue(debouncedQuery)
     const selectedChannelNormalized = selectedChannel?.replace(/^#/, "") ?? null
     const cutoffSecs =
       period === "7d"
@@ -278,9 +296,10 @@ export default function ArchivistDashboard() {
       }
       if (
         searchTerm &&
-        !thread.message.toLowerCase().includes(searchTerm) &&
-        !thread.author.name.toLowerCase().includes(searchTerm) &&
-        !thread.channel.toLowerCase().includes(searchTerm)
+        !normalizeSearchValue(thread.message).includes(searchTerm) &&
+        !normalizeSearchValue(stripHtmlForSearch(thread.messageHtml)).includes(searchTerm) &&
+        !normalizeSearchValue(thread.author.name).includes(searchTerm) &&
+        !normalizeSearchValue(thread.channel).includes(searchTerm)
       ) {
         return false
       }
