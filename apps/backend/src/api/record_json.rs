@@ -470,6 +470,22 @@ async fn fetch_root_file_summary<R: Repository>(
     repo: &R,
     threads: &[ThreadSummary],
 ) -> Result<RootFileSummary, Error> {
+    if threads.iter().all(|thread| thread.file_count >= 0) {
+        let mut file_counts_by_thread: HashMap<(String, String), i64> = HashMap::new();
+        for thread in threads {
+            if thread.file_count > 0 {
+                file_counts_by_thread.insert(
+                    (thread.channel_id.clone(), thread.thread_ts.clone()),
+                    thread.file_count,
+                );
+            }
+        }
+        return Ok(RootFileSummary {
+            file_counts_by_thread,
+            db_query_count: 0,
+        });
+    }
+
     let mut roots_by_channel: HashMap<String, Vec<String>> = HashMap::new();
     for thread in threads {
         roots_by_channel

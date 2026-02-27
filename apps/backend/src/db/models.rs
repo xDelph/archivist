@@ -54,6 +54,8 @@ pub struct ThreadSummary {
     pub reaction_count: i64,
     pub reply_count: i64,
     pub participant_count: i64,
+    /// Root message file count. `-1` means unknown (legacy fallback path).
+    pub file_count: i64,
     pub score: i64,
 }
 

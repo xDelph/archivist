@@ -20,8 +20,18 @@ fn row_to_thread_summary(row: &sqlx::postgres::PgRow) -> ThreadSummary {
         reaction_count: row.get("reaction_count"),
         reply_count: row.get("reply_count"),
         participant_count: row.get("participant_count"),
+        file_count: row.get("file_count"),
         score: row.get("score"),
     }
+}
+
+fn read_model_v2_enabled() -> bool {
+    std::env::var("READ_MODEL_V2")
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
 }
 
 // ── PgPool implementation ─────────────────────────────────────────────────────
@@ -153,6 +163,44 @@ impl Repository for PgPool {
     }
 
     async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>> {
+        if read_model_v2_enabled() {
+            let rollup_rows = sqlx::query(
+                r#"
+                SELECT
+                    tr.channel_id,
+                    COALESCE(ch.name, tr.channel_id)         AS channel_name,
+                    tr.thread_ts,
+                    tr.root_text                              AS text,
+                    tr.root_created_at                        AS created_at,
+                    COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
+                    COALESCE(u.avatar_url, '')               AS avatar_url,
+                    tr.reaction_count_total                   AS reaction_count,
+                    tr.reply_count_total                      AS reply_count,
+                    tr.participant_count_total                AS participant_count,
+                    tr.file_count_total                       AS file_count,
+                    tr.score_total                            AS score
+                FROM thread_rollups tr
+                LEFT JOIN users u
+                    ON u.user_id = tr.root_user_id
+                LEFT JOIN channels ch
+                    ON ch.channel_id = tr.channel_id
+                WHERE COALESCE(ch.name, tr.channel_id) != 'intro'
+                ORDER BY tr.score_total DESC, tr.channel_id, tr.thread_ts
+                LIMIT $1
+                "#,
+            )
+            .bind(limit)
+            .fetch_all(self)
+            .await?;
+
+            if !rollup_rows.is_empty() {
+                return Ok(rollup_rows
+                    .into_iter()
+                    .map(|row| row_to_thread_summary(&row))
+                    .collect());
+            }
+        }
+
         let rows = sqlx::query!(
             r#"
             WITH stats AS (
@@ -235,6 +283,7 @@ impl Repository for PgPool {
                 reaction_count: r.reaction_count,
                 reply_count: r.reply_count,
                 participant_count: r.participant_count,
+                file_count: -1,
                 score: r.score,
             })
             .collect())
@@ -409,6 +458,53 @@ impl Repository for PgPool {
     }
 
     async fn get_top_threads_with_weekly(&self, limit: i64) -> Result<Vec<ThreadWithWeeklyScore>> {
+        if read_model_v2_enabled() {
+            let rows = sqlx::query(
+                r#"
+                SELECT
+                    tr.channel_id,
+                    COALESCE(ch.name, tr.channel_id)              AS channel_name,
+                    tr.thread_ts,
+                    tr.root_text                                   AS text,
+                    tr.root_created_at                             AS created_at,
+                    COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
+                    COALESCE(u.avatar_url, '')                    AS avatar_url,
+                    tr.reaction_count_total                        AS reaction_count,
+                    tr.reply_count_total                           AS reply_count,
+                    tr.participant_count_total                     AS participant_count,
+                    tr.file_count_total                            AS file_count,
+                    tr.score_total                                 AS score,
+                    COALESCE(tps.score_period, 0)::bigint         AS score_week
+                FROM thread_rollups tr
+                LEFT JOIN users u
+                    ON u.user_id = tr.root_user_id
+                LEFT JOIN channels ch
+                    ON ch.channel_id = tr.channel_id
+                LEFT JOIN thread_period_scores tps
+                    ON tps.period_kind = 'week'
+                   AND tps.period_start = date_trunc('week', CURRENT_DATE)::date
+                   AND tps.channel_id = tr.channel_id
+                   AND tps.thread_ts = tr.thread_ts
+                WHERE COALESCE(ch.name, tr.channel_id) != 'intro'
+                ORDER BY tr.score_total DESC, tr.channel_id, tr.thread_ts
+                LIMIT $1
+                "#,
+            )
+            .bind(limit)
+            .fetch_all(self)
+            .await?;
+
+            if !rows.is_empty() {
+                return Ok(rows
+                    .into_iter()
+                    .map(|row| ThreadWithWeeklyScore {
+                        thread: row_to_thread_summary(&row),
+                        score_week: row.get("score_week"),
+                    })
+                    .collect());
+            }
+        }
+
         let rows = sqlx::query(
             r#"
             WITH stats AS (
@@ -457,6 +553,7 @@ impl Repository for PgPool {
                 s.reaction_count,
                 s.reply_count,
                 s.participant_count,
+                -1::bigint                                              AS file_count,
                 (s.reaction_count * 2 + s.reply_count + s.participant_count) AS score,
                 COALESCE(tws.score_week, 0)::bigint                        AS score_week
             FROM stats s
@@ -487,6 +584,59 @@ impl Repository for PgPool {
     }
 
     async fn get_weekly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>> {
+        if read_model_v2_enabled() {
+            let rows = sqlx::query(
+                r#"
+                SELECT
+                    tr.channel_id,
+                    COALESCE(ch.name, tr.channel_id)              AS channel_name,
+                    tr.thread_ts,
+                    tr.root_text                                   AS text,
+                    tr.root_created_at                             AS created_at,
+                    COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
+                    COALESCE(u.avatar_url, '')                    AS avatar_url,
+                    tr.reaction_count_total                        AS reaction_count,
+                    tr.reply_count_total                           AS reply_count,
+                    tr.participant_count_total                     AS participant_count,
+                    tr.file_count_total                            AS file_count,
+                    tps.score_period                               AS score,
+                    tps.score_period                               AS rank_score,
+                    RANK() OVER (
+                        ORDER BY tps.score_period DESC, tps.channel_id, tps.thread_ts
+                    )::bigint                                      AS rank,
+                    NULL::bigint                                   AS prev_rank
+                FROM thread_period_scores tps
+                JOIN thread_rollups tr
+                    ON tr.channel_id = tps.channel_id
+                   AND tr.thread_ts = tps.thread_ts
+                LEFT JOIN users u
+                    ON u.user_id = tr.root_user_id
+                LEFT JOIN channels ch
+                    ON ch.channel_id = tr.channel_id
+                WHERE tps.period_kind = 'week'
+                  AND tps.period_start = date_trunc('week', CURRENT_DATE)::date
+                  AND COALESCE(ch.name, tr.channel_id) != 'intro'
+                ORDER BY rank ASC
+                LIMIT $1
+                "#,
+            )
+            .bind(limit)
+            .fetch_all(self)
+            .await?;
+
+            if !rows.is_empty() {
+                return Ok(rows
+                    .into_iter()
+                    .map(|row| PeriodRankedThread {
+                        thread: row_to_thread_summary(&row),
+                        rank_score: row.get("rank_score"),
+                        rank: row.get("rank"),
+                        prev_rank: row.get("prev_rank"),
+                    })
+                    .collect());
+            }
+        }
+
         let rows = sqlx::query(
             r#"
             WITH stats AS (
@@ -557,6 +707,7 @@ impl Repository for PgPool {
                 s.reaction_count,
                 s.reply_count,
                 s.participant_count,
+                -1::bigint                                               AS file_count,
                 cur.score_period::bigint                                   AS score,
                 cur.score_period::bigint                                   AS rank_score,
                 cur.rank::bigint                                           AS rank,
@@ -590,6 +741,59 @@ impl Repository for PgPool {
     }
 
     async fn get_monthly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>> {
+        if read_model_v2_enabled() {
+            let rows = sqlx::query(
+                r#"
+                SELECT
+                    tr.channel_id,
+                    COALESCE(ch.name, tr.channel_id)              AS channel_name,
+                    tr.thread_ts,
+                    tr.root_text                                   AS text,
+                    tr.root_created_at                             AS created_at,
+                    COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
+                    COALESCE(u.avatar_url, '')                    AS avatar_url,
+                    tr.reaction_count_total                        AS reaction_count,
+                    tr.reply_count_total                           AS reply_count,
+                    tr.participant_count_total                     AS participant_count,
+                    tr.file_count_total                            AS file_count,
+                    tps.score_period                               AS score,
+                    tps.score_period                               AS rank_score,
+                    RANK() OVER (
+                        ORDER BY tps.score_period DESC, tps.channel_id, tps.thread_ts
+                    )::bigint                                      AS rank,
+                    NULL::bigint                                   AS prev_rank
+                FROM thread_period_scores tps
+                JOIN thread_rollups tr
+                    ON tr.channel_id = tps.channel_id
+                   AND tr.thread_ts = tps.thread_ts
+                LEFT JOIN users u
+                    ON u.user_id = tr.root_user_id
+                LEFT JOIN channels ch
+                    ON ch.channel_id = tr.channel_id
+                WHERE tps.period_kind = 'month'
+                  AND tps.period_start = date_trunc('month', CURRENT_DATE)::date
+                  AND COALESCE(ch.name, tr.channel_id) != 'intro'
+                ORDER BY rank ASC
+                LIMIT $1
+                "#,
+            )
+            .bind(limit)
+            .fetch_all(self)
+            .await?;
+
+            if !rows.is_empty() {
+                return Ok(rows
+                    .into_iter()
+                    .map(|row| PeriodRankedThread {
+                        thread: row_to_thread_summary(&row),
+                        rank_score: row.get("rank_score"),
+                        rank: row.get("rank"),
+                        prev_rank: row.get("prev_rank"),
+                    })
+                    .collect());
+            }
+        }
+
         let rows = sqlx::query(
             r#"
             WITH stats AS (
@@ -660,6 +864,7 @@ impl Repository for PgPool {
                 s.reaction_count,
                 s.reply_count,
                 s.participant_count,
+                -1::bigint                                               AS file_count,
                 cur.score_period::bigint                                   AS score,
                 cur.score_period::bigint                                   AS rank_score,
                 cur.rank::bigint                                           AS rank,

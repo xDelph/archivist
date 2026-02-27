@@ -39,6 +39,7 @@ fn make_thread(score: i64, channel_name: &str) -> ThreadSummary {
         reaction_count: 0,
         reply_count: 0,
         participant_count: 1,
+        file_count: 0,
         score,
     }
 }
@@ -62,6 +63,7 @@ fn make_thread_days_ago(
         reaction_count: 0,
         reply_count,
         participant_count: 1,
+        file_count: 0,
         score,
     }
 }
