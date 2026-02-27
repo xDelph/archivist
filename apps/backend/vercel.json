@@ -1,10 +1,13 @@
 {
   "builds": [{ "src": "api/*.rs", "use": "@vercel/rust" }],
+  "crons": [{ "path": "/api/admin/backfill/run", "schedule": "* * * * *" }],
   "routes": [
     { "src": "/", "dest": "/api/index.rs" },
     { "src": "/api/slack/events", "dest": "/api/events.rs" },
     { "src": "/api/events", "dest": "/api/events.rs" },
     { "src": "/api/health", "dest": "/api/health.rs" },
+    { "src": "/api/admin/backfill/run", "dest": "/api/backfill_worker.rs" },
+    { "src": "/api/backfill/run", "dest": "/api/backfill_worker.rs" },
     { "src": "/api/admin/backfill", "dest": "/api/backfill.rs" },
     { "src": "/api/backfill", "dest": "/api/backfill.rs" },
     { "src": "/api/record(/.*)?", "dest": "/api/record.rs" },

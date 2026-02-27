@@ -9,9 +9,8 @@ use vercel_runtime::{Error, Request, Response, ResponseBody};
 
 use tracing::{info, warn};
 
+use crate::api::backfill_jobs::enqueue_backfill_job;
 use crate::db::pool::create_pool;
-use crate::slack::backfill::SlackClient;
-use crate::storage::R2Client;
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
 
@@ -28,13 +27,18 @@ async fn pool() -> Result<&'static PgPool, Error> {
 /// Vercel entry-point — reads config from env and delegates to [`process`].
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_default();
-    // Prefer user token for backfill (full history access); fall back to bot token.
-    let slack_token = env::var("SLACK_USER_TOKEN")
-        .or_else(|_| env::var("SLACK_BOT_TOKEN"))
-        .unwrap_or_default();
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
+    let requested_by = req
+        .headers()
+        .get("x-trigger-source")
+        .or_else(|| req.headers().get("user-agent"))
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("api")
+        .to_owned();
+
     let resp = match process(&admin_token, req).await {
         Ok(r) => r,
         Err(e) => {
@@ -45,34 +49,33 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
                 .body(ResponseBody::from(Bytes::from(body)))?);
         }
     };
-    if resp.status() == StatusCode::ACCEPTED {
-        let backfill_token = slack_token;
-        tokio::spawn(async move {
-            let backfill_repo = match pool().await {
-                Ok(p) => p,
-                Err(err) => {
-                    warn!(error = %err, "background backfill failed to initialize db pool");
-                    return;
-                }
-            };
-            let backfill_storage = R2Client::from_env().await.ok();
-            let client = SlackClient::new(backfill_token.clone());
-            info!("background backfill started");
-            match crate::slack::backfill::run_backfill(
-                backfill_repo,
-                &client,
-                &backfill_token,
-                backfill_storage.as_ref(),
-            )
-            .await
-            {
-                Ok(()) => info!("background backfill completed"),
-                Err(err) => warn!(error = %err, "background backfill failed"),
-            }
-        });
+    if resp.status() != StatusCode::ACCEPTED {
+        let (parts, body) = resp.into_parts();
+        return Ok(Response::from_parts(parts, ResponseBody::from(body)));
     }
-    let (parts, body) = resp.into_parts();
-    Ok(Response::from_parts(parts, ResponseBody::from(body)))
+
+    let enqueue_result = enqueue_backfill_job(pool().await?, &requested_by)
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    info!(
+        job_id = %enqueue_result.job_id,
+        queued_now = enqueue_result.queued_now,
+        requested_by = %requested_by,
+        "backfill job enqueued"
+    );
+
+    let body = serde_json::json!({
+        "ok": true,
+        "queued": enqueue_result.queued_now,
+        "jobId": enqueue_result.job_id,
+    })
+    .to_string();
+
+    Ok(Response::builder()
+        .status(StatusCode::ACCEPTED)
+        .header("Content-Type", "application/json")
+        .body(ResponseBody::from(Bytes::from(body)))?)
 }
 
 /// Core handler logic — auth check only (backfill is launched by [`handler`]).
@@ -80,13 +83,19 @@ pub(crate) async fn process(
     admin_token: &str,
     req: http::Request<Bytes>,
 ) -> Result<Response<Bytes>, Error> {
+    if req.method() != http::Method::POST {
+        return Ok(Response::builder()
+            .status(StatusCode::METHOD_NOT_ALLOWED)
+            .body(Bytes::new())?);
+    }
+
     let provided = req
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    if provided != format!("Bearer {}", admin_token) {
+    if admin_token.is_empty() || provided != format!("Bearer {}", admin_token) {
         warn!("unauthorized backfill attempt");
         return Ok(Response::builder()
             .status(StatusCode::UNAUTHORIZED)
@@ -96,5 +105,5 @@ pub(crate) async fn process(
     Ok(Response::builder()
         .status(StatusCode::ACCEPTED)
         .header("Content-Type", "application/json")
-        .body(Bytes::from(r#"{"ok":true,"queued":true}"#))?)
+        .body(Bytes::from(r#"{"ok":true}"#))?)
 }

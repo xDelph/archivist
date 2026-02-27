@@ -69,6 +69,10 @@ name = "admin_backfill"
 path = "api/backfill.rs"
 
 [[bin]]
+name = "admin_backfill_worker"
+path = "api/backfill_worker.rs"
+
+[[bin]]
 name = "backfill_local"
 path = "src/bin/backfill_local.rs"
 
