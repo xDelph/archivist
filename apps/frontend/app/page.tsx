@@ -97,6 +97,7 @@ export default function ArchivistDashboard() {
   const [period, setPeriod] = useState("all")
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
+  const [collapseSignal, setCollapseSignal] = useState(0)
   const [activeTab, setActiveTab] = useState<DashboardTab>("top")
   const [tabCache, setTabCache] = useState<Partial<Record<DashboardTab, DashboardData>>>({})
   const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
@@ -299,6 +300,7 @@ export default function ArchivistDashboard() {
   )
 
   const applyUserFilterFromMention = useCallback((userName: string) => {
+    setCollapseSignal((value) => value + 1)
     setSelectedUser(userName)
   }, [])
 
@@ -518,6 +520,7 @@ export default function ArchivistDashboard() {
               density={density}
               onLoadThreadMessages={loadThreadMessages}
               onMentionClick={applyUserFilterFromMention}
+              collapseSignal={collapseSignal}
             />
           ))}
         </section>
