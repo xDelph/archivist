@@ -17,6 +17,7 @@ fn row_to_thread_summary(row: &sqlx::postgres::PgRow) -> ThreadSummary {
         created_at: row.get("created_at"),
         display_name: row.get("display_name"),
         avatar_url: row.get("avatar_url"),
+        search_text: row.get("search_text"),
         reaction_count: row.get("reaction_count"),
         reply_count: row.get("reply_count"),
         participant_count: row.get("participant_count"),
@@ -171,6 +172,7 @@ impl Repository for PgPool {
                     COALESCE(ch.name, tr.channel_id)         AS channel_name,
                     tr.thread_ts,
                     tr.root_text                              AS text,
+                    tr.search_text                            AS search_text,
                     tr.root_created_at                        AS created_at,
                     COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
                     COALESCE(u.avatar_url, '')               AS avatar_url,
@@ -201,7 +203,7 @@ impl Repository for PgPool {
             }
         }
 
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             r#"
             WITH stats AS (
                 SELECT
@@ -252,6 +254,7 @@ impl Repository for PgPool {
                 s.created_at,
                 COALESCE(u.display_name, s.user_id, '') AS "display_name!",
                 COALESCE(u.avatar_url, '')               AS "avatar_url!",
+                ''::text                                  AS "search_text!",
                 s.reaction_count                         AS "reaction_count!: i64",
                 s.reply_count                            AS "reply_count!: i64",
                 s.participant_count                      AS "participant_count!: i64",
@@ -265,26 +268,27 @@ impl Repository for PgPool {
             ORDER BY s.reaction_count * 2 + s.reply_count + s.participant_count DESC
             LIMIT $1
             "#,
-            limit
         )
+        .bind(limit)
         .fetch_all(self)
         .await?;
 
         Ok(rows
             .into_iter()
             .map(|r| ThreadSummary {
-                channel_id: r.channel_id,
-                channel_name: r.channel_name,
-                thread_ts: r.thread_ts,
-                text: r.text,
-                created_at: r.created_at,
-                display_name: r.display_name,
-                avatar_url: r.avatar_url,
-                reaction_count: r.reaction_count,
-                reply_count: r.reply_count,
-                participant_count: r.participant_count,
+                channel_id: r.get("channel_id"),
+                channel_name: r.get("channel_name"),
+                thread_ts: r.get("thread_ts"),
+                text: r.get("text"),
+                created_at: r.get("created_at"),
+                display_name: r.get("display_name"),
+                avatar_url: r.get("avatar_url"),
+                search_text: r.get("search_text"),
+                reaction_count: r.get("reaction_count"),
+                reply_count: r.get("reply_count"),
+                participant_count: r.get("participant_count"),
                 file_count: -1,
-                score: r.score,
+                score: r.get("score"),
             })
             .collect())
     }
@@ -466,6 +470,7 @@ impl Repository for PgPool {
                     COALESCE(ch.name, tr.channel_id)              AS channel_name,
                     tr.thread_ts,
                     tr.root_text                                   AS text,
+                    tr.search_text                                 AS search_text,
                     tr.root_created_at                             AS created_at,
                     COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
                     COALESCE(u.avatar_url, '')                    AS avatar_url,
@@ -547,6 +552,7 @@ impl Repository for PgPool {
                 COALESCE(ch.name, s.channel_id)                           AS channel_name,
                 s.thread_ts,
                 s.text,
+                ''::text                                                AS search_text,
                 s.created_at,
                 COALESCE(u.display_name, s.user_id, '')                   AS display_name,
                 COALESCE(u.avatar_url, '')                                 AS avatar_url,
@@ -592,6 +598,7 @@ impl Repository for PgPool {
                     COALESCE(ch.name, tr.channel_id)              AS channel_name,
                     tr.thread_ts,
                     tr.root_text                                   AS text,
+                    tr.search_text                                 AS search_text,
                     tr.root_created_at                             AS created_at,
                     COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
                     COALESCE(u.avatar_url, '')                    AS avatar_url,
@@ -701,6 +708,7 @@ impl Repository for PgPool {
                 COALESCE(ch.name, cur.channel_id)                         AS channel_name,
                 cur.thread_ts,
                 s.text,
+                ''::text                                                AS search_text,
                 s.created_at,
                 COALESCE(u.display_name, s.user_id, '')                   AS display_name,
                 COALESCE(u.avatar_url, '')                                 AS avatar_url,
@@ -749,6 +757,7 @@ impl Repository for PgPool {
                     COALESCE(ch.name, tr.channel_id)              AS channel_name,
                     tr.thread_ts,
                     tr.root_text                                   AS text,
+                    tr.search_text                                 AS search_text,
                     tr.root_created_at                             AS created_at,
                     COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
                     COALESCE(u.avatar_url, '')                    AS avatar_url,
@@ -858,6 +867,7 @@ impl Repository for PgPool {
                 COALESCE(ch.name, cur.channel_id)                         AS channel_name,
                 cur.thread_ts,
                 s.text,
+                ''::text                                                AS search_text,
                 s.created_at,
                 COALESCE(u.display_name, s.user_id, '')                   AS display_name,
                 COALESCE(u.avatar_url, '')                                 AS avatar_url,

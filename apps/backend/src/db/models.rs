@@ -51,6 +51,7 @@ pub struct ThreadSummary {
     pub created_at: DateTime<Utc>,
     pub display_name: String,
     pub avatar_url: String,
+    pub search_text: String,
     pub reaction_count: i64,
     pub reply_count: i64,
     pub participant_count: i64,

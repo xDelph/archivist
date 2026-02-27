@@ -247,6 +247,21 @@ async fn recompute_thread_rollup_row(
               ON f.channel_id = r.channel_id
              AND f.message_ts = r.thread_ts
         ),
+        search_texts AS (
+            SELECT
+                LEFT(
+                    TRIM(
+                        REGEXP_REPLACE(
+                            COALESCE(STRING_AGG(COALESCE(tm.text, ''), ' ' ORDER BY tm.ts), ''),
+                            '\s+',
+                            ' ',
+                            'g'
+                        )
+                    ),
+                    4000
+                ) AS search_text
+            FROM thread_messages tm
+        ),
         source_meta AS (
             SELECT COALESCE(MAX(tm.updated_at), NOW()) AS source_max_updated_at
             FROM thread_messages tm
@@ -257,6 +272,7 @@ async fn recompute_thread_rollup_row(
             root_user_id,
             root_text,
             root_created_at,
+            search_text,
             reaction_count_total,
             reply_count_total,
             participant_count_total,
@@ -273,6 +289,7 @@ async fn recompute_thread_rollup_row(
             rm.user_id,
             COALESCE(rm.text, ''),
             COALESCE(rm.created_at, NOW()),
+            st.search_text,
             rt.reaction_count_total,
             rpt.reply_count_total,
             pt.participant_count_total,
@@ -288,6 +305,7 @@ async fn recompute_thread_rollup_row(
         CROSS JOIN reply_totals rpt
         CROSS JOIN participant_totals pt
         CROSS JOIN file_totals ft
+        CROSS JOIN search_texts st
         CROSS JOIN source_meta sm
         WHERE EXISTS (
             SELECT 1
@@ -300,6 +318,7 @@ async fn recompute_thread_rollup_row(
             root_user_id = EXCLUDED.root_user_id,
             root_text = EXCLUDED.root_text,
             root_created_at = EXCLUDED.root_created_at,
+            search_text = EXCLUDED.search_text,
             reaction_count_total = EXCLUDED.reaction_count_total,
             reply_count_total = EXCLUDED.reply_count_total,
             participant_count_total = EXCLUDED.participant_count_total,

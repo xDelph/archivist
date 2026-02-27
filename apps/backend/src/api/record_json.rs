@@ -36,6 +36,7 @@ struct ApiThread {
     reactions: i64,
     participants: i64,
     score: i64,
+    search_text: String,
     has_files: bool,
     url: Option<String>,
 }
@@ -251,6 +252,7 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
                 reactions: thread.reaction_count,
                 participants: thread.participant_count,
                 score: thread.score,
+                search_text: thread.search_text.clone(),
                 has_files: root_files
                     .file_counts_by_thread
                     .contains_key(&(thread.channel_id.clone(), thread.thread_ts.clone())),
