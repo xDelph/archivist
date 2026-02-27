@@ -102,7 +102,7 @@ export default function ArchivistDashboard() {
   const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
   const [theme, setTheme] = useState<ThemePref>("dark")
   const [density, setDensity] = useState<DensityPref>("normal")
-  const [loading, setLoading] = useState(false)
+  const [loadingTabs, setLoadingTabs] = useState<DashboardTab[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const inFlightTabs = useRef<Set<DashboardTab>>(new Set())
@@ -178,7 +178,7 @@ export default function ArchivistDashboard() {
     if (inFlightTabs.current.has(tab)) return
     inFlightTabs.current.add(tab)
     if (withLoader) {
-      setLoading(true)
+      setLoadingTabs((prev) => (prev.includes(tab) ? prev : [...prev, tab]))
       setLoadError(null)
     }
 
@@ -195,7 +195,7 @@ export default function ArchivistDashboard() {
     } finally {
       inFlightTabs.current.delete(tab)
       if (withLoader) {
-        setLoading(false)
+        setLoadingTabs((prev) => prev.filter((value) => value !== tab))
       }
     }
   }, [])
@@ -231,6 +231,14 @@ export default function ArchivistDashboard() {
   }, [ready, activeDashboard, activeTab, tabCache, fetchTabData])
 
   const currentDashboard = activeDashboard ?? lastDashboard ?? EMPTY_DASHBOARD
+  const isLoading = loadingTabs.length > 0
+  const hasAnyDashboard = Boolean(activeDashboard || lastDashboard)
+  const isInitialLoad = ready && !hasAnyDashboard && isLoading
+  const isTabTransitionLoading = isLoading && Boolean(lastDashboard) && !activeDashboard
+  const loadingTab = loadingTabs[loadingTabs.length - 1] ?? activeTab
+  const loadingLabel =
+    loadingTab === "top" ? "top threads" : loadingTab === "week" ? "weekly" : "monthly"
+
   const currentThreads = useMemo(() => {
     const threads = [...currentDashboard.threads]
     const searchTerm = debouncedQuery.toLowerCase()
@@ -297,6 +305,17 @@ export default function ArchivistDashboard() {
       return next
     })
     setLoadError(null)
+  }
+
+  if (!ready || (isInitialLoad && !loadError)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm">
+          <LoaderCircle className="size-4 animate-spin" />
+          Loading Archivist…
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -443,14 +462,14 @@ export default function ArchivistDashboard() {
         </section>
 
         <section className="flex flex-col gap-2">
-          {loading && currentThreads.length > 0 && (
+          {isTabTransitionLoading && (
             <div className="mb-2 flex items-center gap-2 rounded-md border border-border/70 bg-card/80 px-3 py-2 text-xs text-muted-foreground">
               <LoaderCircle className="size-3.5 animate-spin" />
-              Updating {activeTab === "top" ? "top threads" : activeTab} data...
+              Updating {loadingLabel} data...
             </div>
           )}
 
-          {loading && currentThreads.length === 0 && (
+          {isLoading && currentThreads.length === 0 && (
             <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
               <LoaderCircle className="size-4 animate-spin" />
               Loading dashboard...
@@ -466,7 +485,7 @@ export default function ArchivistDashboard() {
             </div>
           )}
 
-          {!loading && !loadError && currentThreads.length === 0 && (
+          {!isLoading && !loadError && currentThreads.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-center">
               <p className="text-sm text-muted-foreground">
                 No threads found matching your filters.
