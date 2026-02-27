@@ -1,5 +1,6 @@
 import type { ChannelStat } from "@/lib/types"
 import { Hash } from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ChannelSidebarProps {
   channels: ChannelStat[]
@@ -56,9 +57,9 @@ export function ChannelSidebar({
           <span className="flex-1">All channels</span>
           <span className="text-xs tabular-nums">{totalThreads.toLocaleString()}</span>
         </button>
-        <div className="channel-scroll max-h-[10.75rem] overflow-y-auto pr-1">
+        <ScrollArea className="h-[10.75rem] pr-1">
           <div className="flex flex-col gap-1">{channels.map(renderChannelButton)}</div>
-        </div>
+        </ScrollArea>
       </div>
     </div>
   )
