@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::time::Instant;
 
 use bytes::Bytes;
 use chrono::{Datelike, Utc};
 use http::StatusCode;
 use serde::Serialize;
 use serde_json::Value;
+use tracing::info;
 use vercel_runtime::{Error, Response};
 
 use crate::db::{FileRow, PeriodRankedThread, Repository, ThreadMessage, ThreadSummary};
@@ -112,6 +114,7 @@ struct ApiThreadResponse {
 
 struct RootFileSummary {
     file_counts_by_thread: HashMap<(String, String), i64>,
+    db_query_count: usize,
 }
 
 #[derive(Default)]
@@ -151,6 +154,7 @@ pub(crate) async fn process<R: Repository>(
 }
 
 async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {
+    let request_started = Instant::now();
     let params = parse_query(query);
     let tab = match params.get("tab").map(String::as_str) {
         Some("week") => "week",
@@ -255,10 +259,25 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
         activity_data,
         overview_stats,
     };
+    info!(
+        endpoint = "/api/record/threads",
+        tab,
+        sort,
+        period,
+        has_search = !search.is_empty(),
+        has_user = !user.is_empty(),
+        has_channel = !channel.is_empty(),
+        limit,
+        threads_returned = resp.threads.len(),
+        estimated_db_queries = 3usize + root_files.db_query_count,
+        duration_ms = request_started.elapsed().as_millis() as u64,
+        "record threads request completed"
+    );
     json_ok(&resp)
 }
 
 async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {
+    let request_started = Instant::now();
     let params = parse_query(query);
     let channel_id = match params.get("channel_id") {
         Some(v) => v.clone(),
@@ -304,6 +323,14 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
         ts,
         messages,
     };
+    info!(
+        endpoint = "/api/record/thread",
+        message_count = resp.messages.len(),
+        has_search = !search.is_empty(),
+        estimated_db_queries = 4usize,
+        duration_ms = request_started.elapsed().as_millis() as u64,
+        "record thread request completed"
+    );
     json_ok(&resp)
 }
 
@@ -452,7 +479,9 @@ async fn fetch_root_file_summary<R: Repository>(
     }
 
     let mut file_counts_by_thread: HashMap<(String, String), i64> = HashMap::new();
+    let mut db_query_count = 0usize;
     for (channel_id, tss) in roots_by_channel {
+        db_query_count += 1;
         let files = repo
             .get_files_for_messages(&channel_id, &tss)
             .await
@@ -467,6 +496,7 @@ async fn fetch_root_file_summary<R: Repository>(
 
     Ok(RootFileSummary {
         file_counts_by_thread,
+        db_query_count,
     })
 }
 
