@@ -240,6 +240,60 @@ fn parse_users(value: &serde_json::Value) -> Result<Vec<SlackUser>, SlackError> 
 
 // ── Backfill orchestration ────────────────────────────────────────────────────
 
+#[derive(Debug, Default, Clone, Copy)]
+struct BackfillRunStats {
+    channels_discovered: usize,
+    channels_processed: usize,
+    channels_skipped: usize,
+    history_batches: usize,
+    history_messages: usize,
+    reply_batches: usize,
+    reply_messages: usize,
+    stale_threads: usize,
+    touched_threads: usize,
+    weekly_score_upserts: usize,
+    message_upserts: usize,
+}
+
+impl BackfillRunStats {
+    fn include_channel(&mut self, stats: ChannelBackfillStats) {
+        self.history_batches += stats.history_batches;
+        self.history_messages += stats.history_messages;
+        self.reply_batches += stats.reply_batches;
+        self.reply_messages += stats.reply_messages;
+        self.stale_threads += stats.stale_threads;
+        self.touched_threads += stats.touched_threads;
+        self.weekly_score_upserts += stats.weekly_score_upserts;
+        self.message_upserts += stats.message_upserts;
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ChannelBackfillStats {
+    history_batches: usize,
+    history_messages: usize,
+    reply_batches: usize,
+    reply_messages: usize,
+    stale_threads: usize,
+    touched_threads: usize,
+    weekly_score_upserts: usize,
+    message_upserts: usize,
+}
+
+impl ChannelBackfillStats {
+    fn include_reply(&mut self, stats: ReplyBackfillStats) {
+        self.reply_batches += stats.batches;
+        self.reply_messages += stats.messages;
+        self.message_upserts += stats.messages;
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ReplyBackfillStats {
+    batches: usize,
+    messages: usize,
+}
+
 /// Backfills all channels the bot can see.
 ///
 /// For each channel:
@@ -269,16 +323,50 @@ where
     }
 
     info!(total = all_channels.len(), "channels discovered");
+    let mut stats = BackfillRunStats {
+        channels_discovered: all_channels.len(),
+        ..BackfillRunStats::default()
+    };
 
     for ch in &all_channels {
         info!(channel_id = %ch.id, channel_name = %ch.name, "backfilling channel");
-        backfill_channel(repo, client, slack_token, storage, &ch.id).await?;
+        match backfill_channel(repo, client, slack_token, storage, &ch.id).await? {
+            Some(channel_stats) => {
+                stats.channels_processed += 1;
+                stats.include_channel(channel_stats);
+            }
+            None => {
+                stats.channels_skipped += 1;
+            }
+        }
     }
 
-    cache_channels(repo, &all_channels).await?;
-    cache_users(repo, client).await?;
+    let cached_channels = cache_channels(repo, &all_channels).await?;
+    let cached_users = cache_users(repo, client).await?;
 
-    info!("backfill complete");
+    info!(
+        channels_discovered = stats.channels_discovered,
+        channels_processed = stats.channels_processed,
+        channels_skipped = stats.channels_skipped,
+        history_batches = stats.history_batches,
+        history_messages = stats.history_messages,
+        reply_batches = stats.reply_batches,
+        reply_messages = stats.reply_messages,
+        message_upserts = stats.message_upserts,
+        stale_threads = stats.stale_threads,
+        touched_threads = stats.touched_threads,
+        weekly_score_upserts = stats.weekly_score_upserts,
+        channels_cached = cached_channels,
+        users_cached = cached_users,
+        "backfill complete"
+    );
+    if stats.message_upserts == 0 {
+        warn!(
+            channels_discovered = stats.channels_discovered,
+            channels_processed = stats.channels_processed,
+            "backfill completed with zero message upserts"
+        );
+    }
     Ok(())
 }
 
@@ -288,12 +376,18 @@ async fn backfill_channel<R, S>(
     slack_token: &str,
     storage: Option<&R2Client>,
     channel_id: &str,
-) -> anyhow::Result<()>
+) -> anyhow::Result<Option<ChannelBackfillStats>>
 where
     R: crate::db::Repository,
     S: SlackApi,
 {
     let oldest = repo.get_last_archived_ts(channel_id).await?;
+    info!(
+        channel_id,
+        oldest_ts = oldest.as_deref().unwrap_or("<none>"),
+        "starting channel backfill window"
+    );
+    let mut stats = ChannelBackfillStats::default();
     let mut cursor: Option<String> = None;
     // Threads whose root was archived in a previous run — replies appear in
     // history but the root won't be re-fetched via conversations.history.
@@ -307,19 +401,22 @@ where
             Ok(r) => r,
             Err(SlackError::Api(ref e)) if e == "not_in_channel" => {
                 warn!(channel_id, "skipping private channel: bot not a member");
-                return Ok(());
+                return Ok(None);
             }
             Err(e) => return Err(e.into()),
         };
+        stats.history_batches += 1;
+        stats.history_messages += messages.len();
         info!(channel_id, count = messages.len(), "fetched message batch");
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
+            stats.message_upserts += 1;
             download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
             touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
                 // Thread root in this batch — fetch all replies.
                 info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
-                backfill_replies(
+                let reply_stats = backfill_replies(
                     repo,
                     client,
                     slack_token,
@@ -329,6 +426,7 @@ where
                     &mut touched_threads,
                 )
                 .await?;
+                stats.include_reply(reply_stats);
                 stale_threads.remove(&msg.ts);
             } else if let Some(tts) = &msg.thread_ts {
                 // Reply whose root was archived in a previous run.
@@ -341,9 +439,10 @@ where
         }
     }
     // Re-fetch threads whose root predates this backfill window.
+    stats.stale_threads = stale_threads.len();
     for thread_ts in stale_threads {
         info!(channel_id, %thread_ts, "backfilling stale thread");
-        backfill_replies(
+        let reply_stats = backfill_replies(
             repo,
             client,
             slack_token,
@@ -353,14 +452,30 @@ where
             &mut touched_threads,
         )
         .await?;
+        stats.include_reply(reply_stats);
     }
 
+    stats.touched_threads = touched_threads.len();
     for thread_ts in touched_threads {
         repo.upsert_thread_weekly_score(channel_id, &thread_ts)
             .await?;
+        stats.weekly_score_upserts += 1;
     }
 
-    Ok(())
+    info!(
+        channel_id,
+        history_batches = stats.history_batches,
+        history_messages = stats.history_messages,
+        reply_batches = stats.reply_batches,
+        reply_messages = stats.reply_messages,
+        message_upserts = stats.message_upserts,
+        stale_threads = stats.stale_threads,
+        touched_threads = stats.touched_threads,
+        weekly_score_upserts = stats.weekly_score_upserts,
+        "channel backfill complete"
+    );
+
+    Ok(Some(stats))
 }
 
 async fn backfill_replies<R, S>(
@@ -371,16 +486,25 @@ async fn backfill_replies<R, S>(
     channel_id: &str,
     thread_ts: &str,
     touched_threads: &mut HashSet<String>,
-) -> anyhow::Result<()>
+) -> anyhow::Result<ReplyBackfillStats>
 where
     R: crate::db::Repository,
     S: SlackApi,
 {
+    let mut stats = ReplyBackfillStats::default();
     let mut cursor: Option<String> = None;
     loop {
         let (messages, next) = client
             .conversations_replies(channel_id, thread_ts, cursor.as_deref())
             .await?;
+        stats.batches += 1;
+        stats.messages += messages.len();
+        info!(
+            channel_id,
+            thread_ts,
+            count = messages.len(),
+            "fetched thread replies batch"
+        );
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
             download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
@@ -391,7 +515,7 @@ where
             None => break,
         }
     }
-    Ok(())
+    Ok(stats)
 }
 
 async fn upsert_slack_message<R: crate::db::Repository>(
@@ -544,7 +668,7 @@ pub async fn archive_files<R: crate::db::Repository>(
 async fn cache_channels<R: crate::db::Repository>(
     repo: &R,
     channels: &[Channel],
-) -> anyhow::Result<()> {
+) -> anyhow::Result<usize> {
     use crate::db::ChannelRecord;
     for ch in channels {
         repo.upsert_channel(&ChannelRecord {
@@ -555,10 +679,10 @@ async fn cache_channels<R: crate::db::Repository>(
         .await?;
     }
     info!(count = channels.len(), "channels cached");
-    Ok(())
+    Ok(channels.len())
 }
 
-async fn cache_users<R, S>(repo: &R, client: &S) -> anyhow::Result<()>
+async fn cache_users<R, S>(repo: &R, client: &S) -> anyhow::Result<usize>
 where
     R: crate::db::Repository,
     S: SlackApi,
@@ -573,7 +697,7 @@ where
                 warn!(
                     "users.list requires users:read scope — skipping user cache (add scope and re-run backfill)"
                 );
-                return Ok(());
+                return Ok(0);
             }
             Err(e) => return Err(e.into()),
         };
@@ -593,7 +717,7 @@ where
         }
     }
     info!(total, "users cached");
-    Ok(())
+    Ok(total)
 }
 
 fn parse_messages(value: &serde_json::Value) -> Result<Vec<SlackMessage>, SlackError> {
