@@ -3,7 +3,7 @@ name: CI Frontend v0
 on:
   pull_request:
     paths:
-      - "apps/frontend-v0/**"
+      - "apps/frontend/**"
       - "packages/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -15,7 +15,7 @@ on:
       - develop
       - feat/monorepo
     paths:
-      - "apps/frontend-v0/**"
+      - "apps/frontend/**"
       - "packages/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -45,7 +45,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck frontend
-        run: pnpm --filter @archivist/frontend-v0 run typecheck
+        run: pnpm --filter @archivist/frontend run typecheck
 
       - name: Build frontend
-        run: pnpm --filter @archivist/frontend-v0 run build
+        run: pnpm --filter @archivist/frontend run build

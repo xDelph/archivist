@@ -1,5 +1,5 @@
 {
-  "name": "@archivist/frontend-v0",
+  "name": "@archivist/frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {

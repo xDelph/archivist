@@ -21,12 +21,12 @@ Create two projects in Vercel:
 
 1. Backend project
 - Name: `archivist-backend` (or your preferred stable name)
-- Root Directory: `apps/backend-rust`
+- Root Directory: `apps/backend`
 - Framework preset: `Other`
 
 2. Frontend project
 - Name: `archivist-frontend`
-- Root Directory: `apps/frontend-v0`
+- Root Directory: `apps/frontend`
 - Framework preset: `Next.js`
 
 ## 2. Configure Environment Variables

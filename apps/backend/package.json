@@ -1,5 +1,5 @@
 {
-  "name": "@archivist/backend-rust",
+  "name": "@archivist/backend",
   "private": true,
   "scripts": {
     "build": "cargo build",
@@ -8,6 +8,7 @@
     "lint": "cargo clippy --all-targets --all-features -- -D warnings",
     "test": "cargo test",
     "typecheck": "cargo check",
-    "dev": "vercel dev"
+    "dev": "echo backend-dev-disabled",
+    "dev:vercel": "vercel dev --yes --listen 3100"
   }
 }

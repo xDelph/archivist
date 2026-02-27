@@ -20,8 +20,8 @@ Selected decisions:
 ```text
 /
   apps/
-    backend-rust/
-    frontend-v0/
+    backend/
+    frontend/
   packages/
     contracts/          # shared API schemas/types (optional)
   backup/
@@ -76,7 +76,7 @@ Selected decisions:
 
 ## Phase 2 - Workspace Tooling
 
-- [x] 2.1 Configure Rust app package at `apps/backend-rust/` (Cargo manifest + scripts) after move from root.
+- [x] 2.1 Configure Rust app package at `apps/backend/` (Cargo manifest + scripts) after move from root.
 - [x] 2.2 Configure Node workspace for frontend (`pnpm-workspace.yaml` or npm workspaces).
 - [x] 2.3 Add root scripts for `build`, `test`, `lint`, `dev` per app.
 - [x] 2.4 Decide CI strategy: split backend/frontend pipelines with independent checks.

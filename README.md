@@ -4,8 +4,8 @@ This repository uses a monorepo layout with Turborepo orchestration.
 
 ## Apps
 
-- `apps/backend-rust`: Rust API/backend (Slack ingest, backfill, record APIs)
-- `apps/frontend-v0`: Next.js + shadcn frontend
+- `apps/backend`: Rust API/backend (Slack ingest, backfill, record APIs)
+- `apps/frontend`: Next.js + shadcn frontend
 
 ## Packages
 
