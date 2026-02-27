@@ -30,6 +30,7 @@ interface ThreadCardProps {
   density?: "normal" | "compact"
   onLoadThreadMessages?: (thread: SlackThread) => Promise<ThreadMessage[]>
   onMentionClick?: (userName: string) => void
+  onChannelClick?: (channelName: string) => void
   collapseSignal?: number
 }
 
@@ -106,30 +107,47 @@ function ThreadMessageItem({
   compact,
   onOpenFile,
   onMentionClick,
+  onChannelClick,
   onNavigateToThread,
 }: {
   msg: ThreadMessage
   compact: boolean
   onOpenFile: (fileKey: string) => void
   onMentionClick?: (userName: string) => void
+  onChannelClick?: (channelName: string) => void
   onNavigateToThread?: (path: string) => void
 }) {
   function handleMessageClick(event: React.MouseEvent<HTMLElement>): void {
     const target = event.target as HTMLElement
     const mention = target.closest(".mention")
-    if (mention && onMentionClick) {
+    if (mention) {
       const raw = mention.textContent?.trim() ?? ""
-      if (!raw.startsWith("@")) return
+      if (raw.startsWith("@") && onMentionClick) {
+        const userName = raw.slice(1).trim()
+        if (
+          !userName ||
+          userName === "here" ||
+          userName === "channel" ||
+          userName === "everyone"
+        ) {
+          return
+        }
 
-      const userName = raw.slice(1).trim()
-      if (!userName || userName === "here" || userName === "channel" || userName === "everyone") {
+        event.preventDefault()
+        event.stopPropagation()
+        onMentionClick(userName)
         return
       }
 
-      event.preventDefault()
-      event.stopPropagation()
-      onMentionClick(userName)
-      return
+      if (raw.startsWith("#") && onChannelClick) {
+        const channelName = raw.slice(1).trim()
+        if (!channelName) return
+
+        event.preventDefault()
+        event.stopPropagation()
+        onChannelClick(`#${channelName}`)
+        return
+      }
     }
 
     if (!onNavigateToThread) return
@@ -227,6 +245,7 @@ export function ThreadCard({
   density = "normal",
   onLoadThreadMessages,
   onMentionClick,
+  onChannelClick,
   collapseSignal,
 }: ThreadCardProps) {
   const router = useRouter()
@@ -347,23 +366,34 @@ export function ThreadCard({
   function handlePreviewContentClick(event: React.MouseEvent<HTMLElement>): void {
     const target = event.target as HTMLElement
     const mention = target.closest(".mention")
-    if (mention && onMentionClick) {
+    if (mention) {
       const raw = mention.textContent?.trim() ?? ""
-      if (!raw.startsWith("@")) return
-      const userName = raw.slice(1).trim()
-      if (
-        !userName ||
-        userName === "here" ||
-        userName === "channel" ||
-        userName === "everyone"
-      ) {
+      if (raw.startsWith("@") && onMentionClick) {
+        const userName = raw.slice(1).trim()
+        if (
+          !userName ||
+          userName === "here" ||
+          userName === "channel" ||
+          userName === "everyone"
+        ) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        onMentionClick(userName)
         return
       }
 
-      event.preventDefault()
-      event.stopPropagation()
-      onMentionClick(userName)
-      return
+      if (raw.startsWith("#") && onChannelClick) {
+        const channelName = raw.slice(1).trim()
+        if (!channelName) return
+
+        event.preventDefault()
+        event.stopPropagation()
+        onChannelClick(`#${channelName}`)
+        return
+      }
     }
 
     const nextPath = getInternalThreadPathFromClickTarget(target)
@@ -538,6 +568,7 @@ export function ThreadCard({
                       compact={compact}
                       onOpenFile={openFileByKey}
                       onMentionClick={onMentionClick}
+                      onChannelClick={onChannelClick}
                       onNavigateToThread={navigateToThread}
                     />
                   ))}

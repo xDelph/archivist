@@ -304,6 +304,11 @@ export default function ArchivistDashboard() {
     setSelectedUser(userName)
   }, [])
 
+  const applyChannelFilterFromMention = useCallback((channelName: string) => {
+    setCollapseSignal((value) => value + 1)
+    setSelectedChannel(channelName)
+  }, [])
+
   function retryCurrentTab(): void {
     setTabCache((prev) => {
       const next = { ...prev }
@@ -520,6 +525,7 @@ export default function ArchivistDashboard() {
               density={density}
               onLoadThreadMessages={loadThreadMessages}
               onMentionClick={applyUserFilterFromMention}
+              onChannelClick={applyChannelFilterFromMention}
               collapseSignal={collapseSignal}
             />
           ))}
