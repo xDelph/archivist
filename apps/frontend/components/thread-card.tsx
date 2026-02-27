@@ -278,10 +278,11 @@ export function ThreadCard({
 
   const scoreScaleMax = Math.max(maxScore ?? thread.score, 1)
   const scorePercent = Math.min((thread.score / scoreScaleMax) * 100, 100)
-  const fallbackCount = thread.threadMessages?.length ?? thread.replies
-  const messageCount = messages?.length ?? fallbackCount
-  const canExpand = fallbackCount > 0
+  const canExpand = Boolean(onLoadThreadMessages || thread.threadMessages)
   const loadedMessages = messages ?? []
+  const loadedReplyCount = loadedMessages.length > 0 ? Math.max(loadedMessages.length - 1, 0) : 0
+  const replyCount = messages ? loadedReplyCount : thread.replies
+  const messageCount = messages ? loadedMessages.length : thread.replies + 1
 
   const participants = loadedMessages.reduce<ThreadMessage["author"][]>((acc, message) => {
     if (!acc.find((author) => author.name === message.author.name)) {
@@ -549,7 +550,9 @@ export function ThreadCard({
                 <div className="flex items-center gap-2 bg-secondary/50 px-4 py-2">
                   <MessageSquare className="size-3.5 text-primary" />
                   <span className="text-xs font-medium text-foreground">
-                    {messageCount} {messageCount === 1 ? "reply" : "replies"} in thread
+                    {replyCount > 0
+                      ? `${replyCount} ${replyCount === 1 ? "reply" : "replies"} in thread`
+                      : `${messageCount} ${messageCount === 1 ? "message" : "messages"} in thread`}
                   </span>
                   <div className="ml-auto flex -space-x-1.5">
                     {participants.slice(0, 5).map((author) => (
