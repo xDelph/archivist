@@ -10,6 +10,8 @@
     "typecheck": "turbo run typecheck",
     "check": "turbo run check",
     "fmt": "turbo run fmt",
+    "dev:backend": "vercel dev --yes --listen 3100",
+    "dev:frontend": "cd apps/frontend && pnpm run dev --port 3000",
     "release:preflight": "bash scripts/release/preflight-check.sh",
     "release:smoke": "bash scripts/release/smoke-test.sh"
   },
