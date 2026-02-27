@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   MessageSquare,
   Heart,
@@ -34,6 +35,23 @@ interface ThreadCardProps {
 
 interface ViewerFile extends ThreadFile {
   key: string
+}
+
+function getInternalThreadPathFromClickTarget(target: HTMLElement): string | null {
+  const anchor = target.closest("a")
+  if (!anchor) return null
+  const href = anchor.getAttribute("href")
+  if (!href) return null
+
+  try {
+    const url = new URL(href, window.location.href)
+    if (url.origin !== window.location.origin || url.pathname !== "/record/thread") {
+      return null
+    }
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch (_err) {
+    return null
+  }
 }
 
 function FileIcon({ type }: { type?: "image" | "pdf" | "code" | "link" }) {
@@ -88,29 +106,39 @@ function ThreadMessageItem({
   compact,
   onOpenFile,
   onMentionClick,
+  onNavigateToThread,
 }: {
   msg: ThreadMessage
   compact: boolean
   onOpenFile: (fileKey: string) => void
   onMentionClick?: (userName: string) => void
+  onNavigateToThread?: (path: string) => void
 }) {
-  function handleMentionClick(event: React.MouseEvent<HTMLElement>): void {
-    if (!onMentionClick) return
+  function handleMessageClick(event: React.MouseEvent<HTMLElement>): void {
     const target = event.target as HTMLElement
     const mention = target.closest(".mention")
-    if (!mention) return
+    if (mention && onMentionClick) {
+      const raw = mention.textContent?.trim() ?? ""
+      if (!raw.startsWith("@")) return
 
-    const raw = mention.textContent?.trim() ?? ""
-    if (!raw.startsWith("@")) return
+      const userName = raw.slice(1).trim()
+      if (!userName || userName === "here" || userName === "channel" || userName === "everyone") {
+        return
+      }
 
-    const userName = raw.slice(1).trim()
-    if (!userName || userName === "here" || userName === "channel" || userName === "everyone") {
+      event.preventDefault()
+      event.stopPropagation()
+      onMentionClick(userName)
       return
     }
 
+    if (!onNavigateToThread) return
+    const nextPath = getInternalThreadPathFromClickTarget(target)
+    if (!nextPath) return
+
     event.preventDefault()
     event.stopPropagation()
-    onMentionClick(userName)
+    onNavigateToThread(nextPath)
   }
 
   return (
@@ -136,7 +164,7 @@ function ThreadMessageItem({
           className={`slack-text break-words text-secondary-foreground ${
             compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"
           } [&_.mention]:cursor-pointer [&_.mention]:font-medium [&_.mention]:text-primary [&_.mention:hover]:underline [&_a]:text-blue-500 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-blue-400 [&_a.url-highlight]:text-red-500 [&_a.url-highlight:hover]:text-red-400 [&_mark.search-highlight]:rounded-sm [&_mark.search-highlight]:bg-red-500/20 [&_mark.search-highlight]:px-0.5 [&_mark.search-highlight]:text-red-500 [&_code.slack-inline-code]:rounded [&_code.slack-inline-code]:bg-secondary [&_code.slack-inline-code]:px-1 [&_code.slack-inline-code]:py-0.5 [&_code.slack-inline-code]:font-mono [&_code.slack-inline-code]:text-[0.85em] [&_pre.slack-code]:mt-2 [&_pre.slack-code]:overflow-x-auto [&_pre.slack-code]:rounded-md [&_pre.slack-code]:border [&_pre.slack-code]:border-border/70 [&_pre.slack-code]:bg-secondary/70 [&_pre.slack-code]:p-3 [&_pre.slack-code]:font-mono [&_pre.slack-code]:text-[12px]`}
-          onClickCapture={handleMentionClick}
+          onClickCapture={handleMessageClick}
           dangerouslySetInnerHTML={{ __html: msg.messageHtml }}
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -201,6 +229,7 @@ export function ThreadCard({
   onMentionClick,
   collapseSignal,
 }: ThreadCardProps) {
+  const router = useRouter()
   const compact = density === "compact"
 
   const [expanded, setExpanded] = useState(false)
@@ -311,6 +340,40 @@ export function ThreadCard({
     }
   }
 
+  function navigateToThread(path: string): void {
+    router.push(path)
+  }
+
+  function handlePreviewContentClick(event: React.MouseEvent<HTMLElement>): void {
+    const target = event.target as HTMLElement
+    const mention = target.closest(".mention")
+    if (mention && onMentionClick) {
+      const raw = mention.textContent?.trim() ?? ""
+      if (!raw.startsWith("@")) return
+      const userName = raw.slice(1).trim()
+      if (
+        !userName ||
+        userName === "here" ||
+        userName === "channel" ||
+        userName === "everyone"
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      onMentionClick(userName)
+      return
+    }
+
+    const nextPath = getInternalThreadPathFromClickTarget(target)
+    if (!nextPath) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    navigateToThread(nextPath)
+  }
+
   return (
     <>
       <div
@@ -370,28 +433,7 @@ export function ThreadCard({
               className={`slack-text break-words text-secondary-foreground ${
                 compact ? "text-[13px] leading-snug" : "text-sm leading-relaxed"
               } ${expanded ? "" : "line-clamp-2"} [&_.mention]:cursor-pointer [&_.mention]:font-medium [&_.mention]:text-primary [&_.mention:hover]:underline [&_a]:text-blue-500 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-blue-400 [&_a.url-highlight]:text-red-500 [&_a.url-highlight:hover]:text-red-400 [&_mark.search-highlight]:rounded-sm [&_mark.search-highlight]:bg-red-500/20 [&_mark.search-highlight]:px-0.5 [&_mark.search-highlight]:text-red-500 [&_code.slack-inline-code]:rounded [&_code.slack-inline-code]:bg-secondary [&_code.slack-inline-code]:px-1 [&_code.slack-inline-code]:py-0.5 [&_code.slack-inline-code]:font-mono [&_code.slack-inline-code]:text-[0.85em] [&_pre.slack-code]:mt-2 [&_pre.slack-code]:overflow-x-auto [&_pre.slack-code]:rounded-md [&_pre.slack-code]:border [&_pre.slack-code]:border-border/70 [&_pre.slack-code]:bg-secondary/70 [&_pre.slack-code]:p-3 [&_pre.slack-code]:font-mono [&_pre.slack-code]:text-[12px]`}
-              onClickCapture={(event) => {
-                if (!onMentionClick) return
-                const target = event.target as HTMLElement
-                const mention = target.closest(".mention")
-                if (!mention) return
-
-                const raw = mention.textContent?.trim() ?? ""
-                if (!raw.startsWith("@")) return
-                const userName = raw.slice(1).trim()
-                if (
-                  !userName ||
-                  userName === "here" ||
-                  userName === "channel" ||
-                  userName === "everyone"
-                ) {
-                  return
-                }
-
-                event.preventDefault()
-                event.stopPropagation()
-                onMentionClick(userName)
-              }}
+              onClickCapture={handlePreviewContentClick}
               dangerouslySetInnerHTML={{ __html: thread.messageHtml }}
             />
 
@@ -496,6 +538,7 @@ export function ThreadCard({
                       compact={compact}
                       onOpenFile={openFileByKey}
                       onMentionClick={onMentionClick}
+                      onNavigateToThread={navigateToThread}
                     />
                   ))}
                 </div>
