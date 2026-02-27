@@ -160,23 +160,15 @@ fn test_render_slack_text_plain_url_is_linkified() {
 
 #[test]
 fn test_render_slack_text_preserves_inline_code() {
-    let html = render_slack_text(
-        "Run `cargo test` now",
-        &HashMap::new(),
-        &HashMap::new(),
-    )
-    .into_string();
+    let html =
+        render_slack_text("Run `cargo test` now", &HashMap::new(), &HashMap::new()).into_string();
     assert!(html.contains(r#"<code class="slack-inline-code">cargo test</code>"#));
 }
 
 #[test]
 fn test_render_slack_text_preserves_code_block() {
-    let html = render_slack_text(
-        "```rust\nlet x = 1;\n```",
-        &HashMap::new(),
-        &HashMap::new(),
-    )
-    .into_string();
+    let html = render_slack_text("```rust\nlet x = 1;\n```", &HashMap::new(), &HashMap::new())
+        .into_string();
     assert!(html.contains(r#"<pre class="slack-code"><code data-lang="rust">"#));
     assert!(html.contains("let x = 1;"));
 }

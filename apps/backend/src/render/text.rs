@@ -210,9 +210,9 @@ fn render_code_block(raw: &str) -> String {
 fn is_language_hint(candidate: &str) -> bool {
     !candidate.is_empty()
         && candidate.len() <= 24
-        && candidate.chars().all(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+' | '#' | '.')
-        })
+        && candidate
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+' | '#' | '.'))
 }
 
 fn linkify_plain_text(segment: &str, channels: &HashMap<String, String>) -> String {
@@ -324,7 +324,12 @@ fn render_token(
     format!("&lt;{}&gt;", escape_html(inner))
 }
 
-fn render_url(url: &str, label: &str, channels: &HashMap<String, String>, has_label: bool) -> String {
+fn render_url(
+    url: &str,
+    label: &str,
+    channels: &HashMap<String, String>,
+    has_label: bool,
+) -> String {
     // Rewrite internal Slack thread links to archiver URLs
     let workspace = std::env::var("SLACK_WORKSPACE_URL").ok();
     if let Some((channel_id, ts)) = parse_slack_thread_url(url, workspace.as_deref()) {

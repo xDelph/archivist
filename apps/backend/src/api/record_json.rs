@@ -223,27 +223,28 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
             };
 
             ApiThread {
-            id: format!("{}:{}", thread.channel_id, thread.thread_ts),
-            channel_id: thread.channel_id.clone(),
-            ts: thread.thread_ts.clone(),
-            author: ApiAuthor {
-                name: thread.display_name.clone(),
-                initials: initials(&thread.display_name),
-                avatar_url: thread.avatar_url.clone(),
-            },
-            channel: format!("#{}", thread.channel_name),
-            message: thread.text.clone(),
-            message_html,
-            date: format_day_date(&thread.thread_ts),
-            replies: thread.reply_count,
-            reactions: thread.reaction_count,
-            participants: thread.participant_count,
-            score: thread.score,
-            has_files: root_files
-                .file_counts_by_thread
-                .contains_key(&(thread.channel_id.clone(), thread.thread_ts.clone())),
-            url: extract_first_url(&thread.text),
-        }})
+                id: format!("{}:{}", thread.channel_id, thread.thread_ts),
+                channel_id: thread.channel_id.clone(),
+                ts: thread.thread_ts.clone(),
+                author: ApiAuthor {
+                    name: thread.display_name.clone(),
+                    initials: initials(&thread.display_name),
+                    avatar_url: thread.avatar_url.clone(),
+                },
+                channel: format!("#{}", thread.channel_name),
+                message: thread.text.clone(),
+                message_html,
+                date: format_day_date(&thread.thread_ts),
+                replies: thread.reply_count,
+                reactions: thread.reaction_count,
+                participants: thread.participant_count,
+                score: thread.score,
+                has_files: root_files
+                    .file_counts_by_thread
+                    .contains_key(&(thread.channel_id.clone(), thread.thread_ts.clone())),
+                url: extract_first_url(&thread.text),
+            }
+        })
         .collect();
 
     let resp = ApiThreadsResponse {
@@ -289,13 +290,7 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
     let messages = messages
         .into_iter()
         .map(|message| {
-            map_thread_message(
-                message,
-                &mut files_by_ts,
-                &users_map,
-                &channels_map,
-                search,
-            )
+            map_thread_message(message, &mut files_by_ts, &users_map, &channels_map, search)
         })
         .collect();
 
@@ -648,7 +643,9 @@ fn format_day_date(ts: &str) -> String {
 }
 
 fn format_time_24h(ts: &str) -> String {
-    timestamp_to_datetime(ts).format("%d %b %Y %H:%M").to_string()
+    timestamp_to_datetime(ts)
+        .format("%d %b %Y %H:%M")
+        .to_string()
 }
 
 fn format_time_iso(ts: &str) -> String {

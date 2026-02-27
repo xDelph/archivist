@@ -9,9 +9,8 @@ use vercel_runtime::{Error, Request, Response, ResponseBody};
 
 use tracing::{info, warn};
 
-use crate::db::Repository;
 use crate::db::pool::create_pool;
-use crate::slack::backfill::{SlackApi, SlackClient};
+use crate::slack::backfill::SlackClient;
 use crate::storage::R2Client;
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
@@ -36,8 +35,6 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
-    let client = SlackClient::new(slack_token.clone());
-    let storage = R2Client::from_env().await.ok();
     let pool = match pool().await {
         Ok(p) => p,
         Err(e) => {
@@ -48,16 +45,7 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
                 .body(ResponseBody::from(Bytes::from(body)))?);
         }
     };
-    let resp = match process(
-        &admin_token,
-        &slack_token,
-        req,
-        pool,
-        &client,
-        storage.as_ref(),
-    )
-    .await
-    {
+    let resp = match process(&admin_token, req).await {
         Ok(r) => r,
         Err(e) => {
             let body = format!(r#"{{"ok":false,"error":"{}"}}"#, e);
@@ -67,23 +55,35 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
                 .body(ResponseBody::from(Bytes::from(body)))?);
         }
     };
+    if resp.status() == StatusCode::ACCEPTED {
+        let backfill_token = slack_token;
+        let backfill_repo = pool;
+        let backfill_storage = R2Client::from_env().await.ok();
+        tokio::spawn(async move {
+            let client = SlackClient::new(backfill_token.clone());
+            info!("background backfill started");
+            match crate::slack::backfill::run_backfill(
+                backfill_repo,
+                &client,
+                &backfill_token,
+                backfill_storage.as_ref(),
+            )
+            .await
+            {
+                Ok(()) => info!("background backfill completed"),
+                Err(err) => warn!(error = %err, "background backfill failed"),
+            }
+        });
+    }
     let (parts, body) = resp.into_parts();
     Ok(Response::from_parts(parts, ResponseBody::from(body)))
 }
 
-/// Core handler logic — token, repo, and client injected for testability.
-pub(crate) async fn process<R, S>(
+/// Core handler logic — auth check only (backfill is launched by [`handler`]).
+pub(crate) async fn process(
     admin_token: &str,
-    slack_token: &str,
     req: http::Request<Bytes>,
-    repo: &R,
-    client: &S,
-    storage: Option<&R2Client>,
-) -> Result<Response<Bytes>, Error>
-where
-    R: Repository,
-    S: SlackApi,
-{
+) -> Result<Response<Bytes>, Error> {
     let provided = req
         .headers()
         .get("authorization")
@@ -97,14 +97,8 @@ where
             .body(Bytes::new())?);
     }
 
-    info!("backfill started");
-    crate::slack::backfill::run_backfill(repo, client, slack_token, storage)
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
-    info!("backfill completed");
-
     Ok(Response::builder()
-        .status(StatusCode::OK)
+        .status(StatusCode::ACCEPTED)
         .header("Content-Type", "application/json")
-        .body(Bytes::from(r#"{"ok":true}"#))?)
+        .body(Bytes::from(r#"{"ok":true,"queued":true}"#))?)
 }

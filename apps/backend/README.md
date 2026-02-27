@@ -25,7 +25,8 @@ GET  /record/thread?channel_id=&ts=[&search=]
   → return HTML fragment (loaded lazily by HTMX on first expand)
 
 POST /api/admin/backfill  (bearer-token protected)
-  → conversations.list → conversations.history → conversations.replies
+  → returns immediately (`202 Accepted`) and starts background backfill
+  → background job runs conversations.list → conversations.history → conversations.replies
 GET  /api/health
 ```
 
@@ -54,7 +55,7 @@ public/         Static assets (record.css, modal.js, og.png)
 |---|---|
 | `POST /api/slack/events` | Receive Slack Events API payloads |
 | `GET /api/health` | Health check |
-| `POST /api/admin/backfill` | Trigger channel backfill (bearer-token protected) |
+| `POST /api/admin/backfill` | Queue channel backfill (bearer-token protected, immediate `202`) |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
 | `GET /record/weekly?tab=top|week|month` | SSR ranking tabs (all-time, weekly, monthly) with rank-change badges |
 | `GET /record/threads?sort=&period=&channel=&user=&search=` | HTMX fragment: filtered/sorted thread list |
