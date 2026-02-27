@@ -1,6 +1,5 @@
 {
   "builds": [{ "src": "api/*.rs", "use": "@vercel/rust" }],
-  "crons": [{ "path": "/api/admin/backfill/run", "schedule": "* * * * *" }],
   "routes": [
     { "src": "/", "dest": "/api/index.rs" },
     { "src": "/api/slack/events", "dest": "/api/events.rs" },
