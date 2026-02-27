@@ -19,7 +19,7 @@ export function StatCard({ title, value, change, icon }: StatCardProps) {
   const isPositive = change > 0
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{title}</span>
         <div className="flex size-8 items-center justify-center rounded-md bg-primary/10">
