@@ -39,8 +39,13 @@ interface ViewerFile extends ThreadFile {
 }
 
 function getClosestFromTarget(target: EventTarget | null, selector: string): Element | null {
-  if (!(target instanceof Element)) return null
-  return target.closest(selector)
+  if (target instanceof Element) {
+    return target.closest(selector)
+  }
+  if (target instanceof Node && target.parentElement) {
+    return target.parentElement.closest(selector)
+  }
+  return null
 }
 
 function getInternalThreadPathFromClickTarget(target: EventTarget | null): string | null {
@@ -449,11 +454,18 @@ export function ThreadCard({
           <div className={`flex min-w-0 flex-1 flex-col ${compact ? "gap-1.5" : "gap-2"}`}>
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">{thread.author.name}</span>
-              <span
-                className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${thread.channelColor}`}
+              <button
+                type="button"
+                className={`inline-flex cursor-pointer items-center rounded-md px-2 py-0.5 text-xs font-medium ${thread.channelColor} hover:brightness-110`}
+                onClick={(event) => {
+                  if (!onChannelClick) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onChannelClick(thread.channel)
+                }}
               >
                 {thread.channel}
-              </span>
+              </button>
               {thread.hasFiles && (
                 <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
                   <FileIcon type={thread.fileType} />
