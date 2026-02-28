@@ -15,6 +15,7 @@ const IGNORED_SUBTYPES: &[&str] = &[
     "channel_name",
     "channel_archive",
     "channel_unarchive",
+    "message_deleted",
     "message_replied",
 ];
 

@@ -7,6 +7,8 @@ use tracing::{info, warn};
 
 use crate::storage::R2Client;
 
+const DEFAULT_BACKFILL_HISTORY_OVERLAP_SECONDS: f64 = 3600.0;
+
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -386,9 +388,11 @@ where
     S: SlackApi,
 {
     let oldest = repo.get_last_archived_ts(channel_id).await?;
+    let history_oldest = apply_history_overlap(oldest.as_deref());
     info!(
         channel_id,
         oldest_ts = oldest.as_deref().unwrap_or("<none>"),
+        history_oldest_ts = history_oldest.as_deref().unwrap_or("<none>"),
         "starting channel backfill window"
     );
     let mut stats = ChannelBackfillStats::default();
@@ -399,7 +403,7 @@ where
     let mut touched_threads: HashSet<String> = HashSet::new();
     loop {
         let (messages, next) = match client
-            .conversations_history(channel_id, oldest.as_deref(), cursor.as_deref())
+            .conversations_history(channel_id, history_oldest.as_deref(), cursor.as_deref())
             .await
         {
             Ok(r) => r,
@@ -484,6 +488,34 @@ where
     );
 
     Ok(Some(stats))
+}
+
+fn history_overlap_seconds() -> f64 {
+    std::env::var("BACKFILL_HISTORY_OVERLAP_SECONDS")
+        .ok()
+        .and_then(|raw| raw.parse::<f64>().ok())
+        .filter(|value| *value >= 0.0)
+        .unwrap_or(DEFAULT_BACKFILL_HISTORY_OVERLAP_SECONDS)
+}
+
+fn apply_history_overlap(oldest: Option<&str>) -> Option<String> {
+    let oldest = oldest?.trim();
+    if oldest.is_empty() {
+        return None;
+    }
+
+    let overlap = history_overlap_seconds();
+    if overlap <= 0.0 {
+        return Some(oldest.to_owned());
+    }
+
+    match oldest.parse::<f64>() {
+        Ok(value) => {
+            let adjusted = (value - overlap).max(0.0);
+            Some(format!("{adjusted:.6}"))
+        }
+        Err(_) => Some(oldest.to_owned()),
+    }
 }
 
 async fn backfill_replies<R, S>(

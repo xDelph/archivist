@@ -105,6 +105,7 @@ cargo test
 | `SLACK_USER_TOKEN` | `xoxp-...` — for backfill (full channel history) |
 | `ADMIN_TOKEN` | Shared secret for `POST /api/admin/backfill` |
 | `CRON_SECRET` | Optional bearer token accepted by `/api/admin/backfill/run` (for Vercel Cron security) |
+| `BACKFILL_HISTORY_OVERLAP_SECONDS` | Optional safety overlap for `conversations.history` oldest cutoff (default: `3600`) |
 | `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
 | `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |
