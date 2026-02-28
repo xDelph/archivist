@@ -21,6 +21,7 @@ pub trait Repository {
     async fn upsert_user(&self, u: &UserRecord) -> Result<()>;
     async fn upsert_channel(&self, c: &ChannelRecord) -> Result<()>;
     async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>>;
+    async fn get_recent_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>>;
     async fn upsert_thread_weekly_score(&self, channel_id: &str, message_ts: &str) -> Result<()>;
     async fn enqueue_thread_aggregation(
         &self,

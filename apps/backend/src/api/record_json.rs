@@ -169,6 +169,7 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
     let tab = match params.get("tab").map(String::as_str) {
         Some("week") => "week",
         Some("month") => "month",
+        Some("recent") => "recent",
         _ => "top",
     };
     let sort = params.get("sort").map(String::as_str).unwrap_or("score");
@@ -187,7 +188,12 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
         .unwrap_or(200)
         .min(200);
 
-    let base_threads = load_threads_for_tab(repo, tab).await?;
+    let base_limit = if tab == "recent" {
+        50_i64
+    } else {
+        limit as i64
+    };
+    let base_threads = load_threads_for_tab(repo, tab, base_limit).await?;
 
     let mut filtered_for_users = base_threads.clone();
     apply_channel_and_search_filters(&mut filtered_for_users, channel, search);
@@ -399,23 +405,36 @@ fn map_thread_message(
 async fn load_threads_for_tab<R: Repository>(
     repo: &R,
     tab: &str,
+    limit: i64,
 ) -> Result<Vec<ThreadSummary>, Error> {
     if tab == "week" {
         let rows = repo
-            .get_weekly_ranked_threads(200)
+            .get_weekly_ranked_threads(limit)
             .await
             .map_err(|e| Error::from(e.to_string()))?;
         return Ok(normalize_ranked_threads(rows));
     }
     if tab == "month" {
         let rows = repo
-            .get_monthly_ranked_threads(200)
+            .get_monthly_ranked_threads(limit)
             .await
             .map_err(|e| Error::from(e.to_string()))?;
         return Ok(normalize_ranked_threads(rows));
     }
+    if tab == "recent" {
+        return repo
+            .get_recent_threads(limit.min(50))
+            .await
+            .map_err(|e| Error::from(e.to_string()));
+    }
 
-    crate::api::record::cached_threads(repo)
+    if limit == 200 {
+        return crate::api::record::cached_threads(repo)
+            .await
+            .map_err(|e| Error::from(e.to_string()));
+    }
+
+    repo.get_top_threads(limit)
         .await
         .map_err(|e| Error::from(e.to_string()))
 }
@@ -445,7 +464,12 @@ fn apply_channel_and_search_filters(threads: &mut Vec<ThreadSummary>, channel: &
     }
     if !search.is_empty() {
         let query = search.to_lowercase();
-        threads.retain(|thread| thread.text.to_lowercase().contains(&query));
+        threads.retain(|thread| {
+            thread.text.to_lowercase().contains(&query)
+                || thread.search_text.to_lowercase().contains(&query)
+                || thread.display_name.to_lowercase().contains(&query)
+                || thread.channel_name.to_lowercase().contains(&query)
+        });
     }
 }
 

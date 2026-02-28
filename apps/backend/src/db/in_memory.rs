@@ -110,6 +110,16 @@ impl Repository for InMemoryRepository {
         Ok(threads.iter().take(limit as usize).cloned().collect())
     }
 
+    async fn get_recent_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>> {
+        let mut threads = self.threads.lock().unwrap().clone();
+        threads.sort_by(|a, b| {
+            let a_ts = a.thread_ts.parse::<f64>().unwrap_or(0.0);
+            let b_ts = b.thread_ts.parse::<f64>().unwrap_or(0.0);
+            b_ts.partial_cmp(&a_ts).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(threads.into_iter().take(limit as usize).collect())
+    }
+
     async fn upsert_thread_weekly_score(&self, channel_id: &str, message_ts: &str) -> Result<()> {
         self.weekly_upserts
             .lock()
