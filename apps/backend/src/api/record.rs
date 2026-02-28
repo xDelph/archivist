@@ -7,6 +7,7 @@ use http::StatusCode;
 use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tokio::sync::OnceCell;
+use tracing::error;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
 use crate::db::pool::create_pool;
@@ -154,11 +155,49 @@ pub(crate) async fn cached_channels<R: Repository>(
 // ── Vercel entry-point ────────────────────────────────────────────────────────
 
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
+    let method = req.method().to_string();
+    let path = req.uri().path().to_owned();
+    let query = req.uri().query().unwrap_or("").to_owned();
+    match tokio::spawn(async move { handle_request(req).await }).await {
+        Ok(Ok(resp)) => Ok(resp),
+        Ok(Err(err)) => {
+            error!(
+                method,
+                path,
+                query,
+                error = %err,
+                "record handler failed"
+            );
+            internal_error_response()
+        }
+        Err(join_err) => {
+            error!(
+                method,
+                path,
+                query,
+                is_panic = join_err.is_panic(),
+                error = %join_err,
+                "record handler task crashed"
+            );
+            internal_error_response()
+        }
+    }
+}
+
+async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
     let (parts, body) = process(pool().await?, req).await?.into_parts();
     Ok(Response::from_parts(parts, ResponseBody::from(body)))
+}
+
+fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
+    let body = Bytes::from_static(br#"{"ok":false,"error":"internal server error"}"#);
+    Ok(Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .header("Content-Type", "application/json")
+        .body(ResponseBody::from(body))?)
 }
 
 pub(crate) async fn process<R: Repository>(

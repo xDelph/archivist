@@ -7,7 +7,7 @@ use sqlx::PgPool;
 use tokio::sync::OnceCell;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::db::Repository;
 use crate::db::pool::create_pool;
@@ -31,6 +31,28 @@ async fn pool() -> Result<&'static PgPool, Error> {
 
 /// Vercel entry-point — collects streaming body and delegates to [`process`].
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
+    let method = req.method().to_string();
+    let path = req.uri().path().to_owned();
+    match tokio::spawn(async move { handle_request(req).await }).await {
+        Ok(Ok(resp)) => Ok(resp),
+        Ok(Err(err)) => {
+            error!(method, path, error = %err, "events handler failed");
+            internal_error_response()
+        }
+        Err(join_err) => {
+            error!(
+                method,
+                path,
+                is_panic = join_err.is_panic(),
+                error = %join_err,
+                "events handler task crashed"
+            );
+            internal_error_response()
+        }
+    }
+}
+
+async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let signing_secret = env::var("SLACK_SIGNING_SECRET").unwrap_or_default();
     let slack_token = env::var("SLACK_BOT_TOKEN")
         .or_else(|_| env::var("SLACK_USER_TOKEN"))
@@ -49,6 +71,15 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     .await?
     .into_parts();
     Ok(Response::from_parts(parts, ResponseBody::from(body)))
+}
+
+fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
+    Ok(Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .header("Content-Type", "application/json")
+        .body(ResponseBody::from(Bytes::from_static(
+            br#"{"ok":false,"error":"internal server error"}"#,
+        )))?)
 }
 
 /// Core handler logic — secrets and body bytes injected for testability.

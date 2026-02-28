@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::sync::OnceLock;
 
 use tracing::info;
@@ -8,6 +9,46 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 static FILE_LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+static PANIC_HOOK_SET: OnceLock<()> = OnceLock::new();
+
+fn append_raw_log_line(line: &str) {
+    if fs::create_dir_all("./logs").is_err() {
+        return;
+    }
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("./logs/app.log")
+    {
+        let _ = writeln!(file, "{line}");
+    }
+}
+
+fn install_panic_hook() {
+    if PANIC_HOOK_SET.set(()).is_err() {
+        return;
+    }
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let location = panic_info
+            .location()
+            .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
+            .unwrap_or_else(|| "unknown".to_owned());
+        let payload = if let Some(message) = panic_info.payload().downcast_ref::<&str>() {
+            (*message).to_owned()
+        } else if let Some(message) = panic_info.payload().downcast_ref::<String>() {
+            message.clone()
+        } else {
+            "non-string panic payload".to_owned()
+        };
+        append_raw_log_line(&format!(
+            r#"{{"level":"ERROR","target":"panic","message":"panic caught","location":"{}","payload":"{}"}}"#,
+            location.replace('"', "'"),
+            payload.replace('"', "'")
+        ));
+        previous_hook(panic_info);
+    }));
+}
 
 fn is_service_env_development() -> bool {
     env::var("SERVICE_ENV")
@@ -19,6 +60,8 @@ pub fn init_tracing() {
     // Local `vercel dev` may not expose shell env vars directly to Rust lambdas.
     // Load `.env` as a fallback source for SERVICE_ENV.
     let _ = dotenvy::dotenv();
+
+    install_panic_hook();
 
     let is_dev = is_service_env_development();
     let default_level = if is_dev { "trace" } else { "info" };

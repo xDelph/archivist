@@ -7,7 +7,7 @@ use sqlx::PgPool;
 use tokio::sync::OnceCell;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::api::backfill_jobs::enqueue_backfill_job;
 use crate::db::pool::create_pool;
@@ -26,6 +26,30 @@ async fn pool() -> Result<&'static PgPool, Error> {
 
 /// Vercel entry-point — reads config from env and delegates to [`process`].
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
+    let method = req.method().to_string();
+    let path = req.uri().path().to_owned();
+    let query = req.uri().query().unwrap_or("").to_owned();
+    match tokio::spawn(async move { handle_request(req).await }).await {
+        Ok(Ok(resp)) => Ok(resp),
+        Ok(Err(err)) => {
+            error!(method, path, query, error = %err, "admin handler failed");
+            internal_error_response()
+        }
+        Err(join_err) => {
+            error!(
+                method,
+                path,
+                query,
+                is_panic = join_err.is_panic(),
+                error = %join_err,
+                "admin handler task crashed"
+            );
+            internal_error_response()
+        }
+    }
+}
+
+async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_default();
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
@@ -76,6 +100,15 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
         .status(StatusCode::ACCEPTED)
         .header("Content-Type", "application/json")
         .body(ResponseBody::from(Bytes::from(body)))?)
+}
+
+fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
+    Ok(Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .header("Content-Type", "application/json")
+        .body(ResponseBody::from(Bytes::from_static(
+            br#"{"ok":false,"error":"internal server error"}"#,
+        )))?)
 }
 
 /// Core handler logic — auth check only (backfill is launched by [`handler`]).
