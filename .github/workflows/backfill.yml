@@ -24,12 +24,8 @@ jobs:
             echo "Missing ADMIN_TOKEN secret"
             exit 1
           fi
-          curl -fsS -X POST "${BASE_URL%/}/api/admin/backfill" \
+          ENQUEUE_RESPONSE="$(curl -fsS -X POST "${BASE_URL%/}/api/admin/backfill" \
             -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-            --max-time 10
-          # Best effort: kick the worker endpoint without waiting for full completion.
-          # The queue remains the source of truth, and Vercel Cron also drains it.
-          curl -s -X POST "${BASE_URL%/}/api/admin/backfill/run" \
-            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-            --max-time 2 >/dev/null || true
-          echo "Backfill queued"
+            --max-time 15)"
+          echo "Enqueue response: ${ENQUEUE_RESPONSE}"
+          echo "Backfill queued (async worker continues in background)."

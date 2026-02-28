@@ -10,6 +10,7 @@ use vercel_runtime::{Error, Request, Response, ResponseBody};
 use tracing::{error, info, warn};
 
 use crate::api::backfill_jobs::enqueue_backfill_job;
+use crate::api::worker_kick::{infer_base_url_from_headers, schedule_worker_kick};
 use crate::db::pool::create_pool;
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
@@ -52,6 +53,7 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
 async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_default();
     let (parts, body) = req.into_parts();
+    let base_url_hint = infer_base_url_from_headers(&parts.headers);
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
     let requested_by = req
@@ -87,6 +89,11 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         queued_now = enqueue_result.queued_now,
         requested_by = %requested_by,
         "backfill job enqueued"
+    );
+    schedule_worker_kick(
+        base_url_hint,
+        Some(admin_token.clone()),
+        "backfill_enqueued",
     );
 
     let body = serde_json::json!({

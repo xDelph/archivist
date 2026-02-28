@@ -195,8 +195,9 @@ curl https://<your-project>.vercel.app/api/health
 Backfill now uses a queue + worker flow:
 
 - `POST /api/admin/backfill` inserts one queued job (deduplicated if a job is already queued/running).
-- `/api/admin/backfill/run` is executed by Vercel Cron every minute (`vercel.json`) and processes one queued job.
-- GitHub Actions still triggers `/api/admin/backfill` hourly and performs a short best-effort worker kick.
+- `POST /api/admin/backfill` also performs a non-blocking self-kick to `/api/admin/backfill/run` so work continues in the background.
+- `/api/admin/backfill/run` chains additional non-blocking self-kicks while work remains (backfill or aggregation jobs).
+- GitHub Actions only triggers `/api/admin/backfill` hourly to keep runner usage minimal.
 
 Add these two secrets to the GitHub repository (`Settings → Secrets and variables → Actions`):
 

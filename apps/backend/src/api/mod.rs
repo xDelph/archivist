@@ -6,6 +6,7 @@ pub mod events;
 pub mod health;
 pub mod record;
 pub mod record_json;
+mod worker_kick;
 
 #[cfg(test)]
 mod tests;

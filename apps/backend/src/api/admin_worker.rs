@@ -12,6 +12,7 @@ use crate::api::aggregation_jobs::run_aggregation_batch;
 use crate::api::backfill_jobs::{
     claim_next_backfill_job, mark_backfill_job_failed, mark_backfill_job_succeeded,
 };
+use crate::api::worker_kick::{infer_base_url_from_headers, schedule_worker_kick};
 use crate::db::pool::create_pool;
 use crate::slack::backfill::{SlackClient, run_backfill};
 use crate::storage::R2Client;
@@ -60,6 +61,7 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         .unwrap_or_default();
 
     let (parts, body) = req.into_parts();
+    let base_url_hint = infer_base_url_from_headers(&parts.headers);
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
     let resp = process(&admin_token, cron_secret.as_deref(), req).await?;
@@ -129,6 +131,14 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         "ran": backfill_ran || aggregation.claimed > 0,
     })
     .to_string();
+    if backfill_ran || aggregation.claimed > 0 {
+        let kick_token = cron_secret
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .or_else(|| (!admin_token.is_empty()).then(|| admin_token.clone()));
+        schedule_worker_kick(base_url_hint, kick_token, "worker_continue");
+    }
 
     Ok(Response::builder()
         .status(StatusCode::OK)
