@@ -8,22 +8,22 @@ use super::models::{
 };
 use super::repository::Repository;
 
-fn row_to_thread_summary(row: &sqlx::postgres::PgRow) -> ThreadSummary {
-    ThreadSummary {
-        channel_id: row.get("channel_id"),
-        channel_name: row.get("channel_name"),
-        thread_ts: row.get("thread_ts"),
-        text: row.get("text"),
-        created_at: row.get("created_at"),
-        display_name: row.get("display_name"),
-        avatar_url: row.get("avatar_url"),
-        search_text: row.get("search_text"),
-        reaction_count: row.get("reaction_count"),
-        reply_count: row.get("reply_count"),
-        participant_count: row.get("participant_count"),
-        file_count: row.get("file_count"),
-        score: row.get("score"),
-    }
+fn row_to_thread_summary(row: &sqlx::postgres::PgRow) -> Result<ThreadSummary> {
+    Ok(ThreadSummary {
+        channel_id: row.try_get("channel_id")?,
+        channel_name: row.try_get("channel_name")?,
+        thread_ts: row.try_get("thread_ts")?,
+        text: row.try_get("text")?,
+        created_at: row.try_get("created_at")?,
+        display_name: row.try_get("display_name")?,
+        avatar_url: row.try_get("avatar_url")?,
+        search_text: row.try_get("search_text")?,
+        reaction_count: row.try_get("reaction_count")?,
+        reply_count: row.try_get("reply_count")?,
+        participant_count: row.try_get("participant_count")?,
+        file_count: row.try_get("file_count")?,
+        score: row.try_get("score")?,
+    })
 }
 
 fn read_model_v2_enabled() -> bool {
@@ -196,10 +196,10 @@ impl Repository for PgPool {
             .await?;
 
             if !rollup_rows.is_empty() {
-                return Ok(rollup_rows
+                return rollup_rows
                     .into_iter()
                     .map(|row| row_to_thread_summary(&row))
-                    .collect());
+                    .collect::<Result<Vec<_>>>();
             }
         }
 
@@ -258,6 +258,7 @@ impl Repository for PgPool {
                 s.reaction_count                        AS reaction_count,
                 s.reply_count                           AS reply_count,
                 s.participant_count                     AS participant_count,
+                -1::bigint                               AS file_count,
                 (s.reaction_count * 2
                     + s.reply_count
                     + s.participant_count)              AS score
@@ -273,24 +274,9 @@ impl Repository for PgPool {
         .fetch_all(self)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|r| ThreadSummary {
-                channel_id: r.get("channel_id"),
-                channel_name: r.get("channel_name"),
-                thread_ts: r.get("thread_ts"),
-                text: r.get("text"),
-                created_at: r.get("created_at"),
-                display_name: r.get("display_name"),
-                avatar_url: r.get("avatar_url"),
-                search_text: r.get("search_text"),
-                reaction_count: r.get("reaction_count"),
-                reply_count: r.get("reply_count"),
-                participant_count: r.get("participant_count"),
-                file_count: -1,
-                score: r.get("score"),
-            })
-            .collect())
+        rows.into_iter()
+            .map(|row| row_to_thread_summary(&row))
+            .collect::<Result<Vec<_>>>()
     }
 
     async fn get_recent_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>> {
@@ -326,10 +312,10 @@ impl Repository for PgPool {
             .await?;
 
             if !rows.is_empty() {
-                return Ok(rows
+                return rows
                     .into_iter()
                     .map(|row| row_to_thread_summary(&row))
-                    .collect());
+                    .collect::<Result<Vec<_>>>();
             }
         }
 
@@ -405,10 +391,9 @@ impl Repository for PgPool {
         .fetch_all(self)
         .await?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|row| row_to_thread_summary(&row))
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
     async fn upsert_thread_weekly_score(&self, channel_id: &str, message_ts: &str) -> Result<()> {
@@ -618,13 +603,15 @@ impl Repository for PgPool {
             .await?;
 
             if !rows.is_empty() {
-                return Ok(rows
+                return rows
                     .into_iter()
-                    .map(|row| ThreadWithWeeklyScore {
-                        thread: row_to_thread_summary(&row),
-                        score_week: row.get("score_week"),
+                    .map(|row| -> Result<ThreadWithWeeklyScore> {
+                        Ok(ThreadWithWeeklyScore {
+                            thread: row_to_thread_summary(&row)?,
+                            score_week: row.try_get("score_week")?,
+                        })
                     })
-                    .collect());
+                    .collect::<Result<Vec<_>>>();
             }
         }
 
@@ -698,13 +685,14 @@ impl Repository for PgPool {
         .fetch_all(self)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row| ThreadWithWeeklyScore {
-                thread: row_to_thread_summary(&row),
-                score_week: row.get("score_week"),
+        rows.into_iter()
+            .map(|row| -> Result<ThreadWithWeeklyScore> {
+                Ok(ThreadWithWeeklyScore {
+                    thread: row_to_thread_summary(&row)?,
+                    score_week: row.try_get("score_week")?,
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
     async fn get_weekly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>> {
@@ -750,15 +738,17 @@ impl Repository for PgPool {
             .await?;
 
             if !rows.is_empty() {
-                return Ok(rows
+                return rows
                     .into_iter()
-                    .map(|row| PeriodRankedThread {
-                        thread: row_to_thread_summary(&row),
-                        rank_score: row.get("rank_score"),
-                        rank: row.get("rank"),
-                        prev_rank: row.get("prev_rank"),
+                    .map(|row| -> Result<PeriodRankedThread> {
+                        Ok(PeriodRankedThread {
+                            thread: row_to_thread_summary(&row)?,
+                            rank_score: row.try_get("rank_score")?,
+                            rank: row.try_get("rank")?,
+                            prev_rank: row.try_get("prev_rank")?,
+                        })
                     })
-                    .collect());
+                    .collect::<Result<Vec<_>>>();
             }
         }
 
@@ -855,15 +845,16 @@ impl Repository for PgPool {
         .fetch_all(self)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row| PeriodRankedThread {
-                thread: row_to_thread_summary(&row),
-                rank_score: row.get("rank_score"),
-                rank: row.get("rank"),
-                prev_rank: row.get("prev_rank"),
+        rows.into_iter()
+            .map(|row| -> Result<PeriodRankedThread> {
+                Ok(PeriodRankedThread {
+                    thread: row_to_thread_summary(&row)?,
+                    rank_score: row.try_get("rank_score")?,
+                    rank: row.try_get("rank")?,
+                    prev_rank: row.try_get("prev_rank")?,
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
     async fn get_monthly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>> {
@@ -909,15 +900,17 @@ impl Repository for PgPool {
             .await?;
 
             if !rows.is_empty() {
-                return Ok(rows
+                return rows
                     .into_iter()
-                    .map(|row| PeriodRankedThread {
-                        thread: row_to_thread_summary(&row),
-                        rank_score: row.get("rank_score"),
-                        rank: row.get("rank"),
-                        prev_rank: row.get("prev_rank"),
+                    .map(|row| -> Result<PeriodRankedThread> {
+                        Ok(PeriodRankedThread {
+                            thread: row_to_thread_summary(&row)?,
+                            rank_score: row.try_get("rank_score")?,
+                            rank: row.try_get("rank")?,
+                            prev_rank: row.try_get("prev_rank")?,
+                        })
                     })
-                    .collect());
+                    .collect::<Result<Vec<_>>>();
             }
         }
 
@@ -1014,15 +1007,16 @@ impl Repository for PgPool {
         .fetch_all(self)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row| PeriodRankedThread {
-                thread: row_to_thread_summary(&row),
-                rank_score: row.get("rank_score"),
-                rank: row.get("rank"),
-                prev_rank: row.get("prev_rank"),
+        rows.into_iter()
+            .map(|row| -> Result<PeriodRankedThread> {
+                Ok(PeriodRankedThread {
+                    thread: row_to_thread_summary(&row)?,
+                    rank_score: row.try_get("rank_score")?,
+                    rank: row.try_get("rank")?,
+                    prev_rank: row.try_get("prev_rank")?,
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
     async fn get_thread_messages(
@@ -1085,16 +1079,17 @@ impl Repository for PgPool {
         .fetch_all(self)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|r| ThreadMessage {
-                ts: r.get("ts"),
-                text: r.get("text"),
-                display_name: r.get("display_name"),
-                avatar_url: r.get("avatar_url"),
-                reactions: r.get("reactions"),
+        rows.into_iter()
+            .map(|row| -> Result<ThreadMessage> {
+                Ok(ThreadMessage {
+                    ts: row.try_get("ts")?,
+                    text: row.try_get("text")?,
+                    display_name: row.try_get("display_name")?,
+                    avatar_url: row.try_get("avatar_url")?,
+                    reactions: row.try_get("reactions")?,
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
     async fn file_exists(&self, file_id: &str) -> Result<bool> {
