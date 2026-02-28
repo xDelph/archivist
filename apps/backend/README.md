@@ -123,6 +123,27 @@ rtk cargo fmt && rtk cargo check && rtk cargo clippy && rtk cargo build && rtk c
 Run a single test: `cargo test test_name`
 Run a module's tests: `cargo test slack::`
 
+## SQL query probe (read-model)
+
+Use this script to validate read-model SQL query behaviour/results directly on the DB:
+
+```bash
+scripts/db/probe_read_model_queries.sh --tab all --limit 50
+```
+
+With optional API JSON validation (detects runtime mapping issues like non-JSON error bodies):
+
+```bash
+scripts/db/probe_read_model_queries.sh --tab all --limit 50 --api-url http://localhost:3100
+```
+
+Useful variants:
+
+```bash
+scripts/db/probe_read_model_queries.sh --tab recent --limit 20
+scripts/db/probe_read_model_queries.sh --tab week --limit 100 --explain
+```
+
 ## Deployment
 
 **First deploy:**

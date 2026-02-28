@@ -248,19 +248,19 @@ impl Repository for PgPool {
             )
             SELECT
                 s.channel_id,
-                COALESCE(ch.name, s.channel_id)         AS "channel_name!",
+                COALESCE(ch.name, s.channel_id)         AS channel_name,
                 s.thread_ts,
                 s.text,
                 s.created_at,
-                COALESCE(u.display_name, s.user_id, '') AS "display_name!",
-                COALESCE(u.avatar_url, '')               AS "avatar_url!",
-                ''::text                                  AS "search_text!",
-                s.reaction_count                         AS "reaction_count!: i64",
-                s.reply_count                            AS "reply_count!: i64",
-                s.participant_count                      AS "participant_count!: i64",
+                COALESCE(u.display_name, s.user_id, '') AS display_name,
+                COALESCE(u.avatar_url, '')              AS avatar_url,
+                ''::text                                 AS search_text,
+                s.reaction_count                        AS reaction_count,
+                s.reply_count                           AS reply_count,
+                s.participant_count                     AS participant_count,
                 (s.reaction_count * 2
                     + s.reply_count
-                    + s.participant_count)               AS "score!: i64"
+                    + s.participant_count)              AS score
             FROM stats s
             LEFT JOIN users    u  ON u.user_id    = s.user_id
             LEFT JOIN channels ch ON ch.channel_id = s.channel_id
