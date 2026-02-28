@@ -484,22 +484,20 @@ export default function ArchivistDashboard() {
             <button
               type="button"
               onClick={() => setDensity((prev) => (prev === "compact" ? "normal" : "compact"))}
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition-colors hover:text-foreground"
+              title={density === "compact" ? "Switch to normal density" : "Switch to compact density"}
               aria-label={density === "compact" ? "Switch to normal density" : "Switch to compact density"}
             >
               {density === "compact" ? <Rows2 className="size-3.5" /> : <Rows3 className="size-3.5" />}
-              <span className="hidden sm:inline">
-                {density === "compact" ? "Compact" : "Normal"}
-              </span>
             </button>
             <button
               type="button"
               onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition-colors hover:text-foreground"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
               {theme === "dark" ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
-              <span className="hidden sm:inline">{theme === "dark" ? "Dark" : "Light"}</span>
             </button>
 
             {currentDashboard.workspaceUrl && (
@@ -511,10 +509,10 @@ export default function ArchivistDashboard() {
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground sm:gap-1.5"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
               >
                 <ExternalLink className="size-3" />
-                <span className="hidden sm:inline">Open Slack</span>
+                <span>Open Slack</span>
               </a>
             )}
           </div>
