@@ -1,7 +1,17 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Archive, ExternalLink, LoaderCircle, Moon, Sun, Rows3, Rows2 } from "lucide-react"
+import {
+  Archive,
+  ExternalLink,
+  LoaderCircle,
+  Moon,
+  Sun,
+  Rows3,
+  Rows2,
+  Eye,
+  EyeOff,
+} from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatCard } from "@/components/stat-card"
 import { ThreadCard } from "@/components/thread-card"
@@ -465,12 +475,11 @@ export default function ArchivistDashboard() {
             <button
               type="button"
               onClick={() => setStatsVisible((prev) => !prev)}
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground sm:text-xs"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition-colors hover:text-foreground"
+              title={statsVisible ? "Hide stats panels" : "Show stats panels"}
+              aria-label={statsVisible ? "Hide stats panels" : "Show stats panels"}
             >
-              <span className="sm:hidden">Stats</span>
-              <span className="hidden sm:inline">
-                {statsVisible ? "Hide stats" : "Show stats"}
-              </span>
+              {statsVisible ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
             </button>
             <button
               type="button"
