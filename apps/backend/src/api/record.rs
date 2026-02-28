@@ -83,7 +83,16 @@ pub(crate) async fn cached_threads<R: Repository>(
         }
     }
     let data = repo.get_top_threads(200).await?;
-    app_cache().write().await.threads = Some((Instant::now(), data.clone()));
+    let mut cache = app_cache().write().await;
+    if data.is_empty() {
+        if let Some((_, previous)) = &cache.threads
+            && !previous.is_empty()
+        {
+            return Ok(previous.clone());
+        }
+        return Ok(data);
+    }
+    cache.threads = Some((Instant::now(), data.clone()));
     Ok(data)
 }
 

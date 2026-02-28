@@ -317,14 +317,7 @@ impl Repository for PgPool {
                 LEFT JOIN channels ch
                     ON ch.channel_id = tr.channel_id
                 WHERE COALESCE(ch.name, tr.channel_id) != 'intro'
-                ORDER BY
-                    CASE
-                        WHEN tr.thread_ts ~ '^[0-9]+(\.[0-9]+)?$'
-                            THEN tr.thread_ts::double precision
-                        ELSE 0
-                    END DESC,
-                    tr.channel_id,
-                    tr.thread_ts
+                ORDER BY tr.thread_ts DESC, tr.channel_id, tr.thread_ts
                 LIMIT $1
                 "#,
             )
@@ -404,14 +397,7 @@ impl Repository for PgPool {
             LEFT JOIN channels ch
                 ON ch.channel_id = r.channel_id
             WHERE COALESCE(ch.name, r.channel_id) != 'intro'
-            ORDER BY
-                CASE
-                    WHEN r.thread_ts ~ '^[0-9]+(\.[0-9]+)?$'
-                        THEN r.thread_ts::double precision
-                    ELSE 0
-                END DESC,
-                r.channel_id,
-                r.thread_ts
+            ORDER BY r.thread_ts DESC, r.channel_id, r.thread_ts
             LIMIT $1
             "#,
         )
