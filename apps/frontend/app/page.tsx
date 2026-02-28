@@ -115,6 +115,53 @@ function highlightHtml(html: string, term: string): string {
   })
 }
 
+function InitialLoadingShell() {
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-4 px-4 lg:px-6">
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
+              <Archive className="size-4 text-primary-foreground" />
+            </div>
+            <span className="text-base font-semibold text-foreground">Archivist</span>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-screen-2xl px-4 py-6 lg:px-6">
+        <div className="mb-4 h-9 w-full rounded-lg bg-secondary/70 sm:max-w-md" />
+        <div className="mb-4 h-9 w-full rounded-lg bg-secondary/70" />
+
+        <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="h-24 rounded-lg border border-border bg-card/80" />
+          <div className="h-24 rounded-lg border border-border bg-card/80" />
+          <div className="h-24 rounded-lg border border-border bg-card/80" />
+          <div className="h-24 rounded-lg border border-border bg-card/80" />
+        </section>
+
+        <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_260px]">
+          <div className="h-64 rounded-lg border border-border bg-card/80" />
+          <div className="hidden h-64 rounded-lg border border-border bg-card/80 lg:block" />
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <div className="h-28 rounded-lg border border-border bg-card/80" />
+          <div className="h-28 rounded-lg border border-border bg-card/80" />
+          <div className="h-28 rounded-lg border border-border bg-card/80" />
+        </section>
+      </main>
+
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm">
+          <LoaderCircle className="size-4 animate-spin" />
+          Loading Archivist…
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ArchivistDashboard() {
   const [query, setQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
@@ -128,7 +175,7 @@ export default function ArchivistDashboard() {
   const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
   const [theme, setTheme] = useState<ThemePref>("dark")
   const [density, setDensity] = useState<DensityPref>("normal")
-  const [statsVisible, setStatsVisible] = useState(true)
+  const [statsVisible, setStatsVisible] = useState(false)
   const [loadingTabs, setLoadingTabs] = useState<DashboardTab[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
@@ -157,7 +204,7 @@ export default function ArchivistDashboard() {
       if (storedStatsVisibility === "visible" || storedStatsVisibility === "hidden") {
         setStatsVisible(storedStatsVisibility === "visible")
       } else {
-        setStatsVisible(!window.matchMedia("(max-width: 1023px)").matches)
+        setStatsVisible(false)
       }
     } catch (_err) {}
 
@@ -403,14 +450,7 @@ export default function ArchivistDashboard() {
   }
 
   if (!ready || (isInitialLoad && !loadError)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm">
-          <LoaderCircle className="size-4 animate-spin" />
-          Loading Archivist…
-        </div>
-      </div>
-    )
+    return <InitialLoadingShell />
   }
 
   return (
@@ -592,13 +632,6 @@ export default function ArchivistDashboard() {
         </section>
 
         <section className="flex flex-col gap-2">
-          {isTabTransitionLoading && (
-            <div className="mb-2 flex items-center gap-2 rounded-md border border-border/70 bg-card/80 px-3 py-2 text-xs text-muted-foreground">
-              <LoaderCircle className="size-3.5 animate-spin" />
-              Updating {loadingLabel} data...
-            </div>
-          )}
-
           {isLoading && currentThreads.length === 0 && (
             <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
               <LoaderCircle className="size-4 animate-spin" />
@@ -660,6 +693,15 @@ export default function ArchivistDashboard() {
           Showing {currentThreads.length} threads sorted by {sortBy}.
         </footer>
       </main>
+
+      {isTabTransitionLoading && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm">
+            <LoaderCircle className="size-4 animate-spin" />
+            Updating {loadingLabel} data...
+          </div>
+        </div>
+      )}
     </div>
   )
 }

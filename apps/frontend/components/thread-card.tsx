@@ -433,12 +433,19 @@ export function ThreadCard({
             : "border-border bg-card hover:border-primary/30 hover:bg-card/80"
         }`}
       >
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           className={`flex w-full cursor-pointer items-start text-left ${
             compact ? "gap-3 px-3 py-3" : "gap-4 p-4"
           }`}
           onClick={() => void toggleExpanded()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault()
+              void toggleExpanded()
+            }
+          }}
           aria-expanded={expanded}
           aria-controls={`thread-messages-${thread.id}`}
         >
@@ -544,7 +551,7 @@ export function ThreadCard({
               )}
             </div>
           </div>
-        </button>
+        </div>
 
         {expanded && canExpand && (
           <div id={`thread-messages-${thread.id}`} className="border-t border-border">
