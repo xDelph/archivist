@@ -2,9 +2,9 @@ use std::env;
 
 use archivist::api::aggregation_jobs::run_aggregation_batch;
 use archivist::db::pool::create_pool;
+use archivist::logging::init_tracing;
 use sqlx::Row;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
 
 fn arg_present(args: &[String], flag: &str) -> bool {
     args.iter().any(|arg| arg == flag)
@@ -13,11 +13,7 @@ fn arg_present(args: &[String], flag: &str) -> bool {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    init_tracing();
 
     let args: Vec<String> = env::args().collect();
     let enqueue_only = arg_present(&args, "--enqueue-only");

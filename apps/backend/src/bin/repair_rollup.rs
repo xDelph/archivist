@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use archivist::api::aggregation_jobs::run_aggregation_batch;
 use archivist::db::{Repository, pool::create_pool};
+use archivist::logging::init_tracing;
 use sqlx::Row;
 use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
 
 fn arg_value(args: &[String], key: &str) -> Option<String> {
     args.windows(2).find_map(|window| {
@@ -20,11 +20,7 @@ fn arg_value(args: &[String], key: &str) -> Option<String> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    init_tracing();
 
     let args: Vec<String> = env::args().collect();
     let channel_id = arg_value(&args, "--channel")

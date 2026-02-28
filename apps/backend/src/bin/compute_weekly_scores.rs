@@ -5,19 +5,14 @@
 use std::env;
 
 use archivist::db::pool::create_pool;
+use archivist::logging::init_tracing;
 use sqlx::Row;
 use tracing::info;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    init_tracing();
 
     let db_url = env::var("DATABASE_URL_UNPOOLED").expect("DATABASE_URL_UNPOOLED not set");
     let pool = create_pool(&db_url).await?;

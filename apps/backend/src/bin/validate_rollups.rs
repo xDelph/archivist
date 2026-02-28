@@ -1,9 +1,9 @@
 use std::env;
 
 use archivist::db::pool::create_pool;
+use archivist::logging::init_tracing;
 use sqlx::Row;
 use tracing::{error, info, warn};
-use tracing_subscriber::EnvFilter;
 
 fn arg_value(args: &[String], key: &str) -> Option<String> {
     args.windows(2).find_map(|window| {
@@ -18,11 +18,7 @@ fn arg_value(args: &[String], key: &str) -> Option<String> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    init_tracing();
 
     let args: Vec<String> = env::args().collect();
     let strict = args.iter().any(|arg| arg == "--strict");

@@ -1,19 +1,14 @@
 use std::env;
 
 use archivist::db::pool::create_pool;
+use archivist::logging::init_tracing;
 use archivist::slack::backfill::{SlackClient, run_backfill};
 use archivist::storage::R2Client;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    init_tracing();
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
     let slack_token = env::var("SLACK_USER_TOKEN")

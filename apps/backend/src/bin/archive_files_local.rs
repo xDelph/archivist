@@ -8,21 +8,16 @@
 use std::env;
 
 use archivist::db::pool::create_pool;
+use archivist::logging::init_tracing;
 use archivist::slack::backfill::archive_files;
 use archivist::storage::R2Client;
 use sqlx::Row;
 use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    init_tracing();
 
     let purge = env::args().any(|a| a == "--purge");
 
