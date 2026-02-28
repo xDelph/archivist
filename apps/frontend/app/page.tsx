@@ -77,6 +77,13 @@ function parseOptionalFilter(value: string | null): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
+function tabDocumentLabel(tab: DashboardTab): string {
+  if (tab === "week") return "This Week"
+  if (tab === "month") return "This Month"
+  if (tab === "recent") return "Last Messages"
+  return "Top Threads"
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
@@ -250,6 +257,11 @@ export default function ArchivistDashboard() {
     const url = next ? `${window.location.pathname}?${next}` : window.location.pathname
     window.history.replaceState(null, "", url)
   }, [ready, activeTab, sortBy, period, selectedUser, selectedChannel, debouncedQuery])
+
+  useEffect(() => {
+    if (!ready) return
+    document.title = `Archivist ${tabDocumentLabel(activeTab)}`
+  }, [ready, activeTab])
 
   const fetchTabData = useCallback(async (tab: DashboardTab, withLoader: boolean) => {
     if (inFlightTabs.current.has(tab)) return

@@ -87,6 +87,15 @@ function ThreadPageContent() {
     }
   }, [searchParams])
 
+  useEffect(() => {
+    const normalized = channelLabel.trim()
+    if (!normalized) {
+      document.title = "Archivist Thread"
+      return
+    }
+    document.title = `Archivist ${normalized} Thread`
+  }, [channelLabel])
+
   function handleMessageClickCapture(event: React.MouseEvent<HTMLElement>): void {
     const target = event.target as HTMLElement
     const anchor = target.closest("a")

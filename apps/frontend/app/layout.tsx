@@ -7,24 +7,12 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Archivist - Slack Archive Dashboard',
+  title: 'Archivist',
   description: 'Save and browse your Slack workspace messages, files, and top threads. Discover the best conversations by week, month, or all time.',
   generator: 'v0.app',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
     apple: '/apple-icon.png',
   },
 }
