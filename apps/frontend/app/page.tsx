@@ -116,41 +116,25 @@ function highlightHtml(html: string, term: string): string {
 }
 
 function InitialLoadingShell() {
+  const rawBackendUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? ""
+  const backendLandingUrl =
+    rawBackendUrl.startsWith("http://") || rawBackendUrl.startsWith("https://")
+      ? `${rawBackendUrl.replace(/\/$/, "")}/`
+      : null
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-4 px-4 lg:px-6">
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-              <Archive className="size-4 text-primary-foreground" />
-            </div>
-            <span className="text-base font-semibold text-foreground">Archivist</span>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-screen-2xl px-4 py-6 lg:px-6">
-        <div className="mb-4 h-9 w-full rounded-lg bg-secondary/70 sm:max-w-md" />
-        <div className="mb-4 h-9 w-full rounded-lg bg-secondary/70" />
-
-        <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div className="h-24 rounded-lg border border-border bg-card/80" />
-          <div className="h-24 rounded-lg border border-border bg-card/80" />
-          <div className="h-24 rounded-lg border border-border bg-card/80" />
-          <div className="h-24 rounded-lg border border-border bg-card/80" />
-        </section>
-
-        <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_260px]">
-          <div className="h-64 rounded-lg border border-border bg-card/80" />
-          <div className="hidden h-64 rounded-lg border border-border bg-card/80 lg:block" />
-        </section>
-
-        <section className="flex flex-col gap-2">
-          <div className="h-28 rounded-lg border border-border bg-card/80" />
-          <div className="h-28 rounded-lg border border-border bg-card/80" />
-          <div className="h-28 rounded-lg border border-border bg-card/80" />
-        </section>
-      </main>
+    <div className="relative min-h-screen bg-background">
+      {backendLandingUrl ? (
+        <iframe
+          title="Backend landing preview"
+          src={backendLandingUrl}
+          className="pointer-events-none absolute inset-0 h-full w-full border-0"
+          loading="eager"
+          aria-hidden="true"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-background" />
+      )}
 
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
         <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm">
