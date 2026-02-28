@@ -579,6 +579,38 @@ async fn test_api_record_threads_supports_month_tab() {
 }
 
 #[tokio::test]
+async fn test_api_record_threads_week_error_returns_http_500() {
+    let repo = InMemoryRepository::default();
+    repo.fail_calls
+        .lock()
+        .unwrap()
+        .insert("get_weekly_ranked_threads".to_owned());
+
+    let resp = process(&repo, make_get("/api/record/threads?tab=week&limit=50"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 500);
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("internal server error"));
+}
+
+#[tokio::test]
+async fn test_api_record_threads_recent_error_returns_http_500() {
+    let repo = InMemoryRepository::default();
+    repo.fail_calls
+        .lock()
+        .unwrap()
+        .insert("get_recent_threads".to_owned());
+
+    let resp = process(&repo, make_get("/api/record/threads?tab=recent&limit=50"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 500);
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("internal server error"));
+}
+
+#[tokio::test]
 async fn test_api_record_threads_accepts_hashed_channel_filter() {
     let repo = InMemoryRepository::default();
     *repo.threads.lock().unwrap() = vec![make_thread(10, "eng"), make_thread(5, "general")];

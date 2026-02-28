@@ -27,6 +27,13 @@ pub struct InMemoryRepository {
     pub top_threads_with_weekly: Mutex<Vec<ThreadWithWeeklyScore>>,
     pub weekly_ranked_threads: Mutex<Vec<PeriodRankedThread>>,
     pub monthly_ranked_threads: Mutex<Vec<PeriodRankedThread>>,
+    pub fail_calls: Mutex<HashSet<String>>,
+}
+
+impl InMemoryRepository {
+    fn should_fail(&self, call: &str) -> bool {
+        self.fail_calls.lock().unwrap().contains(call)
+    }
 }
 
 impl Repository for InMemoryRepository {
@@ -106,11 +113,17 @@ impl Repository for InMemoryRepository {
     }
 
     async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>> {
+        if self.should_fail("get_top_threads") {
+            return Err(anyhow::anyhow!("forced failure: get_top_threads"));
+        }
         let threads = self.threads.lock().unwrap();
         Ok(threads.iter().take(limit as usize).cloned().collect())
     }
 
     async fn get_recent_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>> {
+        if self.should_fail("get_recent_threads") {
+            return Err(anyhow::anyhow!("forced failure: get_recent_threads"));
+        }
         let mut threads = self.threads.lock().unwrap().clone();
         threads.sort_by(|a, b| {
             let a_ts = a.thread_ts.parse::<f64>().unwrap_or(0.0);
@@ -143,6 +156,11 @@ impl Repository for InMemoryRepository {
     }
 
     async fn get_top_threads_with_weekly(&self, limit: i64) -> Result<Vec<ThreadWithWeeklyScore>> {
+        if self.should_fail("get_top_threads_with_weekly") {
+            return Err(anyhow::anyhow!(
+                "forced failure: get_top_threads_with_weekly"
+            ));
+        }
         let stored = self.top_threads_with_weekly.lock().unwrap();
         if !stored.is_empty() {
             return Ok(stored.iter().take(limit as usize).cloned().collect());
@@ -161,11 +179,19 @@ impl Repository for InMemoryRepository {
     }
 
     async fn get_weekly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>> {
+        if self.should_fail("get_weekly_ranked_threads") {
+            return Err(anyhow::anyhow!("forced failure: get_weekly_ranked_threads"));
+        }
         let rows = self.weekly_ranked_threads.lock().unwrap();
         Ok(rows.iter().take(limit as usize).cloned().collect())
     }
 
     async fn get_monthly_ranked_threads(&self, limit: i64) -> Result<Vec<PeriodRankedThread>> {
+        if self.should_fail("get_monthly_ranked_threads") {
+            return Err(anyhow::anyhow!(
+                "forced failure: get_monthly_ranked_threads"
+            ));
+        }
         let rows = self.monthly_ranked_threads.lock().unwrap();
         Ok(rows.iter().take(limit as usize).cloned().collect())
     }
