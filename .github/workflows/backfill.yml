@@ -28,4 +28,8 @@ jobs:
             -H "Authorization: Bearer ${ADMIN_TOKEN}" \
             --max-time 15)"
           echo "Enqueue response: ${ENQUEUE_RESPONSE}"
+          WORKER_KICK_RESPONSE="$(curl -s -X POST "${BASE_URL%/}/api/admin/backfill/run" \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            --max-time 3 || true)"
+          echo "Worker kick response: ${WORKER_KICK_RESPONSE}"
           echo "Backfill queued (async worker continues in background)."
