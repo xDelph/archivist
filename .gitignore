@@ -3,6 +3,7 @@
 .env.local
 .vercel
 .turbo
+logs/
 backup/
 
 target/

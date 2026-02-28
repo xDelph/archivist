@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::sync::OnceLock;
 
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -15,6 +16,10 @@ fn is_service_env_development() -> bool {
 }
 
 pub fn init_tracing() {
+    // Local `vercel dev` may not expose shell env vars directly to Rust lambdas.
+    // Load `.env` as a fallback source for SERVICE_ENV.
+    let _ = dotenvy::dotenv();
+
     let is_dev = is_service_env_development();
     let default_level = if is_dev { "trace" } else { "info" };
     let env_filter =
@@ -37,6 +42,11 @@ pub fn init_tracing() {
                 )
                 .try_init()
                 .ok();
+            info!(
+                service_env = "development",
+                file = "./logs/app.log",
+                "tracing initialized"
+            );
             return;
         }
     }
@@ -46,6 +56,7 @@ pub fn init_tracing() {
         .with_env_filter(env_filter)
         .try_init()
         .ok();
+    info!(service_env = ?env::var("SERVICE_ENV").ok(), "tracing initialized");
 }
 
 #[cfg(test)]
