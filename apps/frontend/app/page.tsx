@@ -116,30 +116,16 @@ function highlightHtml(html: string, term: string): string {
 }
 
 function InitialLoadingShell() {
-  const rawBackendUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? ""
-  const backendLandingUrl =
-    rawBackendUrl.startsWith("http://") || rawBackendUrl.startsWith("https://")
-      ? `${rawBackendUrl.replace(/\/$/, "")}/`
-      : null
-
   return (
-    <div className="relative min-h-screen bg-background">
-      {backendLandingUrl ? (
-        <iframe
-          title="Backend landing preview"
-          src={backendLandingUrl}
-          className="pointer-events-none absolute inset-0 h-full w-full border-0"
-          loading="eager"
-          aria-hidden="true"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-background" />
-      )}
-
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm">
-          <LoaderCircle className="size-4 animate-spin" />
-          Loading Archivist…
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="select-none text-center">
+        <h1 className="text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
+          Archivist
+        </h1>
+        <p className="mt-2 text-base text-muted-foreground sm:text-lg">Slack message archiver</p>
+        <div className="mt-8 inline-flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="size-2.5 animate-pulse rounded-full bg-orange-400" />
+          loading
         </div>
       </div>
     </div>
