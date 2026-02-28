@@ -11,14 +11,14 @@ import { SearchBar } from "@/components/search-bar"
 import { fetchDashboardData, fetchThreadMessages } from "@/lib/api"
 import type { DashboardData, SlackThread, ThreadMessage } from "@/lib/types"
 
-type DashboardTab = "top" | "week" | "month"
+type DashboardTab = "top" | "week" | "month" | "recent"
 type ThemePref = "dark" | "light"
 type DensityPref = "normal" | "compact"
 
 const THEME_KEY = "archivist_theme"
 const DENSITY_KEY = "archivist_density"
 const SEARCH_DEBOUNCE_MS = 250
-const TABS: DashboardTab[] = ["top", "week", "month"]
+const TABS: DashboardTab[] = ["top", "week", "month", "recent"]
 
 const EMPTY_DASHBOARD: DashboardData = {
   tab: "top",
@@ -40,7 +40,7 @@ const EMPTY_DASHBOARD: DashboardData = {
 }
 
 function parseTab(value: string | null): DashboardTab {
-  if (value === "week" || value === "month") {
+  if (value === "week" || value === "month" || value === "recent") {
     return value
   }
   return "top"
@@ -272,7 +272,13 @@ export default function ArchivistDashboard() {
   const isTabTransitionLoading = isLoading && Boolean(lastDashboard) && !activeDashboard
   const loadingTab = loadingTabs[loadingTabs.length - 1] ?? activeTab
   const loadingLabel =
-    loadingTab === "top" ? "top threads" : loadingTab === "week" ? "weekly" : "monthly"
+    loadingTab === "top"
+      ? "top threads"
+      : loadingTab === "week"
+        ? "weekly"
+        : loadingTab === "month"
+          ? "monthly"
+          : "recent"
 
   const currentThreads = useMemo(() => {
     const threads = [...currentDashboard.threads]
@@ -405,7 +411,13 @@ export default function ArchivistDashboard() {
 
           <Tabs
             value={activeTab}
-            onValueChange={(value) => setActiveTab(value as DashboardTab)}
+            onValueChange={(value) => {
+              const nextTab = value as DashboardTab
+              setActiveTab(nextTab)
+              if (nextTab === "recent" && sortBy === "score") {
+                setSortBy("date")
+              }
+            }}
             className="ml-4 hidden sm:flex"
           >
             <TabsList className="h-8 bg-secondary">
@@ -417,6 +429,9 @@ export default function ArchivistDashboard() {
               </TabsTrigger>
               <TabsTrigger value="month" className="px-3 text-xs">
                 This Month
+              </TabsTrigger>
+              <TabsTrigger value="recent" className="px-3 text-xs">
+                Last 50
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -460,16 +475,28 @@ export default function ArchivistDashboard() {
 
       <main className="mx-auto max-w-screen-2xl px-4 py-6 lg:px-6">
         <div className="mb-4 sm:hidden">
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DashboardTab)}>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              const nextTab = value as DashboardTab
+              setActiveTab(nextTab)
+              if (nextTab === "recent" && sortBy === "score") {
+                setSortBy("date")
+              }
+            }}
+          >
             <TabsList className="w-full bg-secondary">
-              <TabsTrigger value="top" className="flex-1 text-xs">
+              <TabsTrigger value="top" className="text-xs">
                 Top Threads
               </TabsTrigger>
-              <TabsTrigger value="week" className="flex-1 text-xs">
+              <TabsTrigger value="week" className="text-xs">
                 Week
               </TabsTrigger>
-              <TabsTrigger value="month" className="flex-1 text-xs">
+              <TabsTrigger value="month" className="text-xs">
                 Month
+              </TabsTrigger>
+              <TabsTrigger value="recent" className="text-xs">
+                Last 50
               </TabsTrigger>
             </TabsList>
           </Tabs>

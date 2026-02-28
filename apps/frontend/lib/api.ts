@@ -74,7 +74,7 @@ interface ApiOverviewStats {
 }
 
 interface ApiThreadsResponse {
-  tab: "top" | "week" | "month"
+  tab: "top" | "week" | "month" | "recent"
   workspaceUrl: string | null
   threads: ApiThread[]
   users: string[]
@@ -125,7 +125,7 @@ interface ThreadDetailResponse {
 }
 
 interface DashboardFetchOptions {
-  tab: "top" | "week" | "month"
+  tab: "top" | "week" | "month" | "recent"
   sort?: string
   period?: string
   channel?: string

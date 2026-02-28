@@ -79,7 +79,7 @@ export interface OverviewStats {
 }
 
 export interface DashboardData {
-  tab: "top" | "week" | "month"
+  tab: "top" | "week" | "month" | "recent"
   workspaceUrl: string | null
   threads: SlackThread[]
   users: string[]

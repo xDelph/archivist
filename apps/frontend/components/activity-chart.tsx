@@ -13,7 +13,7 @@ import type { ActivityPoint } from "@/lib/types"
 
 interface ActivityChartProps {
   data: ActivityPoint[]
-  tab: "top" | "week" | "month"
+  tab: "top" | "week" | "month" | "recent"
 }
 
 function CustomTooltip({
@@ -46,7 +46,7 @@ function CustomTooltip({
   )
 }
 
-function getChartHeading(tab: "top" | "week" | "month"): { title: string; subtitle: string } {
+function getChartHeading(tab: "top" | "week" | "month" | "recent"): { title: string; subtitle: string } {
   if (tab === "week") {
     return {
       title: "Weekly Activity",
@@ -57,6 +57,12 @@ function getChartHeading(tab: "top" | "week" | "month"): { title: string; subtit
     return {
       title: "Monthly Activity",
       subtitle: "Messages and threads by weekday for this month's ranking",
+    }
+  }
+  if (tab === "recent") {
+    return {
+      title: "Recent Activity",
+      subtitle: "Messages and threads by weekday for the latest 50 threads",
     }
   }
   return {
