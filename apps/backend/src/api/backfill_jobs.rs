@@ -1,4 +1,8 @@
+use chrono::{Duration, Utc};
 use sqlx::{PgPool, Row};
+use tracing::warn;
+
+const DEFAULT_RUNNING_LEASE_MINUTES: i64 = 30;
 
 #[derive(Debug)]
 pub struct EnqueueBackfillJobResult {
@@ -10,6 +14,7 @@ pub async fn enqueue_backfill_job(
     pool: &PgPool,
     requested_by: &str,
 ) -> anyhow::Result<EnqueueBackfillJobResult> {
+    expire_stale_running_backfill_jobs(pool).await?;
     let row = sqlx::query(
         r#"
         WITH existing AS (
@@ -42,6 +47,7 @@ pub async fn enqueue_backfill_job(
 }
 
 pub async fn claim_next_backfill_job(pool: &PgPool) -> anyhow::Result<Option<String>> {
+    expire_stale_running_backfill_jobs(pool).await?;
     let row = sqlx::query(
         r#"
         WITH next_job AS (
@@ -73,6 +79,42 @@ pub async fn claim_next_backfill_job(pool: &PgPool) -> anyhow::Result<Option<Str
     .await?;
 
     Ok(row.map(|r| r.try_get("job_id")).transpose()?)
+}
+
+async fn expire_stale_running_backfill_jobs(pool: &PgPool) -> anyhow::Result<()> {
+    let cutoff = Utc::now() - Duration::minutes(running_lease_minutes());
+    let row = sqlx::query(
+        r#"
+        UPDATE backfill_jobs
+        SET
+            status = 'failed',
+            finished_at = NOW(),
+            last_error = 'stale running lease expired'
+        WHERE status = 'running'
+          AND COALESCE(started_at, requested_at) < $1
+        RETURNING id::text AS job_id
+        "#,
+    )
+    .bind(cutoff)
+    .fetch_all(pool)
+    .await?;
+
+    if !row.is_empty() {
+        warn!(
+            recovered = row.len(),
+            cutoff = %cutoff,
+            "expired stale running backfill jobs"
+        );
+    }
+    Ok(())
+}
+
+fn running_lease_minutes() -> i64 {
+    std::env::var("BACKFILL_RUNNING_LEASE_MINUTES")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_RUNNING_LEASE_MINUTES)
 }
 
 pub async fn mark_backfill_job_succeeded(pool: &PgPool, job_id: &str) -> anyhow::Result<()> {
