@@ -26,13 +26,15 @@ fn row_to_thread_summary(row: &sqlx::postgres::PgRow) -> Result<ThreadSummary> {
     })
 }
 
+fn parse_read_model_v2_value(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    !matches!(normalized.as_str(), "0" | "false" | "no" | "off")
+}
+
 fn read_model_v2_enabled() -> bool {
     std::env::var("READ_MODEL_V2")
-        .map(|value| {
-            let normalized = value.trim().to_ascii_lowercase();
-            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
-        })
-        .unwrap_or(false)
+        .map(|value| parse_read_model_v2_value(&value))
+        .unwrap_or(true)
 }
 
 // ── PgPool implementation ─────────────────────────────────────────────────────
@@ -311,12 +313,10 @@ impl Repository for PgPool {
             .fetch_all(self)
             .await?;
 
-            if !rows.is_empty() {
-                return rows
-                    .into_iter()
-                    .map(|row| row_to_thread_summary(&row))
-                    .collect::<Result<Vec<_>>>();
-            }
+            return rows
+                .into_iter()
+                .map(|row| row_to_thread_summary(&row))
+                .collect::<Result<Vec<_>>>();
         }
 
         let rows = sqlx::query(
@@ -737,19 +737,17 @@ impl Repository for PgPool {
             .fetch_all(self)
             .await?;
 
-            if !rows.is_empty() {
-                return rows
-                    .into_iter()
-                    .map(|row| -> Result<PeriodRankedThread> {
-                        Ok(PeriodRankedThread {
-                            thread: row_to_thread_summary(&row)?,
-                            rank_score: row.try_get("rank_score")?,
-                            rank: row.try_get("rank")?,
-                            prev_rank: row.try_get("prev_rank")?,
-                        })
+            return rows
+                .into_iter()
+                .map(|row| -> Result<PeriodRankedThread> {
+                    Ok(PeriodRankedThread {
+                        thread: row_to_thread_summary(&row)?,
+                        rank_score: row.try_get("rank_score")?,
+                        rank: row.try_get("rank")?,
+                        prev_rank: row.try_get("prev_rank")?,
                     })
-                    .collect::<Result<Vec<_>>>();
-            }
+                })
+                .collect::<Result<Vec<_>>>();
         }
 
         let rows = sqlx::query(
@@ -899,19 +897,17 @@ impl Repository for PgPool {
             .fetch_all(self)
             .await?;
 
-            if !rows.is_empty() {
-                return rows
-                    .into_iter()
-                    .map(|row| -> Result<PeriodRankedThread> {
-                        Ok(PeriodRankedThread {
-                            thread: row_to_thread_summary(&row)?,
-                            rank_score: row.try_get("rank_score")?,
-                            rank: row.try_get("rank")?,
-                            prev_rank: row.try_get("prev_rank")?,
-                        })
+            return rows
+                .into_iter()
+                .map(|row| -> Result<PeriodRankedThread> {
+                    Ok(PeriodRankedThread {
+                        thread: row_to_thread_summary(&row)?,
+                        rank_score: row.try_get("rank_score")?,
+                        rank: row.try_get("rank")?,
+                        prev_rank: row.try_get("prev_rank")?,
                     })
-                    .collect::<Result<Vec<_>>>();
-            }
+                })
+                .collect::<Result<Vec<_>>>();
         }
 
         let rows = sqlx::query(
@@ -1170,5 +1166,29 @@ impl Repository for PgPool {
             .fetch_all(self)
             .await?;
         Ok(rows.into_iter().map(|r| (r.channel_id, r.name)).collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_read_model_v2_value;
+
+    #[test]
+    fn parse_read_model_v2_value_handles_truthy_values() {
+        assert!(parse_read_model_v2_value("true"));
+        assert!(parse_read_model_v2_value("1"));
+        assert!(parse_read_model_v2_value("yes"));
+        assert!(parse_read_model_v2_value("on"));
+        assert!(parse_read_model_v2_value("  TRUE  "));
+        assert!(parse_read_model_v2_value("unexpected"));
+    }
+
+    #[test]
+    fn parse_read_model_v2_value_handles_falsy_values() {
+        assert!(!parse_read_model_v2_value("false"));
+        assert!(!parse_read_model_v2_value("0"));
+        assert!(!parse_read_model_v2_value("no"));
+        assert!(!parse_read_model_v2_value("off"));
+        assert!(!parse_read_model_v2_value("  Off  "));
     }
 }

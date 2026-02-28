@@ -7,7 +7,7 @@ use chrono::{Datelike, Utc};
 use http::StatusCode;
 use serde::Serialize;
 use serde_json::Value;
-use tracing::info;
+use tracing::{error, info};
 use vercel_runtime::{Error, Response};
 
 use crate::db::{FileRow, PeriodRankedThread, Repository, ThreadMessage, ThreadSummary};
@@ -157,10 +157,25 @@ pub(crate) async fn process<R: Repository>(
     path: &str,
     query: &str,
 ) -> Result<Response<Bytes>, Error> {
-    if path.ends_with("/thread") {
-        return thread_json(repo, query).await;
+    let result = if path.ends_with("/thread") {
+        thread_json(repo, query).await
+    } else {
+        threads_json(repo, query).await
+    };
+
+    match result {
+        Ok(response) => Ok(response),
+        Err(err) => {
+            error!(
+                endpoint = "/api/record",
+                path,
+                query,
+                error = %err,
+                "record json handler failed"
+            );
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        }
     }
-    threads_json(repo, query).await
 }
 
 async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {
