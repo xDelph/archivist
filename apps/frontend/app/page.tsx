@@ -478,19 +478,33 @@ export default function ArchivistDashboard() {
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setStatsVisible((prev) => !prev)}
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground sm:text-xs"
+            >
+              <span className="sm:hidden">Stats</span>
+              <span className="hidden sm:inline">
+                {statsVisible ? "Hide stats" : "Show stats"}
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={() => setDensity((prev) => (prev === "compact" ? "normal" : "compact"))}
-              className="hidden items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              aria-label={density === "compact" ? "Switch to normal density" : "Switch to compact density"}
             >
               {density === "compact" ? <Rows2 className="size-3.5" /> : <Rows3 className="size-3.5" />}
-              {density === "compact" ? "Compact" : "Normal"}
+              <span className="hidden sm:inline">
+                {density === "compact" ? "Compact" : "Normal"}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-              className="hidden items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
               {theme === "dark" ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}
-              {theme === "dark" ? "Dark" : "Light"}
+              <span className="hidden sm:inline">{theme === "dark" ? "Dark" : "Light"}</span>
             </button>
 
             {currentDashboard.workspaceUrl && (
@@ -502,10 +516,10 @@ export default function ArchivistDashboard() {
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground sm:flex"
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground sm:gap-1.5"
               >
-                Open Slack
                 <ExternalLink className="size-3" />
+                <span className="hidden sm:inline">Open Slack</span>
               </a>
             )}
           </div>
@@ -539,16 +553,6 @@ export default function ArchivistDashboard() {
               </TabsTrigger>
             </TabsList>
           </Tabs>
-        </div>
-
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setStatsVisible((prev) => !prev)}
-            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {statsVisible ? "Hide stats panels" : "Show stats panels"}
-          </button>
         </div>
 
         {statsVisible && (
