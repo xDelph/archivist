@@ -265,9 +265,16 @@ export default function ArchivistDashboard() {
       if (withLoader) {
         setLoadError(null)
       }
-    } catch (_err) {
+    } catch (error) {
+      setTabCache((prev) => {
+        if (!prev[tab]) return prev
+        const next = { ...prev }
+        delete next[tab]
+        return next
+      })
       if (withLoader) {
-        setLoadError("Failed to load dashboard data.")
+        const details = error instanceof Error ? error.message : "Unknown error"
+        setLoadError(`Failed to load ${tab} dashboard data. ${details}`)
       }
     } finally {
       inFlightTabs.current.delete(tab)
@@ -307,7 +314,8 @@ export default function ArchivistDashboard() {
     }
   }, [ready, activeDashboard, activeTab, tabCache, fetchTabData])
 
-  const currentDashboard = activeDashboard ?? lastDashboard ?? EMPTY_DASHBOARD
+  const currentDashboard =
+    activeDashboard ?? (loadError && !activeDashboard ? EMPTY_DASHBOARD : lastDashboard ?? EMPTY_DASHBOARD)
   const isLoading = loadingTabs.length > 0
   const hasAnyDashboard = Boolean(activeDashboard || lastDashboard)
   const isInitialLoad = ready && !hasAnyDashboard && isLoading
@@ -620,7 +628,7 @@ export default function ArchivistDashboard() {
             </div>
           )}
 
-          {loadError && currentThreads.length === 0 && (
+          {loadError && !activeDashboard && (
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-center">
               <p className="text-sm text-muted-foreground">{loadError}</p>
               <button onClick={retryCurrentTab} className="text-xs text-primary hover:underline">

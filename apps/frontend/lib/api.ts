@@ -138,6 +138,12 @@ function buildUrl(path: string): string {
   return `${API_BASE_URL}${path}`
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
 function hashIndex(value: string, modulo: number): number {
   let hash = 0
   for (let i = 0; i < value.length; i += 1) {
@@ -211,6 +217,33 @@ function ensureOk(response: Response): void {
   }
 }
 
+async function fetchJsonWithRetry<T>(url: string, attempts = 3): Promise<T> {
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, { cache: "no-store" })
+      if (!response.ok) {
+        const bodyPreview = (await response.text()).slice(0, 140).replace(/\s+/g, " ").trim()
+        throw new Error(
+          bodyPreview
+            ? `API request failed (${response.status}): ${bodyPreview}`
+            : `API request failed (${response.status})`
+        )
+      }
+      return (await response.json()) as T
+    } catch (error) {
+      lastError = error
+      if (attempt < attempts) {
+        await sleep(150 * attempt)
+        continue
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("API request failed")
+}
+
 export async function fetchDashboardData(
   options: DashboardFetchOptions
 ): Promise<DashboardData> {
@@ -224,12 +257,9 @@ export async function fetchDashboardData(
   if (options.user) params.set("user", options.user)
   if (options.search) params.set("search", options.search)
 
-  const response = await fetch(buildUrl(`/api/record/threads?${params.toString()}`), {
-    cache: "no-store",
-  })
-  ensureOk(response)
-
-  const payload = (await response.json()) as ApiThreadsResponse
+  const payload = await fetchJsonWithRetry<ApiThreadsResponse>(
+    buildUrl(`/api/record/threads?${params.toString()}`)
+  )
   return {
     tab: payload.tab,
     workspaceUrl: payload.workspaceUrl ?? null,
@@ -253,12 +283,9 @@ export async function fetchThreadMessages(
   if (search) {
     qs.set("search", search)
   }
-  const response = await fetch(buildUrl(`/api/record/thread?${qs.toString()}`), {
-    cache: "no-store",
-  })
-  ensureOk(response)
-
-  const payload = (await response.json()) as ApiThreadResponse
+  const payload = await fetchJsonWithRetry<ApiThreadResponse>(
+    buildUrl(`/api/record/thread?${qs.toString()}`)
+  )
   return payload.messages.map((message) => ({
     id: message.id,
     ts: message.ts,
@@ -298,12 +325,9 @@ export async function fetchThreadDetail(
   if (search) {
     qs.set("search", search)
   }
-  const response = await fetch(buildUrl(`/api/record/thread?${qs.toString()}`), {
-    cache: "no-store",
-  })
-  ensureOk(response)
-
-  const payload = (await response.json()) as ApiThreadResponse
+  const payload = await fetchJsonWithRetry<ApiThreadResponse>(
+    buildUrl(`/api/record/thread?${qs.toString()}`)
+  )
   return {
     channel: payload.channel ?? null,
     messages: payload.messages.map((message) => ({
