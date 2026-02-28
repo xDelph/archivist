@@ -17,6 +17,7 @@ type DensityPref = "normal" | "compact"
 
 const THEME_KEY = "archivist_theme"
 const DENSITY_KEY = "archivist_density"
+const STATS_VISIBILITY_KEY = "archivist_stats_visibility"
 const SEARCH_DEBOUNCE_MS = 250
 const TABS: DashboardTab[] = ["top", "week", "month", "recent"]
 
@@ -127,6 +128,7 @@ export default function ArchivistDashboard() {
   const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
   const [theme, setTheme] = useState<ThemePref>("dark")
   const [density, setDensity] = useState<DensityPref>("normal")
+  const [statsVisible, setStatsVisible] = useState(true)
   const [loadingTabs, setLoadingTabs] = useState<DashboardTab[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
@@ -150,6 +152,12 @@ export default function ArchivistDashboard() {
       const storedDensity = localStorage.getItem(DENSITY_KEY)
       if (storedDensity === "normal" || storedDensity === "compact") {
         setDensity(storedDensity)
+      }
+      const storedStatsVisibility = localStorage.getItem(STATS_VISIBILITY_KEY)
+      if (storedStatsVisibility === "visible" || storedStatsVisibility === "hidden") {
+        setStatsVisible(storedStatsVisibility === "visible")
+      } else {
+        setStatsVisible(!window.matchMedia("(max-width: 1023px)").matches)
       }
     } catch (_err) {}
 
@@ -192,6 +200,13 @@ export default function ArchivistDashboard() {
       localStorage.setItem(DENSITY_KEY, density)
     } catch (_err) {}
   }, [ready, density])
+
+  useEffect(() => {
+    if (!ready) return
+    try {
+      localStorage.setItem(STATS_VISIBILITY_KEY, statsVisible ? "visible" : "hidden")
+    } catch (_err) {}
+  }, [ready, statsVisible])
 
   useEffect(() => {
     if (!ready) return
@@ -502,51 +517,65 @@ export default function ArchivistDashboard() {
           </Tabs>
         </div>
 
-        <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard
-            title="Total Messages"
-            value={currentDashboard.overviewStats.totalMessages.toLocaleString()}
-            change={currentDashboard.overviewStats.messagesChange}
-            icon="messages"
-          />
-          <StatCard
-            title="Threads"
-            value={currentDashboard.overviewStats.totalThreads.toLocaleString()}
-            change={currentDashboard.overviewStats.threadsChange}
-            icon="threads"
-          />
-          <StatCard
-            title="Files Archived"
-            value={currentDashboard.overviewStats.totalFiles.toLocaleString()}
-            change={currentDashboard.overviewStats.filesChange}
-            icon="files"
-          />
-          <StatCard
-            title="Active Users"
-            value={currentDashboard.overviewStats.totalUsers.toLocaleString()}
-            change={currentDashboard.overviewStats.usersChange}
-            icon="users"
-          />
-        </section>
-
-        <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_260px]">
-          <ActivityChart data={currentDashboard.activityData} tab={activeTab} />
-          <div className="hidden lg:block">
-            <ChannelSidebar
-              channels={currentDashboard.channelStats}
-              selected={selectedChannel}
-              onSelect={toggleChannelFilter}
-            />
-          </div>
-        </section>
-
-        <div className="mb-4 lg:hidden">
-          <ChannelSidebar
-            channels={currentDashboard.channelStats}
-            selected={selectedChannel}
-            onSelect={toggleChannelFilter}
-          />
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setStatsVisible((prev) => !prev)}
+            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {statsVisible ? "Hide stats panels" : "Show stats panels"}
+          </button>
         </div>
+
+        {statsVisible && (
+          <>
+            <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                title="Total Messages"
+                value={currentDashboard.overviewStats.totalMessages.toLocaleString()}
+                change={currentDashboard.overviewStats.messagesChange}
+                icon="messages"
+              />
+              <StatCard
+                title="Threads"
+                value={currentDashboard.overviewStats.totalThreads.toLocaleString()}
+                change={currentDashboard.overviewStats.threadsChange}
+                icon="threads"
+              />
+              <StatCard
+                title="Files Archived"
+                value={currentDashboard.overviewStats.totalFiles.toLocaleString()}
+                change={currentDashboard.overviewStats.filesChange}
+                icon="files"
+              />
+              <StatCard
+                title="Active Users"
+                value={currentDashboard.overviewStats.totalUsers.toLocaleString()}
+                change={currentDashboard.overviewStats.usersChange}
+                icon="users"
+              />
+            </section>
+
+            <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_260px]">
+              <ActivityChart data={currentDashboard.activityData} tab={activeTab} />
+              <div className="hidden lg:block">
+                <ChannelSidebar
+                  channels={currentDashboard.channelStats}
+                  selected={selectedChannel}
+                  onSelect={toggleChannelFilter}
+                />
+              </div>
+            </section>
+
+            <div className="mb-4 lg:hidden">
+              <ChannelSidebar
+                channels={currentDashboard.channelStats}
+                selected={selectedChannel}
+                onSelect={toggleChannelFilter}
+              />
+            </div>
+          </>
+        )}
 
         <section className="mb-4">
           <SearchBar
