@@ -55,12 +55,14 @@ export function SearchBar({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onInput={(e) => onQueryChange((e.target as HTMLInputElement).value)}
+          inputMode="search"
+          enterKeyHint="search"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault()
             }
           }}
-          className="h-9 bg-secondary pl-9 text-sm text-foreground placeholder:text-muted-foreground"
+          className="h-10 bg-secondary pl-9 text-base text-foreground placeholder:text-muted-foreground sm:h-9 sm:text-sm"
         />
       </div>
       <div className="flex items-center gap-2">
