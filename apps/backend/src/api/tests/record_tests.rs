@@ -579,6 +579,44 @@ async fn test_api_record_threads_supports_month_tab() {
 }
 
 #[tokio::test]
+async fn test_api_record_threads_invalid_tab_defaults_to_top() {
+    let repo = InMemoryRepository::default();
+    *repo.threads.lock().unwrap() = vec![make_thread(10, "eng")];
+
+    let resp = process(&repo, make_get("/api/record/threads?tab=invalid&limit=50"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    let payload: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(payload.get("tab").and_then(Value::as_str), Some("top"));
+    assert_eq!(
+        payload
+            .get("threads")
+            .and_then(Value::as_array)
+            .map(std::vec::Vec::len),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn test_api_record_threads_top_error_returns_http_500() {
+    let repo = InMemoryRepository::default();
+    repo.fail_calls
+        .lock()
+        .unwrap()
+        .insert("get_top_threads".to_owned());
+
+    let resp = process(&repo, make_get("/api/record/threads?tab=top&limit=50"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 500);
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("internal server error"));
+}
+
+#[tokio::test]
 async fn test_api_record_threads_week_error_returns_http_500() {
     let repo = InMemoryRepository::default();
     repo.fail_calls
@@ -587,6 +625,22 @@ async fn test_api_record_threads_week_error_returns_http_500() {
         .insert("get_weekly_ranked_threads".to_owned());
 
     let resp = process(&repo, make_get("/api/record/threads?tab=week&limit=50"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 500);
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    assert!(body.contains("internal server error"));
+}
+
+#[tokio::test]
+async fn test_api_record_threads_month_error_returns_http_500() {
+    let repo = InMemoryRepository::default();
+    repo.fail_calls
+        .lock()
+        .unwrap()
+        .insert("get_monthly_ranked_threads".to_owned());
+
+    let resp = process(&repo, make_get("/api/record/threads?tab=month&limit=50"))
         .await
         .unwrap();
     assert_eq!(resp.status(), 500);
@@ -608,6 +662,33 @@ async fn test_api_record_threads_recent_error_returns_http_500() {
     assert_eq!(resp.status(), 500);
     let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
     assert!(body.contains("internal server error"));
+}
+
+#[tokio::test]
+async fn test_api_record_threads_search_matches_search_text_field() {
+    let repo = InMemoryRepository::default();
+    let mut thread = make_thread(10, "eng");
+    thread.text = "Root message".to_owned();
+    thread.search_text = "reply payload searchable token".to_owned();
+    *repo.threads.lock().unwrap() = vec![thread];
+
+    let resp = process(
+        &repo,
+        make_get("/api/record/threads?tab=top&search=searchable"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
+    let payload: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        payload
+            .get("threads")
+            .and_then(Value::as_array)
+            .map(std::vec::Vec::len),
+        Some(1)
+    );
 }
 
 #[tokio::test]

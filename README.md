@@ -22,6 +22,7 @@ This repository uses a monorepo layout with Turborepo orchestration.
 - Backend: `pnpm run dev:backend` (Vercel dev on `http://localhost:3100`)
 - Frontend: `pnpm run dev:frontend` (Next.js on `http://localhost:3001`)
 - Keep port `3000` free when running backend locally: current `vercel_runtime` binds function workers to `127.0.0.1:3000`.
+- Backend regression smoke check (API + logs): `pnpm run check:backend:dev` (or `pnpm run check:backend:dev -- http://localhost:3100`)
 
 ## Release Prep
 
