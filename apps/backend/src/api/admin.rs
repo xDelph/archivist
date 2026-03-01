@@ -1,8 +1,4 @@
-use std::{
-    env,
-    sync::atomic::{AtomicBool, Ordering},
-    time::{Duration, Instant},
-};
+use std::env;
 
 use bytes::Bytes;
 use http::StatusCode;
@@ -19,10 +15,7 @@ use crate::db::pool::create_pool;
 use crate::storage::R2Client;
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
-static WORKER_LOOP_RUNNING: AtomicBool = AtomicBool::new(false);
-
-const DEFAULT_WORKER_MAX_SLICES_PER_KICK: usize = 6;
-const DEFAULT_WORKER_MAX_SECONDS_PER_KICK: u64 = 55;
+static STORAGE: OnceCell<Option<R2Client>> = OnceCell::const_new();
 
 async fn pool() -> Result<&'static PgPool, Error> {
     POOL.get_or_try_init(|| async {
@@ -32,6 +25,12 @@ async fn pool() -> Result<&'static PgPool, Error> {
             .map_err(|e| Error::from(e.to_string()))
     })
     .await
+}
+
+async fn storage() -> &'static Option<R2Client> {
+    STORAGE
+        .get_or_init(|| async { R2Client::from_env().await.ok() })
+        .await
 }
 
 /// Vercel entry-point — reads config from env and delegates to [`process`].
@@ -92,21 +91,25 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let enqueue_result = enqueue_backfill_job(pool, &requested_by)
         .await
         .map_err(|e| Error::from(e.to_string()))?;
-    let worker_started = kick_worker_loop(pool);
 
     info!(
         job_id = %enqueue_result.job_id,
         queued_now = enqueue_result.queued_now,
-        worker_started,
         requested_by = %requested_by,
         "backfill job enqueued"
     );
+    let slack_token = env::var("SLACK_USER_TOKEN")
+        .or_else(|_| env::var("SLACK_BOT_TOKEN"))
+        .unwrap_or_default();
+    let worker = execute_worker_slice(pool, &slack_token, storage().await.as_ref())
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
 
     let body = serde_json::json!({
         "ok": true,
         "queued": enqueue_result.queued_now,
         "jobId": enqueue_result.job_id,
-        "workerStarted": worker_started,
+        "worker": worker,
     })
     .to_string();
 
@@ -114,76 +117,6 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         .status(StatusCode::ACCEPTED)
         .header("Content-Type", "application/json")
         .body(ResponseBody::from(Bytes::from(body)))?)
-}
-
-fn kick_worker_loop(pool: &'static PgPool) -> bool {
-    if WORKER_LOOP_RUNNING
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return false;
-    }
-
-    tokio::spawn(async move {
-        let started_at = Instant::now();
-        let max_slices = worker_max_slices_per_kick();
-        let max_seconds = worker_max_seconds_per_kick();
-        let slack_token = env::var("SLACK_USER_TOKEN")
-            .or_else(|_| env::var("SLACK_BOT_TOKEN"))
-            .unwrap_or_default();
-        let storage = R2Client::from_env().await.ok();
-
-        for slice_index in 0..max_slices {
-            match execute_worker_slice(pool, &slack_token, storage.as_ref()).await {
-                Ok(outcome) => {
-                    if !outcome.ran {
-                        info!(
-                            slices_executed = slice_index + 1,
-                            "worker loop reached idle state"
-                        );
-                        break;
-                    }
-                }
-                Err(err) => {
-                    warn!(
-                        slices_executed = slice_index + 1,
-                        error = %err,
-                        "worker loop slice failed"
-                    );
-                    break;
-                }
-            }
-
-            if started_at.elapsed() >= Duration::from_secs(max_seconds) {
-                info!(
-                    slices_executed = slice_index + 1,
-                    elapsed_ms = started_at.elapsed().as_millis(),
-                    "worker loop reached max duration"
-                );
-                break;
-            }
-        }
-
-        WORKER_LOOP_RUNNING.store(false, Ordering::Release);
-    });
-
-    true
-}
-
-fn worker_max_slices_per_kick() -> usize {
-    std::env::var("BACKFILL_WORKER_MAX_SLICES_PER_KICK")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_WORKER_MAX_SLICES_PER_KICK)
-}
-
-fn worker_max_seconds_per_kick() -> u64 {
-    std::env::var("BACKFILL_WORKER_MAX_SECONDS_PER_KICK")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_WORKER_MAX_SECONDS_PER_KICK)
 }
 
 fn internal_error_response() -> Result<Response<ResponseBody>, Error> {

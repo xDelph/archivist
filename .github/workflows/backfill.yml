@@ -27,5 +27,8 @@ jobs:
           ENQUEUE_RESPONSE="$(curl -fsS -X POST "${BASE_URL%/}/api/admin/backfill" \
             -H "Authorization: Bearer ${ADMIN_TOKEN}" \
             -H "x-trigger-source: github-actions" \
-            --max-time 10)"
+            --connect-timeout 5 \
+            --max-time 20 \
+            --retry 2 \
+            --retry-delay 2)"
           echo "Backfill tick response: ${ENQUEUE_RESPONSE}"

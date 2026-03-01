@@ -25,7 +25,7 @@ GET  /record/thread?channel_id=&ts=[&search=]
   → return HTML fragment (loaded lazily by HTMX on first expand)
 
 POST /api/admin/backfill  (bearer-token protected)
-  → enqueues one backfill job, triggers background worker loop, returns immediately
+  → enqueues one backfill job and executes one bounded worker slice
 GET/POST /api/admin/backfill/run (bearer-token protected)
   → executes one bounded worker slice (manual/admin trigger)
 GET  /api/health
@@ -56,7 +56,7 @@ public/         Static assets (record.css, modal.js, og.png)
 |---|---|
 | `POST /api/slack/events` | Receive Slack Events API payloads |
 | `GET /api/health` | Health check |
-| `POST /api/admin/backfill` | Queue backfill job + trigger detached worker loop (bearer-token protected) |
+| `POST /api/admin/backfill` | Queue + process one bounded backfill/aggregation slice (bearer-token protected) |
 | `GET/POST /api/admin/backfill/run` | Manual worker endpoint: process one bounded backfill/aggregation slice |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
 | `GET /record/weekly?tab=top|week|month` | SSR ranking tabs (all-time, weekly, monthly) with rank-change badges |
@@ -113,8 +113,6 @@ cargo test
 | `BACKFILL_USERS_SYNC_INTERVAL_MINUTES` | Optional interval between full users cache cycles (default: `720`) |
 | `AGGREGATION_JOBS_PER_SLICE` | Optional max aggregation jobs processed per worker slice (default: `25`) |
 | `AGGREGATION_RUNNING_LEASE_MINUTES` | Optional timeout to recover stale `running` aggregation jobs (default: `15`) |
-| `BACKFILL_WORKER_MAX_SLICES_PER_KICK` | Optional max worker slices run by one detached `/api/admin/backfill` kick (default: `6`) |
-| `BACKFILL_WORKER_MAX_SECONDS_PER_KICK` | Optional max detached worker duration per `/api/admin/backfill` kick (default: `55`) |
 | `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
 | `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |
@@ -205,10 +203,9 @@ curl https://<your-project>.vercel.app/api/health
 Backfill uses a queue + bounded worker-slice flow:
 
 - `POST /api/admin/backfill` inserts one queued job (deduplicated if a job is already queued/running).
-- `POST /api/admin/backfill` returns `202` quickly and starts a detached worker loop.
-- The detached loop runs bounded slices until idle or until its per-kick limits are reached.
+- `POST /api/admin/backfill` then immediately executes one bounded slice (backfill + aggregation) in the same request.
 - `GET/POST /api/admin/backfill/run` executes the same bounded slice (manual/admin use).
-- No recursive self-kick chaining; scheduler ticks keep progress moving.
+- No recursive self-kick chaining; progress continues on the next scheduler tick.
 - GitHub Actions triggers only `POST /api/admin/backfill` every 10 minutes.
 
 Add these two secrets to the GitHub repository (`Settings → Secrets and variables → Actions`):
