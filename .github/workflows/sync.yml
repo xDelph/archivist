@@ -1,4 +1,4 @@
-name: Sync database with Slack
+name: Sync
 
 on:
   schedule:
@@ -6,14 +6,14 @@ on:
   workflow_dispatch:       # allow manual trigger from GitHub UI
 
 jobs:
-  backfill:
+  sync:
     runs-on: ubuntu-latest
     env:
       BACKEND_APP_URL: ${{ secrets.BACKEND_APP_URL }}
       APP_URL: ${{ secrets.APP_URL }}
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
-      - name: Trigger sync
+      - name: Sync database with Slack
         run: |
           BASE_URL="${BACKEND_APP_URL:-$APP_URL}"
           if [ -z "$BASE_URL" ]; then
