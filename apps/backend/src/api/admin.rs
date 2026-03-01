@@ -78,14 +78,20 @@ fn resolve_worker_url(req: &http::Request<Bytes>) -> Result<String, Error> {
     if let Ok(explicit) = env::var("BACKFILL_WORKER_URL")
         && !explicit.trim().is_empty()
     {
-        return Ok(explicit.trim_end_matches('/').to_owned());
+        let explicit = explicit.trim().to_owned();
+        if !is_http_url(&explicit) {
+            return Err(Error::from(format!(
+                "invalid BACKFILL_WORKER_URL: {explicit}"
+            )));
+        }
+        return Ok(explicit);
     }
 
     let base = env::var("BACKEND_APP_URL")
         .ok()
         .or_else(|| env::var("APP_URL").ok())
         .filter(|value| !value.trim().is_empty())
-        .map(|value| value.trim_end_matches('/').to_owned())
+        .map(|value| normalize_url(&value))
         .or_else(|| {
             let host = req
                 .headers()
@@ -102,6 +108,9 @@ fn resolve_worker_url(req: &http::Request<Bytes>) -> Result<String, Error> {
             Some(format!("{scheme}://{host}"))
         })
         .ok_or_else(|| Error::from("unable to resolve worker base URL"))?;
+    if !is_http_url(&base) {
+        return Err(Error::from(format!("invalid worker base URL: {base}")));
+    }
 
     Ok(format!("{base}/api/admin/sync/run"))
 }
@@ -118,11 +127,14 @@ async fn publish_worker_job(
         return Err(Error::from("missing BACKFILL_WORKER_TOKEN"));
     }
 
-    let publish_url = format!(
-        "{}/v2/publish/{}",
-        qstash_url(),
-        urlencoding::encode(worker_url)
-    );
+    let qstash_base_url = qstash_url();
+    if !is_http_url(worker_url) {
+        return Err(Error::from(format!(
+            "invalid worker URL scheme: {worker_url}"
+        )));
+    }
+
+    let publish_url = format!("{qstash_base_url}/v2/publish/{worker_url}");
     let timeout = Duration::from_secs(qstash_timeout_seconds());
     let client = reqwest::Client::builder()
         .timeout(timeout)
@@ -130,7 +142,7 @@ async fn publish_worker_job(
         .map_err(|e| Error::from(e.to_string()))?;
 
     let response = client
-        .post(publish_url)
+        .post(&publish_url)
         .bearer_auth(qstash_token)
         .header("Content-Type", "application/json")
         .header("Upstash-Method", "POST")
@@ -150,8 +162,10 @@ async fn publish_worker_job(
         .map_err(|e| Error::from(e.to_string()))?;
     if !status.is_success() {
         return Err(Error::from(format!(
-            "qstash publish failed: status={} body={}",
+            "qstash publish failed: status={} worker_url={} publish_url={} body={}",
             status.as_u16(),
+            worker_url,
+            publish_url,
             body
         )));
     }
@@ -172,10 +186,26 @@ fn qstash_token() -> String {
 }
 
 fn qstash_url() -> String {
-    env::var("UPSTASH_QSTASH_URL")
-        .unwrap_or_else(|_| "https://qstash.upstash.io".to_owned())
-        .trim_end_matches('/')
-        .to_owned()
+    normalize_url(
+        &env::var("UPSTASH_QSTASH_URL").unwrap_or_else(|_| "https://qstash.upstash.io".to_owned()),
+    )
+}
+
+fn normalize_url(value: &str) -> String {
+    let trimmed = value
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .trim_end_matches('/');
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return trimmed.to_owned();
+    }
+    format!("https://{trimmed}")
+}
+
+fn is_http_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 fn internal_error_response() -> Result<Response<ResponseBody>, Error> {

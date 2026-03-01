@@ -111,7 +111,7 @@ pub(crate) async fn process(
     next_signing_key: Option<&str>,
     req: http::Request<Bytes>,
 ) -> Result<Response<Bytes>, Error> {
-    if req.method() != http::Method::POST {
+    if req.method() != http::Method::POST && req.method() != http::Method::GET {
         return Ok(Response::builder()
             .status(StatusCode::METHOD_NOT_ALLOWED)
             .body(Bytes::new())?);
