@@ -47,7 +47,7 @@ The app is **modular** — each concern lives in its own module:
 |---|---|
 | `api/slack/events` | Vercel handler: `POST /api/slack/events` — ack 200 immediately |
 | `api/health` | `GET /api/health` |
-| `api/admin/backfill` | `POST /api/admin/backfill` (protected) |
+| `api/admin/sync` | `POST /api/admin/sync` (protected, QStash trigger) |
 | `slack::signature` | HMAC-SHA256 signature verification (anti-replay: 300s window) |
 | `slack::events` | Event dispatch: `url_verification` challenge, `event_callback` routing |
 | `slack::ingest` | Dedup via `event_id`, upsert messages, insert reactions |
@@ -80,7 +80,12 @@ DATABASE_URL_UNPOOLED     # Neon direct — used only for cargo sqlx prepare / m
 SLACK_SIGNING_SECRET
 SLACK_BOT_TOKEN           # xoxb- token (events API, bot presence)
 SLACK_USER_TOKEN          # xoxp- token (backfill — full public channel history)
-ADMIN_TOKEN               # Bearer token protecting POST /api/admin/backfill
+ADMIN_TOKEN               # Bearer token protecting POST /api/admin/sync
+UPSTASH_QSTASH_TOKEN      # QStash publish token
+UPSTASH_QSTASH_URL        # QStash base URL
+UPSTASH_QSTASH_CURRENT_SIGNING_KEY # QStash signature verification key (current)
+UPSTASH_QSTASH_NEXT_SIGNING_KEY    # QStash signature verification key (next)
+BACKFILL_WORKER_TOKEN     # Bearer token forwarded by QStash to /api/admin/sync/run
 CLOUDFLARED_R2_ACCOUNT_ID # Cloudflare account ID
 CLOUDFLARED_R2_ACCESS_KEY # R2 API token access key
 CLOUDFLARED_R2_SECRET_KEY # R2 API token secret key

@@ -1,26 +1,21 @@
 use anyhow::Result;
 use serde::Serialize;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Row, pool::PoolConnection};
 use tracing::{info, warn};
 
-use crate::api::aggregation_jobs::{AggregationBatchResult, run_aggregation_batch};
-use crate::api::backfill_jobs::{
-    claim_next_backfill_job, mark_backfill_job_failed, mark_backfill_job_succeeded,
-};
-use crate::slack::backfill::{
-    BackfillSliceConfig, BackfillSliceResult, SlackClient, run_backfill_slice,
-};
+use crate::api::aggregation_jobs::run_aggregation_batch;
+use crate::slack::backfill::{SlackClient, run_backfill};
 use crate::storage::R2Client;
 
-const DEFAULT_USERS_PAGES_PER_SLICE: usize = 2;
-const DEFAULT_USERS_SYNC_INTERVAL_MINUTES: i64 = 720;
-const DEFAULT_AGGREGATION_JOBS_PER_SLICE: i64 = 25;
+const DEFAULT_WORKER_LOCK_KEY: i64 = 1_048_729;
+const DEFAULT_AGGREGATION_JOBS_PER_BATCH: i64 = 200;
+const DEFAULT_AGGREGATION_MAX_BATCHES_PER_RUN: usize = 200;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkerSliceOutcome {
+pub struct WorkerRunOutcome {
     pub backfill: BackfillOutcome,
-    pub aggregation: AggregationBatchResult,
+    pub aggregation: AggregationOutcome,
     pub ran: bool,
 }
 
@@ -28,89 +23,134 @@ pub struct WorkerSliceOutcome {
 #[serde(rename_all = "camelCase")]
 pub struct BackfillOutcome {
     pub ran: bool,
-    pub job_id: Option<String>,
     pub status: String,
-    pub slice: Option<BackfillSliceResult>,
     pub error: Option<String>,
 }
 
-pub async fn execute_worker_slice(
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregationOutcome {
+    pub batches: usize,
+    pub claimed: usize,
+    pub succeeded: usize,
+    pub requeued: usize,
+    pub failed: usize,
+}
+
+pub async fn execute_worker_run(
     pool: &PgPool,
     slack_token: &str,
     storage: Option<&R2Client>,
-) -> Result<WorkerSliceOutcome> {
+) -> Result<WorkerRunOutcome> {
     let mut backfill = BackfillOutcome {
         ran: false,
-        job_id: None,
         status: "idle".to_owned(),
-        slice: None,
         error: None,
     };
 
-    if let Some(job_id) = claim_next_backfill_job(pool).await? {
-        backfill.ran = true;
-        backfill.job_id = Some(job_id.clone());
-        backfill.status = "running".to_owned();
-        info!(job_id = %job_id, "backfill worker claimed job");
+    let Some(mut worker_lock_conn) = try_acquire_worker_lock(pool).await? else {
+        backfill.status = "busy".to_owned();
+        info!("worker run skipped because another run is in progress");
+        return Ok(WorkerRunOutcome {
+            ran: false,
+            backfill,
+            aggregation: AggregationOutcome::default(),
+        });
+    };
 
+    let result = async {
         if slack_token.is_empty() {
             let error = "missing SLACK_USER_TOKEN/SLACK_BOT_TOKEN";
-            mark_backfill_job_failed(pool, &job_id, error).await?;
             backfill.status = "failed".to_owned();
             backfill.error = Some(error.to_owned());
-            warn!(job_id = %job_id, error, "backfill worker failed job");
+            warn!(error, "backfill worker skipped");
         } else {
+            backfill.ran = true;
+            backfill.status = "running".to_owned();
             let client = SlackClient::new(slack_token.to_owned());
-            let config = BackfillSliceConfig {
-                max_channels: usize::MAX,
-                users_pages_per_slice: users_pages_per_slice(),
-                users_sync_interval_minutes: users_sync_interval_minutes(),
-            };
-            match run_backfill_slice(pool, &client, slack_token, storage, &config).await {
-                Ok(slice) => {
-                    mark_backfill_job_succeeded(pool, &job_id).await?;
+            match run_backfill(pool, &client, slack_token, storage).await {
+                Ok(()) => {
                     backfill.status = "succeeded".to_owned();
-                    backfill.slice = Some(slice);
-                    info!(job_id = %job_id, "backfill worker completed job");
+                    info!("backfill worker completed full run");
                 }
                 Err(err) => {
                     let err_string = err.to_string();
-                    mark_backfill_job_failed(pool, &job_id, &err_string).await?;
                     backfill.status = "failed".to_owned();
                     backfill.error = Some(err_string.clone());
-                    warn!(job_id = %job_id, error = %err_string, "backfill worker failed job");
+                    warn!(error = %err_string, "backfill worker run failed");
                 }
             }
         }
+
+        let aggregation = drain_aggregation_jobs(pool).await?;
+        Ok(WorkerRunOutcome {
+            ran: backfill.ran || aggregation.claimed > 0,
+            backfill,
+            aggregation,
+        })
+    }
+    .await;
+
+    if let Err(err) = release_worker_lock(&mut worker_lock_conn).await {
+        warn!(error = %err, "failed to release worker advisory lock");
     }
 
-    let aggregation = run_aggregation_batch(pool, aggregation_jobs_per_slice()).await?;
-    Ok(WorkerSliceOutcome {
-        ran: backfill.ran || aggregation.claimed > 0,
-        backfill,
-        aggregation,
-    })
+    result
 }
 
-fn users_pages_per_slice() -> usize {
-    std::env::var("BACKFILL_USERS_PAGES_PER_SLICE")
+async fn drain_aggregation_jobs(pool: &PgPool) -> Result<AggregationOutcome> {
+    let mut out = AggregationOutcome::default();
+    for _ in 0..aggregation_max_batches_per_run() {
+        let batch = run_aggregation_batch(pool, aggregation_jobs_per_batch()).await?;
+        if batch.claimed == 0 {
+            break;
+        }
+        out.batches += 1;
+        out.claimed += batch.claimed;
+        out.succeeded += batch.succeeded;
+        out.requeued += batch.requeued;
+        out.failed += batch.failed;
+    }
+    Ok(out)
+}
+
+async fn try_acquire_worker_lock(pool: &PgPool) -> Result<Option<PoolConnection<Postgres>>> {
+    let mut conn = pool.acquire().await?;
+    let row = sqlx::query("SELECT pg_try_advisory_lock($1) AS acquired")
+        .bind(worker_lock_key())
+        .fetch_one(&mut *conn)
+        .await?;
+    let acquired: bool = row.get("acquired");
+    if acquired { Ok(Some(conn)) } else { Ok(None) }
+}
+
+async fn release_worker_lock(conn: &mut PoolConnection<Postgres>) -> Result<()> {
+    sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(worker_lock_key())
+        .execute(&mut **conn)
+        .await?;
+    Ok(())
+}
+
+fn worker_lock_key() -> i64 {
+    std::env::var("BACKFILL_WORKER_LOCK_KEY")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(DEFAULT_WORKER_LOCK_KEY)
+}
+
+fn aggregation_jobs_per_batch() -> i64 {
+    std::env::var("AGGREGATION_JOBS_PER_BATCH")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_AGGREGATION_JOBS_PER_BATCH)
+}
+
+fn aggregation_max_batches_per_run() -> usize {
+    std::env::var("AGGREGATION_MAX_BATCHES_PER_RUN")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(DEFAULT_USERS_PAGES_PER_SLICE)
-}
-
-fn users_sync_interval_minutes() -> i64 {
-    std::env::var("BACKFILL_USERS_SYNC_INTERVAL_MINUTES")
-        .ok()
-        .and_then(|value| value.parse::<i64>().ok())
         .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_USERS_SYNC_INTERVAL_MINUTES)
-}
-
-fn aggregation_jobs_per_slice() -> i64 {
-    std::env::var("AGGREGATION_JOBS_PER_SLICE")
-        .ok()
-        .and_then(|value| value.parse::<i64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_AGGREGATION_JOBS_PER_SLICE)
+        .unwrap_or(DEFAULT_AGGREGATION_MAX_BATCHES_PER_RUN)
 }

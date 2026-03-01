@@ -5,10 +5,10 @@
     { "src": "/api/slack/events", "dest": "/api/events.rs" },
     { "src": "/api/events", "dest": "/api/events.rs" },
     { "src": "/api/health", "dest": "/api/health.rs" },
-    { "src": "/api/admin/backfill/run", "dest": "/api/backfill_worker.rs" },
-    { "src": "/api/backfill/run", "dest": "/api/backfill_worker.rs" },
-    { "src": "/api/admin/backfill", "dest": "/api/backfill.rs" },
-    { "src": "/api/backfill", "dest": "/api/backfill.rs" },
+    { "src": "/api/admin/sync/run", "dest": "/api/backfill_worker.rs" },
+    { "src": "/api/sync/run", "dest": "/api/backfill_worker.rs" },
+    { "src": "/api/admin/sync", "dest": "/api/backfill.rs" },
+    { "src": "/api/sync", "dest": "/api/backfill.rs" },
     { "src": "/api/record(/.*)?", "dest": "/api/record.rs" },
     { "src": "/record(/.*)?", "dest": "/api/record.rs" }
   ]

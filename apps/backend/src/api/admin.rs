@@ -1,39 +1,16 @@
-use std::env;
+use std::{env, time::Duration};
 
 use bytes::Bytes;
 use http::StatusCode;
 use http_body_util::BodyExt;
-use sqlx::PgPool;
-use tokio::sync::OnceCell;
+use serde_json::Value;
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
-use crate::api::backfill_jobs::enqueue_backfill_job;
-use crate::api::worker_engine::execute_worker_slice;
-use crate::db::pool::create_pool;
-use crate::storage::R2Client;
+const DEFAULT_QSTASH_TIMEOUT_SECONDS: u64 = 10;
 
-static POOL: OnceCell<PgPool> = OnceCell::const_new();
-static STORAGE: OnceCell<Option<R2Client>> = OnceCell::const_new();
-
-async fn pool() -> Result<&'static PgPool, Error> {
-    POOL.get_or_try_init(|| async {
-        let url = env::var("DATABASE_URL").unwrap_or_default();
-        create_pool(&url)
-            .await
-            .map_err(|e| Error::from(e.to_string()))
-    })
-    .await
-}
-
-async fn storage() -> &'static Option<R2Client> {
-    STORAGE
-        .get_or_init(|| async { R2Client::from_env().await.ok() })
-        .await
-}
-
-/// Vercel entry-point — reads config from env and delegates to [`process`].
+/// Vercel entry-point — validates admin auth and triggers QStash worker execution.
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     let method = req.method().to_string();
     let path = req.uri().path().to_owned();
@@ -41,7 +18,7 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     match tokio::spawn(async move { handle_request(req).await }).await {
         Ok(Ok(resp)) => Ok(resp),
         Ok(Err(err)) => {
-            error!(method, path, query, error = %err, "admin handler failed");
+            error!(method, path, query, error = %err, "admin trigger handler failed");
             internal_error_response()
         }
         Err(join_err) => {
@@ -51,7 +28,7 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
                 query,
                 is_panic = join_err.is_panic(),
                 error = %join_err,
-                "admin handler task crashed"
+                "admin trigger handler task crashed"
             );
             internal_error_response()
         }
@@ -60,6 +37,9 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
 
 async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_default();
+    let qstash_token = qstash_token();
+    let worker_token = env::var("BACKFILL_WORKER_TOKEN").unwrap_or_default();
+
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
@@ -72,44 +52,19 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         .unwrap_or("api")
         .to_owned();
 
-    let resp = match process(&admin_token, req).await {
-        Ok(r) => r,
-        Err(e) => {
-            let body = format!(r#"{{"ok":false,"error":"{}"}}"#, e);
-            return Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header("Content-Type", "application/json")
-                .body(ResponseBody::from(Bytes::from(body)))?);
-        }
-    };
-    if resp.status() != StatusCode::ACCEPTED {
-        let (parts, body) = resp.into_parts();
+    let worker_url = resolve_worker_url(&req)?;
+    let auth_resp = process(&admin_token, req).await?;
+    if auth_resp.status() != StatusCode::ACCEPTED {
+        let (parts, body) = auth_resp.into_parts();
         return Ok(Response::from_parts(parts, ResponseBody::from(body)));
     }
 
-    let pool = pool().await?;
-    let enqueue_result = enqueue_backfill_job(pool, &requested_by)
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
-
-    info!(
-        job_id = %enqueue_result.job_id,
-        queued_now = enqueue_result.queued_now,
-        requested_by = %requested_by,
-        "backfill job enqueued"
-    );
-    let slack_token = env::var("SLACK_USER_TOKEN")
-        .or_else(|_| env::var("SLACK_BOT_TOKEN"))
-        .unwrap_or_default();
-    let worker = execute_worker_slice(pool, &slack_token, storage().await.as_ref())
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
-
+    let publish = publish_worker_job(&qstash_token, &worker_token, &worker_url).await?;
     let body = serde_json::json!({
         "ok": true,
-        "queued": enqueue_result.queued_now,
-        "jobId": enqueue_result.job_id,
-        "worker": worker,
+        "requestedBy": requested_by,
+        "workerUrl": worker_url,
+        "qstash": publish,
     })
     .to_string();
 
@@ -117,6 +72,110 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         .status(StatusCode::ACCEPTED)
         .header("Content-Type", "application/json")
         .body(ResponseBody::from(Bytes::from(body)))?)
+}
+
+fn resolve_worker_url(req: &http::Request<Bytes>) -> Result<String, Error> {
+    if let Ok(explicit) = env::var("BACKFILL_WORKER_URL")
+        && !explicit.trim().is_empty()
+    {
+        return Ok(explicit.trim_end_matches('/').to_owned());
+    }
+
+    let base = env::var("BACKEND_APP_URL")
+        .ok()
+        .or_else(|| env::var("APP_URL").ok())
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim_end_matches('/').to_owned())
+        .or_else(|| {
+            let host = req
+                .headers()
+                .get("x-forwarded-host")
+                .or_else(|| req.headers().get("host"))
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.is_empty())?;
+            let scheme = req
+                .headers()
+                .get("x-forwarded-proto")
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("https");
+            Some(format!("{scheme}://{host}"))
+        })
+        .ok_or_else(|| Error::from("unable to resolve worker base URL"))?;
+
+    Ok(format!("{base}/api/admin/sync/run"))
+}
+
+async fn publish_worker_job(
+    qstash_token: &str,
+    worker_token: &str,
+    worker_url: &str,
+) -> Result<Value, Error> {
+    if qstash_token.is_empty() {
+        return Err(Error::from("missing UPSTASH_QSTASH_TOKEN"));
+    }
+    if worker_token.is_empty() {
+        return Err(Error::from("missing BACKFILL_WORKER_TOKEN"));
+    }
+
+    let publish_url = format!(
+        "{}/v2/publish/{}",
+        qstash_url(),
+        urlencoding::encode(worker_url)
+    );
+    let timeout = Duration::from_secs(qstash_timeout_seconds());
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    let response = client
+        .post(publish_url)
+        .bearer_auth(qstash_token)
+        .header("Content-Type", "application/json")
+        .header("Upstash-Method", "POST")
+        .header(
+            "Upstash-Forward-Authorization",
+            format!("Bearer {worker_token}"),
+        )
+        .body("{}")
+        .send()
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+    if !status.is_success() {
+        return Err(Error::from(format!(
+            "qstash publish failed: status={} body={}",
+            status.as_u16(),
+            body
+        )));
+    }
+
+    serde_json::from_str(&body).map_err(|e| Error::from(e.to_string()))
+}
+
+fn qstash_timeout_seconds() -> u64 {
+    env::var("QSTASH_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_QSTASH_TIMEOUT_SECONDS)
+}
+
+fn qstash_token() -> String {
+    env::var("UPSTASH_QSTASH_TOKEN").unwrap_or_default()
+}
+
+fn qstash_url() -> String {
+    env::var("UPSTASH_QSTASH_URL")
+        .unwrap_or_else(|_| "https://qstash.upstash.io".to_owned())
+        .trim_end_matches('/')
+        .to_owned()
 }
 
 fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
@@ -128,7 +187,7 @@ fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
         )))?)
 }
 
-/// Core handler logic — auth check only (backfill is launched by [`handler`]).
+/// Core handler logic — auth check only (trigger is launched by [`handler`]).
 pub(crate) async fn process(
     admin_token: &str,
     req: http::Request<Bytes>,
@@ -146,7 +205,7 @@ pub(crate) async fn process(
         .unwrap_or("");
 
     if admin_token.is_empty() || provided != format!("Bearer {}", admin_token) {
-        warn!("unauthorized backfill attempt");
+        warn!("unauthorized sync trigger attempt");
         return Ok(Response::builder()
             .status(StatusCode::UNAUTHORIZED)
             .body(Bytes::new())?);

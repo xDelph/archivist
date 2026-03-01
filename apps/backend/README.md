@@ -24,10 +24,10 @@ GET  /record/thread?channel_id=&ts=[&search=]
   → fetch messages + files for thread
   → return HTML fragment (loaded lazily by HTMX on first expand)
 
-POST /api/admin/backfill  (bearer-token protected)
-  → enqueues one backfill job and executes one bounded worker slice
-GET/POST /api/admin/backfill/run (bearer-token protected)
-  → executes one bounded worker slice (manual/admin trigger)
+POST /api/admin/sync  (bearer-token protected)
+  → triggers a QStash publish to run the worker asynchronously
+POST /api/admin/sync/run (bearer-token protected)
+  → worker endpoint: runs full backfill, then drains aggregation
 GET  /api/health
 ```
 
@@ -56,8 +56,8 @@ public/         Static assets (record.css, modal.js, og.png)
 |---|---|
 | `POST /api/slack/events` | Receive Slack Events API payloads |
 | `GET /api/health` | Health check |
-| `POST /api/admin/backfill` | Queue + process one bounded backfill/aggregation slice (bearer-token protected) |
-| `GET/POST /api/admin/backfill/run` | Manual worker endpoint: process one bounded backfill/aggregation slice |
+| `POST /api/admin/sync` | Trigger endpoint: publishes one worker execution to QStash |
+| `POST /api/admin/sync/run` | Worker endpoint: full backfill + aggregation (sync) |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
 | `GET /record/weekly?tab=top|week|month` | SSR ranking tabs (all-time, weekly, monthly) with rank-change badges |
 | `GET /record/threads?sort=&period=&channel=&user=&search=` | HTMX fragment: filtered/sorted thread list |
@@ -103,13 +103,17 @@ cargo test
 | `SLACK_SIGNING_SECRET` | From Slack App → Basic Information |
 | `SLACK_BOT_TOKEN` | `xoxb-...` from Slack App → OAuth & Permissions |
 | `SLACK_USER_TOKEN` | `xoxp-...` — for backfill (full channel history) |
-| `ADMIN_TOKEN` | Shared secret for `POST /api/admin/backfill` |
-| `CRON_SECRET` | Optional bearer token accepted by `/api/admin/backfill/run` (for Vercel Cron security) |
-| `BACKFILL_RUNNING_LEASE_MINUTES` | Optional timeout to auto-fail stale `running` backfill jobs (default: `10`) |
+| `ADMIN_TOKEN` | Shared secret for `POST /api/admin/sync` |
+| `UPSTASH_QSTASH_TOKEN` | Upstash QStash token used to publish worker calls |
+| `UPSTASH_QSTASH_URL` | Upstash QStash base URL (example: `https://qstash.upstash.io`) |
+| `UPSTASH_QSTASH_CURRENT_SIGNING_KEY` | Upstash current signing key used to verify request signatures |
+| `UPSTASH_QSTASH_NEXT_SIGNING_KEY` | Upstash next signing key used during key rotation |
+| `BACKFILL_WORKER_TOKEN` | Bearer token forwarded by QStash to authenticate `/api/admin/sync/run` |
+| `BACKFILL_WORKER_URL` | Optional absolute worker URL override (defaults to `<base>/api/admin/sync/run`) |
+| `QSTASH_TIMEOUT_SECONDS` | Optional timeout for publish HTTP call to QStash (default: `10`) |
 | `BACKFILL_HISTORY_OVERLAP_SECONDS` | Optional safety overlap for `conversations.history` oldest cutoff (default: `3600`) |
-| `BACKFILL_USERS_PAGES_PER_SLICE` | Optional max `users.list` pages cached per worker slice (default: `2`) |
-| `BACKFILL_USERS_SYNC_INTERVAL_MINUTES` | Optional interval between full users cache cycles (default: `720`) |
-| `AGGREGATION_JOBS_PER_SLICE` | Optional max aggregation jobs processed per worker slice (default: `25`) |
+| `AGGREGATION_JOBS_PER_BATCH` | Optional max aggregation jobs per batch while draining (default: `200`) |
+| `AGGREGATION_MAX_BATCHES_PER_RUN` | Optional max aggregation batches drained per worker run (default: `200`) |
 | `AGGREGATION_RUNNING_LEASE_MINUTES` | Optional timeout to recover stale `running` aggregation jobs (default: `15`) |
 | `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
@@ -178,6 +182,11 @@ vercel env add DATABASE_URL
 vercel env add SLACK_SIGNING_SECRET
 vercel env add SLACK_BOT_TOKEN
 vercel env add ADMIN_TOKEN
+vercel env add UPSTASH_QSTASH_TOKEN
+vercel env add UPSTASH_QSTASH_URL
+vercel env add UPSTASH_QSTASH_CURRENT_SIGNING_KEY
+vercel env add UPSTASH_QSTASH_NEXT_SIGNING_KEY
+vercel env add BACKFILL_WORKER_TOKEN
 vercel env add SLACK_WORKSPACE_URL   # optional — enables "Open Slack" link
 ```
 
@@ -198,28 +207,19 @@ curl https://<your-project>.vercel.app/api/health
 
 ## Backfill scheduling
 
-Backfill uses a queue + bounded worker-slice flow:
+Backfill scheduling uses QStash:
 
-- `POST /api/admin/backfill` inserts one queued job (deduplicated if a job is already queued/running).
-- `POST /api/admin/backfill` then immediately executes one worker run (backfill + aggregation) in the same request.
-- That run scans all visible channels (resume-from-last-ts with overlap).
-- `GET/POST /api/admin/backfill/run` executes the same worker run (manual/admin use).
-- No recursive self-kick chaining; progress continues on the next scheduler tick.
-- GitHub Actions triggers only `POST /api/admin/backfill` every 30 minutes.
-
-Add these two secrets to the GitHub repository (`Settings → Secrets and variables → Actions`):
-
-| Secret | Value |
-|---|---|
-| `APP_URL` | Your deployed Vercel URL, e.g. `https://archivist.vercel.app` |
-| `ADMIN_TOKEN` | Same value as the `ADMIN_TOKEN` env var in Vercel |
+- `POST /api/admin/sync` is a trigger-only endpoint.
+- It publishes one call to `POST /api/admin/sync/run` via QStash.
+- `POST /api/admin/sync/run` runs full backfill, then drains aggregation jobs.
+- QStash handles async delivery and retries.
 
 ## Weekly ranking data
 
 `thread_weekly_scores` is updated in two paths:
 
 - Real-time ingest: message and reaction events refresh the current week row for the touched thread.
-- Scheduled backfill slices: each processed touched thread root gets one weekly-score upsert.
+- Scheduled backfill runs: each processed touched thread root gets one weekly-score upsert.
 
 One-shot historical seeding:
 

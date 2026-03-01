@@ -15,9 +15,9 @@ Date: 2026-02-27
 
 - Aggregation jobs are enqueued by:
   - Slack webhook ingest (`/api/slack/events`)
-  - Backfill pipeline (`/api/admin/backfill`)
+  - Sync pipeline trigger (`/api/admin/sync`)
 - Aggregation jobs are consumed by:
-  - `/api/admin/backfill/run` worker (cron route already configured)
+  - `/api/admin/sync/run` worker
 
 ## Rebuild (full)
 

@@ -18,6 +18,8 @@ sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macro
 
 # HTTP client (Slack Web API)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+urlencoding = "2.1"
+base64 = "0.22"
 
 # Cloudflare R2 (S3-compatible object storage)
 aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
