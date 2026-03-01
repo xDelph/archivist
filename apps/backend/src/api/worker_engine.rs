@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use anyhow::Result;
 use serde::Serialize;
 use sqlx::PgPool;
@@ -14,8 +12,6 @@ use crate::slack::backfill::{
 };
 use crate::storage::R2Client;
 
-const DEFAULT_BACKFILL_SLICE_TIMEOUT_SECONDS: u64 = 8;
-const DEFAULT_BACKFILL_CHANNELS_PER_SLICE: usize = 3;
 const DEFAULT_USERS_PAGES_PER_SLICE: usize = 2;
 const DEFAULT_USERS_SYNC_INTERVAL_MINUTES: i64 = 720;
 const DEFAULT_AGGREGATION_JOBS_PER_SLICE: i64 = 25;
@@ -66,43 +62,23 @@ pub async fn execute_worker_slice(
         } else {
             let client = SlackClient::new(slack_token.to_owned());
             let config = BackfillSliceConfig {
-                max_channels: backfill_channels_per_slice(),
+                max_channels: usize::MAX,
                 users_pages_per_slice: users_pages_per_slice(),
                 users_sync_interval_minutes: users_sync_interval_minutes(),
             };
-            let slice_run = tokio::time::timeout(
-                Duration::from_secs(backfill_slice_timeout_seconds()),
-                run_backfill_slice(pool, &client, slack_token, storage, &config),
-            )
-            .await;
-
-            match slice_run {
-                Ok(Ok(slice)) => {
+            match run_backfill_slice(pool, &client, slack_token, storage, &config).await {
+                Ok(slice) => {
                     mark_backfill_job_succeeded(pool, &job_id).await?;
                     backfill.status = "succeeded".to_owned();
                     backfill.slice = Some(slice);
                     info!(job_id = %job_id, "backfill worker completed job");
                 }
-                Ok(Err(err)) => {
+                Err(err) => {
                     let err_string = err.to_string();
                     mark_backfill_job_failed(pool, &job_id, &err_string).await?;
                     backfill.status = "failed".to_owned();
                     backfill.error = Some(err_string.clone());
                     warn!(job_id = %job_id, error = %err_string, "backfill worker failed job");
-                }
-                Err(_) => {
-                    let err_string = format!(
-                        "backfill slice timed out after {} seconds",
-                        backfill_slice_timeout_seconds()
-                    );
-                    mark_backfill_job_failed(pool, &job_id, &err_string).await?;
-                    backfill.status = "timed_out".to_owned();
-                    backfill.error = Some(err_string.clone());
-                    warn!(
-                        job_id = %job_id,
-                        timeout_seconds = backfill_slice_timeout_seconds(),
-                        "backfill worker slice timed out"
-                    );
                 }
             }
         }
@@ -114,22 +90,6 @@ pub async fn execute_worker_slice(
         backfill,
         aggregation,
     })
-}
-
-fn backfill_slice_timeout_seconds() -> u64 {
-    std::env::var("BACKFILL_SLICE_TIMEOUT_SECONDS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_BACKFILL_SLICE_TIMEOUT_SECONDS)
-}
-
-fn backfill_channels_per_slice() -> usize {
-    std::env::var("BACKFILL_CHANNELS_PER_SLICE")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_BACKFILL_CHANNELS_PER_SLICE)
 }
 
 fn users_pages_per_slice() -> usize {

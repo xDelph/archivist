@@ -2,7 +2,7 @@ name: Backfill Tick
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 10 minutes
+    - cron: "*/30 * * * *"   # every 30 minutes
   workflow_dispatch:       # allow manual trigger from GitHub UI
 
 jobs:

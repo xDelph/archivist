@@ -311,7 +311,7 @@ pub struct BackfillSliceConfig {
 impl Default for BackfillSliceConfig {
     fn default() -> Self {
         Self {
-            max_channels: 3,
+            max_channels: usize::MAX,
             users_pages_per_slice: 2,
             users_sync_interval_minutes: 720,
         }

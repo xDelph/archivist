@@ -107,8 +107,6 @@ cargo test
 | `CRON_SECRET` | Optional bearer token accepted by `/api/admin/backfill/run` (for Vercel Cron security) |
 | `BACKFILL_RUNNING_LEASE_MINUTES` | Optional timeout to auto-fail stale `running` backfill jobs (default: `10`) |
 | `BACKFILL_HISTORY_OVERLAP_SECONDS` | Optional safety overlap for `conversations.history` oldest cutoff (default: `3600`) |
-| `BACKFILL_SLICE_TIMEOUT_SECONDS` | Optional per-invocation backfill slice timeout (default: `8`) |
-| `BACKFILL_CHANNELS_PER_SLICE` | Optional max channels processed per worker slice (default: `3`) |
 | `BACKFILL_USERS_PAGES_PER_SLICE` | Optional max `users.list` pages cached per worker slice (default: `2`) |
 | `BACKFILL_USERS_SYNC_INTERVAL_MINUTES` | Optional interval between full users cache cycles (default: `720`) |
 | `AGGREGATION_JOBS_PER_SLICE` | Optional max aggregation jobs processed per worker slice (default: `25`) |
@@ -203,10 +201,11 @@ curl https://<your-project>.vercel.app/api/health
 Backfill uses a queue + bounded worker-slice flow:
 
 - `POST /api/admin/backfill` inserts one queued job (deduplicated if a job is already queued/running).
-- `POST /api/admin/backfill` then immediately executes one bounded slice (backfill + aggregation) in the same request.
-- `GET/POST /api/admin/backfill/run` executes the same bounded slice (manual/admin use).
+- `POST /api/admin/backfill` then immediately executes one worker run (backfill + aggregation) in the same request.
+- That run scans all visible channels (resume-from-last-ts with overlap).
+- `GET/POST /api/admin/backfill/run` executes the same worker run (manual/admin use).
 - No recursive self-kick chaining; progress continues on the next scheduler tick.
-- GitHub Actions triggers only `POST /api/admin/backfill` every 10 minutes.
+- GitHub Actions triggers only `POST /api/admin/backfill` every 30 minutes.
 
 Add these two secrets to the GitHub repository (`Settings → Secrets and variables → Actions`):
 
