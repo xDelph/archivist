@@ -29,6 +29,7 @@ const THEME_KEY = "archivist_theme"
 const DENSITY_KEY = "archivist_density"
 const STATS_VISIBILITY_KEY = "archivist_stats_visibility"
 const SEARCH_DEBOUNCE_MS = 250
+const TABS: DashboardTab[] = ["top", "week", "month", "recent"]
 const EMPTY_DASHBOARD: DashboardData = {
   tab: "top",
   workspaceUrl: null,
@@ -307,6 +308,22 @@ export default function ArchivistDashboard() {
       setLoadError(null)
     }
   }, [activeDashboard])
+
+  useEffect(() => {
+    if (!ready || !activeDashboard) return
+    const nextMissingTab = TABS.find(
+      (tab) => tab !== activeTab && !tabCache[tab] && !inFlightTabs.current.has(tab)
+    )
+    if (!nextMissingTab) return
+
+    const timeout = window.setTimeout(() => {
+      void fetchTabData(nextMissingTab, false)
+    }, 200)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [ready, activeDashboard, activeTab, tabCache, fetchTabData])
 
   const currentDashboard =
     activeDashboard ?? (loadError && !activeDashboard ? EMPTY_DASHBOARD : lastDashboard ?? EMPTY_DASHBOARD)
