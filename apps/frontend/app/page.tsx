@@ -574,25 +574,33 @@ export default function ArchivistDashboard() {
               <StatCard
                 title="Total Messages"
                 value={currentDashboard.overviewStats.totalMessages.toLocaleString()}
-                change={currentDashboard.overviewStats.messagesChange}
+                change={
+                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.messagesChange
+                }
                 icon="messages"
               />
               <StatCard
                 title="Threads"
                 value={currentDashboard.overviewStats.totalThreads.toLocaleString()}
-                change={currentDashboard.overviewStats.threadsChange}
+                change={
+                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.threadsChange
+                }
                 icon="threads"
               />
               <StatCard
                 title="Files Archived"
                 value={currentDashboard.overviewStats.totalFiles.toLocaleString()}
-                change={currentDashboard.overviewStats.filesChange}
+                change={
+                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.filesChange
+                }
                 icon="files"
               />
               <StatCard
                 title="Active Users"
                 value={currentDashboard.overviewStats.totalUsers.toLocaleString()}
-                change={currentDashboard.overviewStats.usersChange}
+                change={
+                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.usersChange
+                }
                 icon="users"
               />
             </section>

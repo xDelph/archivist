@@ -3,7 +3,7 @@ import { MessageSquare, FileText, Users, TrendingUp } from "lucide-react"
 interface StatCardProps {
   title: string
   value: string
-  change: number
+  change?: number
   icon: "messages" | "threads" | "files" | "users"
 }
 
@@ -16,7 +16,7 @@ const iconMap = {
 
 export function StatCard({ title, value, change, icon }: StatCardProps) {
   const Icon = iconMap[icon]
-  const isPositive = change > 0
+  const isPositive = (change ?? 0) > 0
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
@@ -27,17 +27,17 @@ export function StatCard({ title, value, change, icon }: StatCardProps) {
         </div>
       </div>
       <div className="flex items-end gap-2">
-        <span className="text-2xl font-semibold tracking-tight text-foreground">
-          {value}
-        </span>
-        <span
-          className={`mb-0.5 text-xs font-medium ${
-            isPositive ? "text-success" : "text-destructive"
-          }`}
-        >
-          {isPositive ? "+" : ""}
-          {change}%
-        </span>
+        <span className="text-2xl font-semibold tracking-tight text-foreground">{value}</span>
+        {typeof change === "number" && (
+          <span
+            className={`mb-0.5 text-xs font-medium ${
+              isPositive ? "text-success" : "text-destructive"
+            }`}
+          >
+            {isPositive ? "+" : ""}
+            {change}%
+          </span>
+        )}
       </div>
     </div>
   )
