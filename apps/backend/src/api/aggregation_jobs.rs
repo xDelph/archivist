@@ -279,11 +279,11 @@ async fn recompute_thread_rollup_row(
             CROSS JOIN resolved r
         ),
         participant_totals AS (
-            SELECT (
-                COALESCE(COUNT(DISTINCT tm.user_id) FILTER (WHERE tm.ts <> r.thread_ts), 0) + 1
+            SELECT GREATEST(
+                COALESCE(COUNT(DISTINCT tm.user_id) FILTER (WHERE tm.user_id IS NOT NULL), 0),
+                CASE WHEN EXISTS (SELECT 1 FROM thread_messages) THEN 1 ELSE 0 END
             )::bigint AS participant_count_total
             FROM thread_messages tm
-            CROSS JOIN resolved r
         ),
         file_totals AS (
             SELECT COALESCE(COUNT(*)::bigint, 0) AS file_count_total
