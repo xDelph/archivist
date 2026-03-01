@@ -1,0 +1,3 @@
+[build]
+rustc = "scripts/rustc.sh"
+rustdoc = "scripts/rustdoc.sh"
