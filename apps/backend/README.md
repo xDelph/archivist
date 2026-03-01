@@ -107,6 +107,7 @@ cargo test
 | `CRON_SECRET` | Optional bearer token accepted by `/api/admin/backfill/run` (for Vercel Cron security) |
 | `BACKFILL_RUNNING_LEASE_MINUTES` | Optional timeout to auto-fail stale `running` backfill jobs (default: `30`) |
 | `BACKFILL_HISTORY_OVERLAP_SECONDS` | Optional safety overlap for `conversations.history` oldest cutoff (default: `3600`) |
+| `BACKFILL_RUN_TIMEOUT_SECONDS` | Optional per-invocation backfill slice timeout; timed-out runs are requeued (default: `480`) |
 | `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
 | `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |

@@ -134,6 +134,46 @@ pub async fn mark_backfill_job_succeeded(pool: &PgPool, job_id: &str) -> anyhow:
     Ok(())
 }
 
+pub async fn touch_backfill_job_lease(pool: &PgPool, job_id: &str) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE backfill_jobs
+        SET started_at = NOW()
+        WHERE id = $1::uuid
+          AND status = 'running'
+        "#,
+    )
+    .bind(job_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn requeue_backfill_job(pool: &PgPool, job_id: &str, reason: &str) -> anyhow::Result<()> {
+    let truncated_reason = if reason.len() > 8_000 {
+        &reason[..8_000]
+    } else {
+        reason
+    };
+    sqlx::query(
+        r#"
+        UPDATE backfill_jobs
+        SET
+            status = 'queued',
+            started_at = NULL,
+            finished_at = NULL,
+            last_error = $2
+        WHERE id = $1::uuid
+          AND status = 'running'
+        "#,
+    )
+    .bind(job_id)
+    .bind(truncated_reason)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn mark_backfill_job_failed(
     pool: &PgPool,
     job_id: &str,

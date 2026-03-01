@@ -19,7 +19,7 @@ pub(crate) fn infer_base_url_from_headers(headers: &HeaderMap) -> Option<String>
     Some(format!("{proto}://{host}"))
 }
 
-pub(crate) fn schedule_worker_kick(
+pub(crate) async fn trigger_worker_kick(
     base_url_hint: Option<String>,
     bearer_token: Option<String>,
     reason: &'static str,
@@ -34,44 +34,42 @@ pub(crate) fn schedule_worker_kick(
     };
 
     let worker_url = format!("{base_url}{WORKER_PATH}");
-    tokio::spawn(async move {
-        let client = match reqwest::Client::builder()
-            .timeout(Duration::from_secs(8))
-            .build()
-        {
-            Ok(client) => client,
-            Err(err) => {
-                warn!(reason, error = %err, "failed to build worker kick client");
-                return;
-            }
-        };
-
-        let trigger_source = format!("self-kick:{reason}");
-        match client
-            .post(&worker_url)
-            .bearer_auth(token)
-            .header("x-trigger-source", trigger_source)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                info!(
-                    reason,
-                    status = %response.status(),
-                    worker_url = %worker_url,
-                    "triggered async worker kick"
-                );
-            }
-            Err(err) => {
-                warn!(
-                    reason,
-                    error = %err,
-                    worker_url = %worker_url,
-                    "async worker kick failed"
-                );
-            }
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    {
+        Ok(client) => client,
+        Err(err) => {
+            warn!(reason, error = %err, "failed to build worker kick client");
+            return;
         }
-    });
+    };
+
+    let trigger_source = format!("self-kick:{reason}");
+    match client
+        .post(&worker_url)
+        .bearer_auth(token)
+        .header("x-trigger-source", trigger_source)
+        .send()
+        .await
+    {
+        Ok(response) => {
+            info!(
+                reason,
+                status = %response.status(),
+                worker_url = %worker_url,
+                "triggered worker kick"
+            );
+        }
+        Err(err) => {
+            warn!(
+                reason,
+                error = %err,
+                worker_url = %worker_url,
+                "worker kick failed"
+            );
+        }
+    }
 }
 
 fn resolve_base_url(hint: Option<&str>) -> Option<String> {
