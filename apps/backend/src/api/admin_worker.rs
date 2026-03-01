@@ -201,9 +201,7 @@ fn verify_signature_with_key(token: &str, key: &str, body: &[u8]) -> Result<(), 
     }
 
     let signing_input = format!("{header_b64}.{claims_b64}");
-    let provided_sig = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(sig_b64)
-        .map_err(|_| "invalid jwt signature encoding")?;
+    let provided_sig = decode_base64url(sig_b64).map_err(|_| "invalid jwt signature encoding")?;
 
     type HmacSha256 = Hmac<Sha256>;
     let mut mac =
@@ -214,9 +212,7 @@ fn verify_signature_with_key(token: &str, key: &str, body: &[u8]) -> Result<(), 
         return Err("jwt signature mismatch");
     }
 
-    let claims_json = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(claims_b64)
-        .map_err(|_| "invalid jwt claims encoding")?;
+    let claims_json = decode_base64url(claims_b64).map_err(|_| "invalid jwt claims encoding")?;
     let claims: QStashClaims =
         serde_json::from_slice(&claims_json).map_err(|_| "invalid jwt claims json")?;
 
@@ -236,12 +232,23 @@ fn verify_signature_with_key(token: &str, key: &str, body: &[u8]) -> Result<(), 
         return Err("unexpected issuer");
     }
 
-    let expected_body_hash =
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(body).as_slice());
+    let body_digest = Sha256::digest(body);
+    let expected_body_hash_no_pad =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(body_digest.as_slice());
+    let expected_body_hash_padded =
+        base64::engine::general_purpose::URL_SAFE.encode(body_digest.as_slice());
     let provided_body_hash = claims.body.ok_or("missing body claim")?;
-    if provided_body_hash != expected_body_hash {
+    if provided_body_hash != expected_body_hash_no_pad
+        && provided_body_hash != expected_body_hash_padded
+    {
         return Err("body hash mismatch");
     }
 
     Ok(())
+}
+
+fn decode_base64url(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(value)
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(value))
 }
