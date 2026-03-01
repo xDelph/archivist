@@ -10,8 +10,9 @@ use vercel_runtime::{Error, Request, Response, ResponseBody};
 use tracing::{error, info, warn};
 
 use crate::api::backfill_jobs::enqueue_backfill_job;
-use crate::api::worker_kick::{infer_base_url_from_headers, trigger_worker_kick};
+use crate::api::worker_engine::execute_worker_slice;
 use crate::db::pool::create_pool;
+use crate::storage::R2Client;
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
 
@@ -53,7 +54,6 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
 async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_default();
     let (parts, body) = req.into_parts();
-    let base_url_hint = infer_base_url_from_headers(&parts.headers);
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
     let requested_by = req
@@ -90,17 +90,19 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         requested_by = %requested_by,
         "backfill job enqueued"
     );
-    trigger_worker_kick(
-        base_url_hint,
-        Some(admin_token.clone()),
-        "backfill_enqueued",
-    )
-    .await;
+    let slack_token = env::var("SLACK_USER_TOKEN")
+        .or_else(|_| env::var("SLACK_BOT_TOKEN"))
+        .unwrap_or_default();
+    let storage = R2Client::from_env().await.ok();
+    let worker = execute_worker_slice(pool().await?, &slack_token, storage.as_ref())
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
 
     let body = serde_json::json!({
         "ok": true,
         "queued": enqueue_result.queued_now,
         "jobId": enqueue_result.job_id,
+        "worker": worker,
     })
     .to_string();
 

@@ -1,8 +1,8 @@
-name: Nightly Backfill
+name: Backfill Tick
 
 on:
   schedule:
-    - cron: "0 * * * *"   # every hour
+    - cron: "*/10 * * * *"   # every 10 minutes
   workflow_dispatch:       # allow manual trigger from GitHub UI
 
 jobs:
@@ -13,7 +13,7 @@ jobs:
       APP_URL: ${{ secrets.APP_URL }}
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
     steps:
-      - name: Trigger backfill
+      - name: Trigger backfill tick
         run: |
           BASE_URL="${BACKEND_APP_URL:-$APP_URL}"
           if [ -z "$BASE_URL" ]; then
@@ -26,10 +26,6 @@ jobs:
           fi
           ENQUEUE_RESPONSE="$(curl -fsS -X POST "${BASE_URL%/}/api/admin/backfill" \
             -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-            --max-time 15)"
-          echo "Enqueue response: ${ENQUEUE_RESPONSE}"
-          WORKER_KICK_RESPONSE="$(curl -s -X POST "${BASE_URL%/}/api/admin/backfill/run" \
-            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-            --max-time 3 || true)"
-          echo "Worker kick response: ${WORKER_KICK_RESPONSE}"
-          echo "Backfill queued (async worker continues in background)."
+            -H "x-trigger-source: github-actions" \
+            --max-time 10)"
+          echo "Backfill tick response: ${ENQUEUE_RESPONSE}"

@@ -2,7 +2,7 @@ use chrono::{Duration, Utc};
 use sqlx::{PgPool, Row};
 use tracing::warn;
 
-const DEFAULT_RUNNING_LEASE_MINUTES: i64 = 30;
+const DEFAULT_RUNNING_LEASE_MINUTES: i64 = 10;
 
 #[derive(Debug)]
 pub struct EnqueueBackfillJobResult {

@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
+use chrono::{DateTime, Duration, Utc};
 use reqwest::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 use thiserror::Error;
 use tracing::{info, warn};
 
@@ -299,6 +301,52 @@ struct ReplyBackfillStats {
     messages: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct BackfillSliceConfig {
+    pub max_channels: usize,
+    pub users_pages_per_slice: usize,
+    pub users_sync_interval_minutes: i64,
+}
+
+impl Default for BackfillSliceConfig {
+    fn default() -> Self {
+        Self {
+            max_channels: 3,
+            users_pages_per_slice: 2,
+            users_sync_interval_minutes: 720,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct BackfillSliceResult {
+    pub channels_discovered: usize,
+    pub channels_processed: usize,
+    pub channels_skipped: usize,
+    pub message_upserts: usize,
+    pub weekly_score_upserts: usize,
+    pub aggregation_jobs_enqueued: usize,
+    pub users_pages: usize,
+    pub users_cached: usize,
+    pub users_sync_active: bool,
+    pub next_channel_id: Option<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct BackfillState {
+    next_channel_id: Option<String>,
+    users_cursor: Option<String>,
+    users_synced_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct UserCacheSliceStats {
+    pages: usize,
+    users_cached: usize,
+    next_cursor: Option<String>,
+    missing_scope: bool,
+}
+
 /// Backfills all channels the bot can see.
 ///
 /// For each channel:
@@ -316,16 +364,7 @@ where
     R: crate::db::Repository,
     S: SlackApi,
 {
-    let mut cursor: Option<String> = None;
-    let mut all_channels: Vec<Channel> = Vec::new();
-    loop {
-        let (channels, next) = client.conversations_list(cursor.as_deref()).await?;
-        all_channels.extend(channels);
-        match next {
-            Some(c) => cursor = Some(c),
-            None => break,
-        }
-    }
+    let all_channels = discover_channels(client).await?;
 
     info!(total = all_channels.len(), "channels discovered");
     let mut stats = BackfillRunStats {
@@ -374,6 +413,177 @@ where
         );
     }
     Ok(())
+}
+
+pub async fn run_backfill_slice<S: SlackApi>(
+    pool: &PgPool,
+    client: &S,
+    slack_token: &str,
+    storage: Option<&R2Client>,
+    config: &BackfillSliceConfig,
+) -> anyhow::Result<BackfillSliceResult> {
+    let all_channels = discover_channels(client).await?;
+    let channels_discovered = all_channels.len();
+    cache_channels(pool, &all_channels).await?;
+
+    let mut ordered_ids: Vec<String> = all_channels.iter().map(|ch| ch.id.clone()).collect();
+    ordered_ids.sort();
+
+    let mut state = load_backfill_state(pool).await?;
+    let (channel_ids, next_channel_id) = select_channel_slice(
+        &ordered_ids,
+        state.next_channel_id.as_deref(),
+        config.max_channels,
+    );
+
+    let mut result = BackfillSliceResult {
+        channels_discovered,
+        next_channel_id,
+        ..BackfillSliceResult::default()
+    };
+
+    for channel_id in &channel_ids {
+        match backfill_channel(pool, client, slack_token, storage, channel_id).await? {
+            Some(channel_stats) => {
+                result.channels_processed += 1;
+                result.message_upserts += channel_stats.message_upserts;
+                result.weekly_score_upserts += channel_stats.weekly_score_upserts;
+                result.aggregation_jobs_enqueued += channel_stats.aggregation_jobs_enqueued;
+            }
+            None => {
+                result.channels_skipped += 1;
+            }
+        }
+    }
+
+    let should_sync_users = should_sync_users(
+        state.users_cursor.as_deref(),
+        state.users_synced_at,
+        config.users_sync_interval_minutes,
+    );
+    if should_sync_users && config.users_pages_per_slice > 0 {
+        let user_stats = cache_users_slice(
+            pool,
+            client,
+            state.users_cursor.as_deref(),
+            config.users_pages_per_slice,
+        )
+        .await?;
+        result.users_pages = user_stats.pages;
+        result.users_cached = user_stats.users_cached;
+        result.users_sync_active = user_stats.next_cursor.is_some();
+        state.users_cursor = user_stats.next_cursor;
+        if !result.users_sync_active || user_stats.missing_scope {
+            state.users_synced_at = Some(Utc::now());
+        }
+    }
+
+    state.next_channel_id = result.next_channel_id.clone();
+    store_backfill_state(pool, &state).await?;
+    Ok(result)
+}
+
+async fn discover_channels<S: SlackApi>(client: &S) -> Result<Vec<Channel>, SlackError> {
+    let mut cursor: Option<String> = None;
+    let mut all_channels: Vec<Channel> = Vec::new();
+    loop {
+        let (channels, next) = client.conversations_list(cursor.as_deref()).await?;
+        all_channels.extend(channels);
+        match next {
+            Some(c) => cursor = Some(c),
+            None => break,
+        }
+    }
+    Ok(all_channels)
+}
+
+fn select_channel_slice(
+    ordered_channel_ids: &[String],
+    next_channel_id: Option<&str>,
+    max_channels: usize,
+) -> (Vec<String>, Option<String>) {
+    if ordered_channel_ids.is_empty() || max_channels == 0 {
+        return (Vec::new(), None);
+    }
+
+    let start_idx = next_channel_id
+        .and_then(|needle| ordered_channel_ids.iter().position(|id| id == needle))
+        .unwrap_or(0);
+    let to_take = max_channels.min(ordered_channel_ids.len());
+
+    let mut selected = Vec::with_capacity(to_take);
+    for offset in 0..to_take {
+        let idx = (start_idx + offset) % ordered_channel_ids.len();
+        selected.push(ordered_channel_ids[idx].clone());
+    }
+
+    let next_idx = (start_idx + to_take) % ordered_channel_ids.len();
+    let next = Some(ordered_channel_ids[next_idx].clone());
+    (selected, next)
+}
+
+async fn load_backfill_state(pool: &PgPool) -> anyhow::Result<BackfillState> {
+    sqlx::query(
+        r#"
+        INSERT INTO backfill_state (id)
+        VALUES (TRUE)
+        ON CONFLICT (id) DO NOTHING
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    let row = sqlx::query(
+        r#"
+        SELECT next_channel_id, users_cursor, users_synced_at
+        FROM backfill_state
+        WHERE id = TRUE
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(BackfillState {
+        next_channel_id: row.get("next_channel_id"),
+        users_cursor: row.get("users_cursor"),
+        users_synced_at: row.get("users_synced_at"),
+    })
+}
+
+async fn store_backfill_state(pool: &PgPool, state: &BackfillState) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO backfill_state (id, next_channel_id, users_cursor, users_synced_at, updated_at)
+        VALUES (TRUE, $1, $2, $3, NOW())
+        ON CONFLICT (id)
+        DO UPDATE SET
+            next_channel_id = EXCLUDED.next_channel_id,
+            users_cursor = EXCLUDED.users_cursor,
+            users_synced_at = EXCLUDED.users_synced_at,
+            updated_at = NOW()
+        "#,
+    )
+    .bind(state.next_channel_id.as_deref())
+    .bind(state.users_cursor.as_deref())
+    .bind(state.users_synced_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn should_sync_users(
+    users_cursor: Option<&str>,
+    users_synced_at: Option<DateTime<Utc>>,
+    users_sync_interval_minutes: i64,
+) -> bool {
+    if users_cursor.is_some() {
+        return true;
+    }
+    let interval = users_sync_interval_minutes.max(1);
+    match users_synced_at {
+        Some(last_sync) => Utc::now() - last_sync >= Duration::minutes(interval),
+        None => true,
+    }
 }
 
 async fn backfill_channel<R, S>(
@@ -727,21 +937,45 @@ where
     R: crate::db::Repository,
     S: SlackApi,
 {
+    let stats = cache_users_slice(repo, client, None, usize::MAX).await?;
+    info!(total = stats.users_cached, "users cached");
+    Ok(stats.users_cached)
+}
+
+async fn cache_users_slice<R, S>(
+    repo: &R,
+    client: &S,
+    initial_cursor: Option<&str>,
+    max_pages: usize,
+) -> anyhow::Result<UserCacheSliceStats>
+where
+    R: crate::db::Repository,
+    S: SlackApi,
+{
     use crate::db::UserRecord;
-    let mut cursor: Option<String> = None;
-    let mut total = 0usize;
-    loop {
+
+    if max_pages == 0 {
+        return Ok(UserCacheSliceStats::default());
+    }
+
+    let mut stats = UserCacheSliceStats::default();
+    let mut cursor = initial_cursor.map(str::to_owned);
+    for _ in 0..max_pages {
         let (users, next) = match client.users_list(cursor.as_deref()).await {
             Ok(r) => r,
             Err(SlackError::Api(ref e)) if e == "missing_scope" => {
                 warn!(
                     "users.list requires users:read scope — skipping user cache (add scope and re-run backfill)"
                 );
-                return Ok(0);
+                stats.missing_scope = true;
+                stats.next_cursor = None;
+                return Ok(stats);
             }
             Err(e) => return Err(e.into()),
         };
-        total += users.len();
+
+        stats.pages += 1;
+        stats.users_cached += users.len();
         for u in users {
             repo.upsert_user(&UserRecord {
                 user_id: u.user_id,
@@ -751,13 +985,18 @@ where
             })
             .await?;
         }
+
         match next {
-            Some(c) => cursor = Some(c),
-            None => break,
+            Some(next_cursor) => cursor = Some(next_cursor),
+            None => {
+                cursor = None;
+                break;
+            }
         }
     }
-    info!(total, "users cached");
-    Ok(total)
+
+    stats.next_cursor = cursor;
+    Ok(stats)
 }
 
 fn parse_messages(value: &serde_json::Value) -> Result<Vec<SlackMessage>, SlackError> {
@@ -778,4 +1017,31 @@ fn parse_messages(value: &serde_json::Value) -> Result<Vec<SlackMessage>, SlackE
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod slice_tests {
+    use super::select_channel_slice;
+
+    #[test]
+    fn select_channel_slice_rotates_from_saved_cursor() {
+        let channels = vec![
+            "C001".to_owned(),
+            "C002".to_owned(),
+            "C003".to_owned(),
+            "C004".to_owned(),
+        ];
+
+        let (slice, next) = select_channel_slice(&channels, Some("C003"), 2);
+        assert_eq!(slice, vec!["C003".to_owned(), "C004".to_owned()]);
+        assert_eq!(next.as_deref(), Some("C001"));
+    }
+
+    #[test]
+    fn select_channel_slice_handles_missing_cursor() {
+        let channels = vec!["C001".to_owned(), "C002".to_owned(), "C003".to_owned()];
+        let (slice, next) = select_channel_slice(&channels, Some("does-not-exist"), 2);
+        assert_eq!(slice, vec!["C001".to_owned(), "C002".to_owned()]);
+        assert_eq!(next.as_deref(), Some("C003"));
+    }
 }

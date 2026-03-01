@@ -25,9 +25,9 @@ GET  /record/thread?channel_id=&ts=[&search=]
   → return HTML fragment (loaded lazily by HTMX on first expand)
 
 POST /api/admin/backfill  (bearer-token protected)
-  → returns immediately (`202 Accepted`) and enqueues a backfill job in DB
+  → enqueues one backfill job and executes one bounded worker slice
 GET/POST /api/admin/backfill/run (bearer-token protected)
-  → claims one queued job and runs conversations.list → conversations.history → conversations.replies
+  → executes one bounded worker slice (manual/admin trigger)
 GET  /api/health
 ```
 
@@ -56,8 +56,8 @@ public/         Static assets (record.css, modal.js, og.png)
 |---|---|
 | `POST /api/slack/events` | Receive Slack Events API payloads |
 | `GET /api/health` | Health check |
-| `POST /api/admin/backfill` | Queue channel backfill (bearer-token protected, immediate `202`) |
-| `GET/POST /api/admin/backfill/run` | Worker endpoint: claim and execute one queued backfill job |
+| `POST /api/admin/backfill` | Queue + process one bounded backfill/aggregation slice (bearer-token protected) |
+| `GET/POST /api/admin/backfill/run` | Manual worker endpoint: process one bounded backfill/aggregation slice |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
 | `GET /record/weekly?tab=top|week|month` | SSR ranking tabs (all-time, weekly, monthly) with rank-change badges |
 | `GET /record/threads?sort=&period=&channel=&user=&search=` | HTMX fragment: filtered/sorted thread list |
@@ -105,9 +105,14 @@ cargo test
 | `SLACK_USER_TOKEN` | `xoxp-...` — for backfill (full channel history) |
 | `ADMIN_TOKEN` | Shared secret for `POST /api/admin/backfill` |
 | `CRON_SECRET` | Optional bearer token accepted by `/api/admin/backfill/run` (for Vercel Cron security) |
-| `BACKFILL_RUNNING_LEASE_MINUTES` | Optional timeout to auto-fail stale `running` backfill jobs (default: `30`) |
+| `BACKFILL_RUNNING_LEASE_MINUTES` | Optional timeout to auto-fail stale `running` backfill jobs (default: `10`) |
 | `BACKFILL_HISTORY_OVERLAP_SECONDS` | Optional safety overlap for `conversations.history` oldest cutoff (default: `3600`) |
-| `BACKFILL_RUN_TIMEOUT_SECONDS` | Optional per-invocation backfill slice timeout; timed-out runs are requeued (default: `480`) |
+| `BACKFILL_SLICE_TIMEOUT_SECONDS` | Optional per-invocation backfill slice timeout (default: `8`) |
+| `BACKFILL_CHANNELS_PER_SLICE` | Optional max channels processed per worker slice (default: `3`) |
+| `BACKFILL_USERS_PAGES_PER_SLICE` | Optional max `users.list` pages cached per worker slice (default: `2`) |
+| `BACKFILL_USERS_SYNC_INTERVAL_MINUTES` | Optional interval between full users cache cycles (default: `720`) |
+| `AGGREGATION_JOBS_PER_SLICE` | Optional max aggregation jobs processed per worker slice (default: `25`) |
+| `AGGREGATION_RUNNING_LEASE_MINUTES` | Optional timeout to recover stale `running` aggregation jobs (default: `15`) |
 | `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
 | `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |
@@ -195,12 +200,13 @@ curl https://<your-project>.vercel.app/api/health
 
 ## Backfill scheduling
 
-Backfill now uses a queue + worker flow:
+Backfill uses a queue + bounded worker-slice flow:
 
 - `POST /api/admin/backfill` inserts one queued job (deduplicated if a job is already queued/running).
-- `POST /api/admin/backfill` also performs a non-blocking self-kick to `/api/admin/backfill/run` so work continues in the background.
-- `/api/admin/backfill/run` chains additional non-blocking self-kicks while work remains (backfill or aggregation jobs).
-- GitHub Actions only triggers `/api/admin/backfill` hourly to keep runner usage minimal.
+- `POST /api/admin/backfill` then immediately executes one bounded slice (backfill + aggregation) in the same request.
+- `GET/POST /api/admin/backfill/run` executes the same bounded slice (manual/admin use).
+- No recursive self-kick chaining; progress continues on the next scheduler tick.
+- GitHub Actions triggers only `POST /api/admin/backfill` every 10 minutes.
 
 Add these two secrets to the GitHub repository (`Settings → Secrets and variables → Actions`):
 
@@ -214,7 +220,7 @@ Add these two secrets to the GitHub repository (`Settings → Secrets and variab
 `thread_weekly_scores` is updated in two paths:
 
 - Real-time ingest: message and reaction events refresh the current week row for the touched thread.
-- Hourly backfill: every touched thread root gets one weekly-score upsert.
+- Scheduled backfill slices: each processed touched thread root gets one weekly-score upsert.
 
 One-shot historical seeding:
 

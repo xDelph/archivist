@@ -1,10 +1,12 @@
 use anyhow::Result;
+use serde::Serialize;
 use sqlx::{PgPool, Row};
 use tracing::{info, warn};
 
 const MAX_ERROR_LEN: usize = 8_000;
+const DEFAULT_AGGREGATION_RUNNING_LEASE_MINUTES: i64 = 15;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct AggregationBatchResult {
     pub claimed: usize,
     pub succeeded: usize,
@@ -22,6 +24,7 @@ struct AggregationJobClaim {
 }
 
 pub async fn run_aggregation_batch(pool: &PgPool, max_jobs: i64) -> Result<AggregationBatchResult> {
+    expire_stale_running_aggregation_jobs(pool).await?;
     let jobs = claim_next_aggregation_jobs(pool, max_jobs).await?;
     if jobs.is_empty() {
         return Ok(AggregationBatchResult::default());
@@ -126,6 +129,48 @@ async fn claim_next_aggregation_jobs(
             max_attempts: row.get("max_attempts"),
         })
         .collect())
+}
+
+async fn expire_stale_running_aggregation_jobs(pool: &PgPool) -> Result<()> {
+    let lease_minutes = std::env::var("AGGREGATION_RUNNING_LEASE_MINUTES")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_AGGREGATION_RUNNING_LEASE_MINUTES);
+    let row = sqlx::query(
+        r#"
+        UPDATE aggregation_jobs
+        SET
+            status = CASE
+                WHEN attempts >= max_attempts THEN 'failed'
+                ELSE 'queued'
+            END,
+            available_at = NOW(),
+            locked_at = NULL,
+            started_at = NULL,
+            finished_at = CASE
+                WHEN attempts >= max_attempts THEN NOW()
+                ELSE NULL
+            END,
+            last_error = 'stale running lease expired',
+            updated_at = NOW()
+        WHERE status = 'running'
+          AND COALESCE(locked_at, started_at, updated_at, created_at)
+              < (NOW() - ($1::text || ' minutes')::interval)
+        RETURNING id::text AS job_id, status
+        "#,
+    )
+    .bind(lease_minutes)
+    .fetch_all(pool)
+    .await?;
+
+    if !row.is_empty() {
+        warn!(
+            recovered = row.len(),
+            lease_minutes, "recovered stale running aggregation jobs"
+        );
+    }
+    Ok(())
 }
 
 async fn mark_aggregation_job_succeeded(pool: &PgPool, job_id: &str) -> Result<()> {

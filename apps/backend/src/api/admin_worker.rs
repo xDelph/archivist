@@ -1,26 +1,18 @@
 use std::env;
-use std::time::Duration;
 
 use bytes::Bytes;
 use http::StatusCode;
 use http_body_util::BodyExt;
 use sqlx::PgPool;
 use tokio::sync::OnceCell;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
-use crate::api::aggregation_jobs::run_aggregation_batch;
-use crate::api::backfill_jobs::{
-    claim_next_backfill_job, mark_backfill_job_failed, mark_backfill_job_succeeded,
-    requeue_backfill_job, touch_backfill_job_lease,
-};
-use crate::api::worker_kick::{infer_base_url_from_headers, trigger_worker_kick};
+use crate::api::worker_engine::execute_worker_slice;
 use crate::db::pool::create_pool;
-use crate::slack::backfill::{SlackClient, run_backfill};
 use crate::storage::R2Client;
 
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
-const DEFAULT_BACKFILL_RUN_TIMEOUT_SECONDS: u64 = 480;
 
 async fn pool() -> Result<&'static PgPool, Error> {
     POOL.get_or_try_init(|| async {
@@ -64,7 +56,6 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         .unwrap_or_default();
 
     let (parts, body) = req.into_parts();
-    let base_url_hint = infer_base_url_from_headers(&parts.headers);
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
     let resp = process(&admin_token, cron_secret.as_deref(), req).await?;
@@ -73,132 +64,21 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         return Ok(Response::from_parts(parts, ResponseBody::from(body)));
     }
 
-    let db_pool = pool().await?;
-    let mut backfill_ran = false;
-    let mut backfill_job_id: Option<String> = None;
-    let mut backfill_status = "idle";
-
-    if let Some(job_id) = claim_next_backfill_job(db_pool)
-        .await
-        .map_err(|e| Error::from(e.to_string()))?
-    {
-        backfill_ran = true;
-        backfill_job_id = Some(job_id.clone());
-        backfill_status = "running";
-        info!(job_id = %job_id, "backfill worker claimed job");
-
-        let lease_pool = db_pool.clone();
-        let lease_job_id = job_id.clone();
-        let lease_heartbeat = tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(60)).await;
-                if let Err(err) = touch_backfill_job_lease(&lease_pool, &lease_job_id).await {
-                    warn!(
-                        job_id = %lease_job_id,
-                        error = %err,
-                        "failed to refresh backfill job lease"
-                    );
-                }
-            }
-        });
-
-        let storage = R2Client::from_env().await.ok();
-        let client = SlackClient::new(slack_token.clone());
-        let backfill_run = tokio::time::timeout(
-            Duration::from_secs(backfill_run_timeout_seconds()),
-            run_backfill(db_pool, &client, &slack_token, storage.as_ref()),
-        )
-        .await;
-        lease_heartbeat.abort();
-        match backfill_run {
-            Ok(Ok(())) => {
-                mark_backfill_job_succeeded(db_pool, &job_id)
-                    .await
-                    .map_err(|e| Error::from(e.to_string()))?;
-                backfill_status = "succeeded";
-                info!(job_id = %job_id, "backfill worker completed job");
-            }
-            Ok(Err(err)) => {
-                let err_string = err.to_string();
-                mark_backfill_job_failed(db_pool, &job_id, &err_string)
-                    .await
-                    .map_err(|e| Error::from(e.to_string()))?;
-                backfill_status = "failed";
-                warn!(
-                    job_id = %job_id,
-                    error = %err_string,
-                    "backfill worker failed job"
-                );
-                let body = serde_json::json!({
-                    "ok": false,
-                    "ran": true,
-                    "jobId": job_id,
-                    "status": "failed",
-                    "error": err_string,
-                })
-                .to_string();
-                return Ok(Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .header("Content-Type", "application/json")
-                    .body(ResponseBody::from(Bytes::from(body)))?);
-            }
-            Err(_) => {
-                requeue_backfill_job(
-                    db_pool,
-                    &job_id,
-                    "backfill worker slice timed out; requeued",
-                )
-                .await
-                .map_err(|e| Error::from(e.to_string()))?;
-                backfill_status = "requeued_timeout";
-                warn!(
-                    job_id = %job_id,
-                    timeout_seconds = backfill_run_timeout_seconds(),
-                    "backfill worker slice timed out; requeued"
-                );
-            }
-        }
-    }
-
-    let aggregation = run_aggregation_batch(db_pool, 100)
+    let storage = R2Client::from_env().await.ok();
+    let outcome = execute_worker_slice(pool().await?, &slack_token, storage.as_ref())
         .await
         .map_err(|e| Error::from(e.to_string()))?;
 
-    let body = serde_json::json!({
+    let body = serde_json::to_string(&serde_json::json!({
         "ok": true,
-        "ranBackfill": backfill_ran,
-        "backfillJobId": backfill_job_id,
-        "backfillStatus": backfill_status,
-        "aggregation": {
-            "claimed": aggregation.claimed,
-            "succeeded": aggregation.succeeded,
-            "requeued": aggregation.requeued,
-            "failed": aggregation.failed
-        },
-        "ran": backfill_ran || aggregation.claimed > 0,
-    })
-    .to_string();
-    if backfill_ran || aggregation.claimed > 0 {
-        let kick_token = cron_secret
-            .as_deref()
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-            .or_else(|| (!admin_token.is_empty()).then(|| admin_token.clone()));
-        trigger_worker_kick(base_url_hint, kick_token, "worker_continue").await;
-    }
+        "worker": outcome,
+    }))
+    .map_err(|e| Error::from(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .body(ResponseBody::from(Bytes::from(body)))?)
-}
-
-fn backfill_run_timeout_seconds() -> u64 {
-    std::env::var("BACKFILL_RUN_TIMEOUT_SECONDS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_BACKFILL_RUN_TIMEOUT_SECONDS)
 }
 
 fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
