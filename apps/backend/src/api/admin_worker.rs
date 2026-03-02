@@ -51,6 +51,12 @@ impl WorkerPhase {
     }
 }
 
+#[derive(Debug)]
+struct NextPhaseDispatch {
+    phase: &'static str,
+    url: String,
+}
+
 async fn pool() -> Result<&'static PgPool, Error> {
     POOL.get_or_try_init(|| async {
         let url = env::var("DATABASE_URL").unwrap_or_default();
@@ -144,42 +150,24 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
                 let outcome = execute_messages_phase(pool, &slack_token, storage.as_ref()).await?;
                 let worker_result =
                     serde_json::to_value(&outcome).map_err(|e| Error::from(e.to_string()))?;
-
-                if outcome.status == "succeeded" {
-                    let next_url = resolve_next_worker_url(&req, phase)?;
-                    let publish = publish_next_phase_job(
-                        &qstash_token(),
-                        worker_token.as_deref().unwrap_or(""),
-                        &next_url,
-                    )
-                    .await?;
-                    let next_phase = Some(serde_json::json!({
-                        "phase": "files",
-                        "url": next_url,
-                        "qstash": publish,
-                    }));
-                    (worker_result, next_phase)
+                let next_phase = if outcome.status == "succeeded" {
+                    Some(NextPhaseDispatch {
+                        phase: "files",
+                        url: resolve_next_worker_url(&req, phase)?,
+                    })
                 } else {
-                    (worker_result, None)
-                }
+                    None
+                };
+                (worker_result, next_phase)
             }
             WorkerPhase::Files => {
                 let outcome = execute_files_phase(pool, &slack_token, storage.as_ref()).await?;
                 let worker_result =
                     serde_json::to_value(&outcome).map_err(|e| Error::from(e.to_string()))?;
-
-                let next_url = resolve_next_worker_url(&req, phase)?;
-                let publish = publish_next_phase_job(
-                    &qstash_token(),
-                    worker_token.as_deref().unwrap_or(""),
-                    &next_url,
-                )
-                .await?;
-                let next_phase = Some(serde_json::json!({
-                    "phase": "aggregate",
-                    "url": next_url,
-                    "qstash": publish,
-                }));
+                let next_phase = Some(NextPhaseDispatch {
+                    phase: "aggregate",
+                    url: resolve_next_worker_url(&req, phase)?,
+                });
                 (worker_result, next_phase)
             }
             WorkerPhase::Aggregate => {
@@ -190,16 +178,7 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
             }
         };
 
-        let body = serde_json::json!({
-            "ok": true,
-            "phase": phase.as_str(),
-            "requestedBy": requested_by,
-            "worker": worker_result,
-            "nextPhase": next_phase,
-        })
-        .to_string();
-
-        Ok::<String, Error>(body)
+        Ok::<(Value, Option<NextPhaseDispatch>), Error>((worker_result, next_phase))
     }
     .await;
 
@@ -207,7 +186,31 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         warn!(error = %err, "failed to release worker advisory lock");
     }
 
-    let body = phase_result?;
+    let (worker_result, next_phase_to_publish) = phase_result?;
+    let next_phase = if let Some(next) = next_phase_to_publish {
+        let publish = publish_next_phase_job(
+            &qstash_token(),
+            worker_token.as_deref().unwrap_or(""),
+            &next.url,
+        )
+        .await?;
+        Some(serde_json::json!({
+            "phase": next.phase,
+            "url": next.url,
+            "qstash": publish,
+        }))
+    } else {
+        None
+    };
+
+    let body = serde_json::json!({
+        "ok": true,
+        "phase": phase.as_str(),
+        "requestedBy": requested_by,
+        "worker": worker_result,
+        "nextPhase": next_phase,
+    })
+    .to_string();
     info!(phase = phase.as_str(), "admin worker phase completed");
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -237,6 +240,14 @@ fn resolve_next_worker_url(
         return Ok(explicit);
     }
 
+    resolve_worker_url(req, next_path)
+}
+
+fn resolve_worker_url(req: &http::Request<Bytes>, path: &str) -> Result<String, Error> {
+    if !path.starts_with('/') {
+        return Err(Error::from(format!("invalid worker path: {path}")));
+    }
+
     let base = env::var("BACKEND_APP_URL")
         .ok()
         .or_else(|| env::var("APP_URL").ok())
@@ -261,7 +272,7 @@ fn resolve_next_worker_url(
     if !is_http_url(&base) {
         return Err(Error::from(format!("invalid worker base URL: {base}")));
     }
-    Ok(format!("{base}{next_path}"))
+    Ok(format!("{base}{path}"))
 }
 
 async fn publish_next_phase_job(
