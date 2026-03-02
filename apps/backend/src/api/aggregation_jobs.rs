@@ -27,6 +27,7 @@ pub async fn run_aggregation_batch(pool: &PgPool, max_jobs: i64) -> Result<Aggre
     expire_stale_running_aggregation_jobs(pool).await?;
     let jobs = claim_next_aggregation_jobs(pool, max_jobs).await?;
     if jobs.is_empty() {
+        info!("aggregation batch empty");
         return Ok(AggregationBatchResult::default());
     }
 
@@ -80,6 +81,20 @@ pub async fn run_aggregation_batch(pool: &PgPool, max_jobs: i64) -> Result<Aggre
         "aggregation batch complete"
     );
     Ok(result)
+}
+
+pub async fn pending_aggregation_jobs_count(pool: &PgPool) -> Result<i64> {
+    let count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM aggregation_jobs
+        WHERE status = 'queued'
+          AND available_at <= NOW()
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
 }
 
 async fn claim_next_aggregation_jobs(

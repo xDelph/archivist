@@ -3,7 +3,7 @@ use serde::Serialize;
 use sqlx::{PgPool, Postgres, Row, pool::PoolConnection};
 use tracing::{info, warn};
 
-use crate::api::aggregation_jobs::run_aggregation_batch;
+use crate::api::aggregation_jobs::{pending_aggregation_jobs_count, run_aggregation_batch};
 use crate::api::file_backfill_jobs::{FileBackfillBatchResult, run_file_backfill_batch};
 use crate::slack::backfill::{SlackClient, run_backfill};
 use crate::storage::R2Client;
@@ -84,10 +84,21 @@ pub async fn execute_aggregation_phase(pool: &PgPool) -> Result<AggregationOutco
 }
 
 async fn drain_aggregation_jobs(pool: &PgPool) -> Result<AggregationOutcome> {
+    let jobs_per_batch = aggregation_jobs_per_batch();
+    let max_batches = aggregation_max_batches_per_run();
+    let pending_before = pending_aggregation_jobs_count(pool).await?;
+    info!(
+        pending_ready = pending_before,
+        jobs_per_batch,
+        max_batches,
+        "aggregation drain start"
+    );
+
     let mut out = AggregationOutcome::default();
-    for _ in 0..aggregation_max_batches_per_run() {
-        let batch = run_aggregation_batch(pool, aggregation_jobs_per_batch()).await?;
+    for batch_index in 0..max_batches {
+        let batch = run_aggregation_batch(pool, jobs_per_batch).await?;
         if batch.claimed == 0 {
+            info!(batch_index, "aggregation drain reached empty queue");
             break;
         }
         out.batches += 1;
@@ -96,6 +107,17 @@ async fn drain_aggregation_jobs(pool: &PgPool) -> Result<AggregationOutcome> {
         out.requeued += batch.requeued;
         out.failed += batch.failed;
     }
+
+    let pending_after = pending_aggregation_jobs_count(pool).await?;
+    info!(
+        batches = out.batches,
+        claimed = out.claimed,
+        succeeded = out.succeeded,
+        requeued = out.requeued,
+        failed = out.failed,
+        pending_ready_after = pending_after,
+        "aggregation drain complete"
+    );
     Ok(out)
 }
 

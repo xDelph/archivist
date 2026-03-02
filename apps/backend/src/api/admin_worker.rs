@@ -124,6 +124,7 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let storage = R2Client::from_env().await.ok();
 
     let Some(mut worker_lock_conn) = try_acquire_worker_lock(pool).await? else {
+        info!(phase = phase.as_str(), requested_by, "admin worker lock busy");
         let body = serde_json::json!({
             "ok": true,
             "phase": phase.as_str(),

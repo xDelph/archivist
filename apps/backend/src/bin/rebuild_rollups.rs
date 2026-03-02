@@ -17,6 +17,7 @@ async fn main() -> anyhow::Result<()> {
 
     let args: Vec<String> = env::args().collect();
     let enqueue_only = arg_present(&args, "--enqueue-only");
+    let drain_only = arg_present(&args, "--drain-only");
     let no_reset = arg_present(&args, "--no-reset");
     let batch_size = env::var("ROLLUP_BATCH_SIZE")
         .ok()
@@ -29,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("DATABASE_URL or DATABASE_URL_UNPOOLED must be set");
     let pool = create_pool(&db_url).await?;
 
-    if !no_reset {
+    if !drain_only && !no_reset {
         info!("resetting read-model tables before rebuild");
         sqlx::query(
             r#"
@@ -44,62 +45,66 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     }
 
-    info!("resetting aggregation queue state for rebuild");
-    sqlx::query("DELETE FROM aggregation_jobs WHERE job_kind = 'thread_rollup'")
-        .execute(&pool)
-        .await?;
+    if !drain_only {
+        info!("resetting aggregation queue state for rebuild");
+        sqlx::query("DELETE FROM aggregation_jobs WHERE job_kind = 'thread_rollup'")
+            .execute(&pool)
+            .await?;
 
-    let enqueue_row = sqlx::query(
-        r#"
-        WITH roots AS (
-            SELECT DISTINCT
-                m.channel_id,
-                CASE
-                    WHEN m.thread_ts IS NULL OR m.thread_ts = '' THEN m.ts
-                    ELSE m.thread_ts
-                END AS thread_ts
-            FROM messages m
-        ),
-        inserted AS (
-            INSERT INTO aggregation_jobs (
-                dedupe_key,
-                job_kind,
-                channel_id,
-                thread_ts,
-                status,
-                requested_by,
-                available_at,
-                created_at,
-                updated_at
+        let enqueue_row = sqlx::query(
+            r#"
+            WITH roots AS (
+                SELECT DISTINCT
+                    m.channel_id,
+                    CASE
+                        WHEN m.thread_ts IS NULL OR m.thread_ts = '' THEN m.ts
+                        ELSE m.thread_ts
+                    END AS thread_ts
+                FROM messages m
+            ),
+            inserted AS (
+                INSERT INTO aggregation_jobs (
+                    dedupe_key,
+                    job_kind,
+                    channel_id,
+                    thread_ts,
+                    status,
+                    requested_by,
+                    available_at,
+                    created_at,
+                    updated_at
+                )
+                SELECT
+                    ('thread_rollup:' || roots.channel_id || ':' || roots.thread_ts),
+                    'thread_rollup',
+                    roots.channel_id,
+                    roots.thread_ts,
+                    'queued',
+                    'rebuild_rollups',
+                    NOW(),
+                    NOW(),
+                    NOW()
+                FROM roots
+                ON CONFLICT (dedupe_key)
+                DO UPDATE SET
+                    status = 'queued',
+                    requested_by = EXCLUDED.requested_by,
+                    available_at = NOW(),
+                    finished_at = NULL,
+                    last_error = NULL,
+                    updated_at = NOW()
+                RETURNING 1
             )
-            SELECT
-                ('thread_rollup:' || roots.channel_id || ':' || roots.thread_ts),
-                'thread_rollup',
-                roots.channel_id,
-                roots.thread_ts,
-                'queued',
-                'rebuild_rollups',
-                NOW(),
-                NOW(),
-                NOW()
-            FROM roots
-            ON CONFLICT (dedupe_key)
-            DO UPDATE SET
-                status = 'queued',
-                requested_by = EXCLUDED.requested_by,
-                available_at = NOW(),
-                finished_at = NULL,
-                last_error = NULL,
-                updated_at = NOW()
-            RETURNING 1
+            SELECT COUNT(*)::bigint AS queued_count FROM inserted
+            "#,
         )
-        SELECT COUNT(*)::bigint AS queued_count FROM inserted
-        "#,
-    )
-    .fetch_one(&pool)
-    .await?;
-    let queued_count: i64 = enqueue_row.get("queued_count");
-    info!(queued_count, "thread rollup jobs queued");
+        .fetch_one(&pool)
+        .await?;
+        let queued_count: i64 = enqueue_row.get("queued_count");
+        info!(queued_count, "thread rollup jobs queued");
+    } else {
+        info!("drain-only mode: processing existing aggregation queue without reset");
+    }
 
     if enqueue_only {
         info!("enqueue-only mode enabled, stopping after queue population");
