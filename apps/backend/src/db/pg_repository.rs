@@ -464,6 +464,42 @@ impl Repository for PgPool {
         Ok(())
     }
 
+    async fn enqueue_file_backfill_job(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        message_ts: &str,
+        files_json: &serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO file_backfill_jobs
+                (dedupe_key, team_id, channel_id, message_ts, files_json, status, updated_at)
+            VALUES
+                ($1, $2, $3, $4, $5, 'queued', NOW())
+            ON CONFLICT (dedupe_key)
+            DO UPDATE SET
+                team_id = EXCLUDED.team_id,
+                files_json = EXCLUDED.files_json,
+                status = CASE
+                    WHEN file_backfill_jobs.status = 'running' THEN file_backfill_jobs.status
+                    ELSE 'queued'
+                END,
+                finished_at = NULL,
+                last_error = NULL,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(format!("{channel_id}:{message_ts}"))
+        .bind(team_id)
+        .bind(channel_id)
+        .bind(message_ts)
+        .bind(files_json)
+        .execute(self)
+        .await?;
+        Ok(())
+    }
+
     async fn get_files_for_messages(
         &self,
         channel_id: &str,

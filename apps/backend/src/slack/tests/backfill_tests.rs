@@ -300,7 +300,7 @@ async fn test_backfill_fetches_replies_for_thread_parents() {
 }
 
 #[tokio::test]
-async fn test_backfill_applies_overlap_to_last_archived_ts() {
+async fn test_backfill_uses_last_archived_ts_without_overlap() {
     let mock = MockSlackApi::new(vec![Channel {
         id: "C001".into(),
         name: "general".into(),
@@ -337,5 +337,5 @@ async fn test_backfill_applies_overlap_to_last_archived_ts() {
         .as_deref()
         .and_then(|value| value.parse::<f64>().ok())
         .unwrap();
-    assert!(oldest < 1700000005.000100_f64);
+    assert_eq!(oldest, 1700000005.000100_f64);
 }

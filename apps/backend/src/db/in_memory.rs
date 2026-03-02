@@ -24,6 +24,7 @@ pub struct InMemoryRepository {
     pub threads: Mutex<Vec<ThreadSummary>>,
     pub weekly_upserts: Mutex<Vec<(String, String)>>,
     pub aggregation_enqueues: Mutex<Vec<(String, String, String)>>,
+    pub file_backfill_enqueues: Mutex<Vec<(String, String, String, serde_json::Value)>>,
     pub top_threads_with_weekly: Mutex<Vec<ThreadWithWeeklyScore>>,
     pub weekly_ranked_threads: Mutex<Vec<PeriodRankedThread>>,
     pub monthly_ranked_threads: Mutex<Vec<PeriodRankedThread>>,
@@ -209,6 +210,22 @@ impl Repository for InMemoryRepository {
     }
 
     async fn insert_file(&self, _f: &FileRecord) -> Result<()> {
+        Ok(())
+    }
+
+    async fn enqueue_file_backfill_job(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        message_ts: &str,
+        files_json: &serde_json::Value,
+    ) -> Result<()> {
+        self.file_backfill_enqueues.lock().unwrap().push((
+            team_id.to_owned(),
+            channel_id.to_owned(),
+            message_ts.to_owned(),
+            files_json.clone(),
+        ));
         Ok(())
     }
 

@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, time::Duration};
 
 use base64::Engine;
 use bytes::Bytes;
@@ -7,17 +7,49 @@ use hmac::{Hmac, Mac};
 use http::StatusCode;
 use http_body_util::BodyExt;
 use serde::Deserialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use tokio::sync::OnceCell;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
-use crate::api::worker_engine::execute_worker_run;
+use crate::api::worker_engine::{
+    execute_aggregation_phase, execute_files_phase, execute_messages_phase, release_worker_lock,
+    try_acquire_worker_lock,
+};
 use crate::db::pool::create_pool;
 use crate::storage::R2Client;
 
+const DEFAULT_QSTASH_TIMEOUT_SECONDS: u64 = 10;
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
+
+#[derive(Debug, Clone, Copy)]
+enum WorkerPhase {
+    Messages,
+    Files,
+    Aggregate,
+}
+
+impl WorkerPhase {
+    fn from_path(path: &str) -> Self {
+        if path.ends_with("/api/admin/sync/files") || path.ends_with("/api/sync/files") {
+            return Self::Files;
+        }
+        if path.ends_with("/api/admin/sync/aggregate") || path.ends_with("/api/sync/aggregate") {
+            return Self::Aggregate;
+        }
+        Self::Messages
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Messages => "messages",
+            Self::Files => "files",
+            Self::Aggregate => "aggregate",
+        }
+    }
+}
 
 async fn pool() -> Result<&'static PgPool, Error> {
     POOL.get_or_try_init(|| async {
@@ -65,34 +97,260 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
-    let resp = process(
+    let requested_by = req
+        .headers()
+        .get("x-trigger-source")
+        .or_else(|| req.headers().get("user-agent"))
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("worker")
+        .to_owned();
+    let phase = WorkerPhase::from_path(req.uri().path());
+
+    let auth = process(
         &admin_token,
         worker_token.as_deref(),
         current_signing_key.as_deref(),
         next_signing_key.as_deref(),
-        req,
+        req.clone(),
     )
     .await?;
-    if resp.status() != StatusCode::ACCEPTED {
-        let (parts, body) = resp.into_parts();
+    if auth.status() != StatusCode::ACCEPTED {
+        let (parts, body) = auth.into_parts();
         return Ok(Response::from_parts(parts, ResponseBody::from(body)));
     }
 
+    let pool = pool().await?;
     let storage = R2Client::from_env().await.ok();
-    let outcome = execute_worker_run(pool().await?, &slack_token, storage.as_ref())
-        .await
-        .map_err(|e| Error::from(e.to_string()))?;
 
-    let body = serde_json::to_string(&serde_json::json!({
-        "ok": true,
-        "worker": outcome,
-    }))
-    .map_err(|e| Error::from(e.to_string()))?;
+    let Some(mut worker_lock_conn) = try_acquire_worker_lock(pool).await? else {
+        let body = serde_json::json!({
+            "ok": true,
+            "phase": phase.as_str(),
+            "requestedBy": requested_by,
+            "status": "busy",
+        })
+        .to_string();
+        return Ok(Response::builder()
+            .status(StatusCode::ACCEPTED)
+            .header("Content-Type", "application/json")
+            .body(ResponseBody::from(Bytes::from(body)))?);
+    };
 
+    let phase_result = async {
+        let (worker_result, next_phase) = match phase {
+            WorkerPhase::Messages => {
+                let outcome = execute_messages_phase(pool, &slack_token, storage.as_ref()).await?;
+                let worker_result =
+                    serde_json::to_value(&outcome).map_err(|e| Error::from(e.to_string()))?;
+
+                if outcome.status == "succeeded" {
+                    let next_url = resolve_next_worker_url(&req, phase)?;
+                    let publish = publish_next_phase_job(
+                        &qstash_token(),
+                        worker_token.as_deref().unwrap_or(""),
+                        &next_url,
+                    )
+                    .await?;
+                    let next_phase = Some(serde_json::json!({
+                        "phase": "files",
+                        "url": next_url,
+                        "qstash": publish,
+                    }));
+                    (worker_result, next_phase)
+                } else {
+                    (worker_result, None)
+                }
+            }
+            WorkerPhase::Files => {
+                let outcome = execute_files_phase(pool, &slack_token, storage.as_ref()).await?;
+                let worker_result =
+                    serde_json::to_value(&outcome).map_err(|e| Error::from(e.to_string()))?;
+
+                let next_url = resolve_next_worker_url(&req, phase)?;
+                let publish = publish_next_phase_job(
+                    &qstash_token(),
+                    worker_token.as_deref().unwrap_or(""),
+                    &next_url,
+                )
+                .await?;
+                let next_phase = Some(serde_json::json!({
+                    "phase": "aggregate",
+                    "url": next_url,
+                    "qstash": publish,
+                }));
+                (worker_result, next_phase)
+            }
+            WorkerPhase::Aggregate => {
+                let outcome = execute_aggregation_phase(pool).await?;
+                let worker_result =
+                    serde_json::to_value(&outcome).map_err(|e| Error::from(e.to_string()))?;
+                (worker_result, None)
+            }
+        };
+
+        let body = serde_json::json!({
+            "ok": true,
+            "phase": phase.as_str(),
+            "requestedBy": requested_by,
+            "worker": worker_result,
+            "nextPhase": next_phase,
+        })
+        .to_string();
+
+        Ok::<String, Error>(body)
+    }
+    .await;
+
+    if let Err(err) = release_worker_lock(&mut worker_lock_conn).await {
+        warn!(error = %err, "failed to release worker advisory lock");
+    }
+
+    let body = phase_result?;
+    info!(phase = phase.as_str(), "admin worker phase completed");
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .body(ResponseBody::from(Bytes::from(body)))?)
+}
+
+fn resolve_next_worker_url(
+    req: &http::Request<Bytes>,
+    phase: WorkerPhase,
+) -> Result<String, Error> {
+    let (override_env, next_path) = match phase {
+        WorkerPhase::Messages => ("BACKFILL_FILES_WORKER_URL", "/api/admin/sync/files"),
+        WorkerPhase::Files => ("BACKFILL_AGGREGATE_WORKER_URL", "/api/admin/sync/aggregate"),
+        WorkerPhase::Aggregate => {
+            return Err(Error::from("aggregate phase has no next worker URL"));
+        }
+    };
+
+    if let Ok(explicit) = env::var(override_env)
+        && !explicit.trim().is_empty()
+    {
+        let explicit = explicit.trim().to_owned();
+        if !is_http_url(&explicit) {
+            return Err(Error::from(format!("invalid {override_env}: {explicit}")));
+        }
+        return Ok(explicit);
+    }
+
+    let base = env::var("BACKEND_APP_URL")
+        .ok()
+        .or_else(|| env::var("APP_URL").ok())
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| normalize_url(&value))
+        .or_else(|| {
+            let host = req
+                .headers()
+                .get("x-forwarded-host")
+                .or_else(|| req.headers().get("host"))
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.is_empty())?;
+            let scheme = req
+                .headers()
+                .get("x-forwarded-proto")
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("https");
+            Some(format!("{scheme}://{host}"))
+        })
+        .ok_or_else(|| Error::from("unable to resolve next worker base URL"))?;
+    if !is_http_url(&base) {
+        return Err(Error::from(format!("invalid worker base URL: {base}")));
+    }
+    Ok(format!("{base}{next_path}"))
+}
+
+async fn publish_next_phase_job(
+    qstash_token: &str,
+    worker_token: &str,
+    worker_url: &str,
+) -> Result<Value, Error> {
+    if qstash_token.is_empty() {
+        return Err(Error::from("missing UPSTASH_QSTASH_TOKEN"));
+    }
+    if worker_token.is_empty() {
+        return Err(Error::from("missing BACKFILL_WORKER_TOKEN"));
+    }
+    if !is_http_url(worker_url) {
+        return Err(Error::from(format!(
+            "invalid worker URL scheme: {worker_url}"
+        )));
+    }
+
+    let publish_url = format!("{}/v2/publish/{}", qstash_url(), worker_url);
+    let timeout = Duration::from_secs(qstash_timeout_seconds());
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    let response = client
+        .post(&publish_url)
+        .bearer_auth(qstash_token)
+        .header("Content-Type", "application/json")
+        .header("Upstash-Method", "POST")
+        .header(
+            "Upstash-Forward-Authorization",
+            format!("Bearer {worker_token}"),
+        )
+        .body("{}")
+        .send()
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+    if !status.is_success() {
+        return Err(Error::from(format!(
+            "qstash publish failed: status={} worker_url={} publish_url={} body={}",
+            status.as_u16(),
+            worker_url,
+            publish_url,
+            body
+        )));
+    }
+    serde_json::from_str(&body).map_err(|e| Error::from(e.to_string()))
+}
+
+fn qstash_timeout_seconds() -> u64 {
+    env::var("QSTASH_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_QSTASH_TIMEOUT_SECONDS)
+}
+
+fn qstash_token() -> String {
+    env::var("UPSTASH_QSTASH_TOKEN").unwrap_or_default()
+}
+
+fn qstash_url() -> String {
+    normalize_url(
+        &env::var("UPSTASH_QSTASH_URL").unwrap_or_else(|_| "https://qstash.upstash.io".to_owned()),
+    )
+}
+
+fn normalize_url(value: &str) -> String {
+    let trimmed = value
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .trim_end_matches('/');
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return trimmed.to_owned();
+    }
+    format!("https://{trimmed}")
+}
+
+fn is_http_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 fn internal_error_response() -> Result<Response<ResponseBody>, Error> {

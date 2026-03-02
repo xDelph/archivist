@@ -9,8 +9,6 @@ use tracing::{info, warn};
 
 use crate::storage::R2Client;
 
-const DEFAULT_BACKFILL_HISTORY_OVERLAP_SECONDS: f64 = 3600.0;
-
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -357,8 +355,8 @@ struct UserCacheSliceStats {
 pub async fn run_backfill<R, S>(
     repo: &R,
     client: &S,
-    slack_token: &str,
-    storage: Option<&R2Client>,
+    _slack_token: &str,
+    _storage: Option<&R2Client>,
 ) -> anyhow::Result<()>
 where
     R: crate::db::Repository,
@@ -374,7 +372,7 @@ where
 
     for ch in &all_channels {
         info!(channel_id = %ch.id, channel_name = %ch.name, "backfilling channel");
-        match backfill_channel(repo, client, slack_token, storage, &ch.id).await? {
+        match backfill_channel(repo, client, &ch.id).await? {
             Some(channel_stats) => {
                 stats.channels_processed += 1;
                 stats.include_channel(channel_stats);
@@ -418,8 +416,8 @@ where
 pub async fn run_backfill_slice<S: SlackApi>(
     pool: &PgPool,
     client: &S,
-    slack_token: &str,
-    storage: Option<&R2Client>,
+    _slack_token: &str,
+    _storage: Option<&R2Client>,
     config: &BackfillSliceConfig,
 ) -> anyhow::Result<BackfillSliceResult> {
     let all_channels = discover_channels(client).await?;
@@ -443,7 +441,7 @@ pub async fn run_backfill_slice<S: SlackApi>(
     };
 
     for channel_id in &channel_ids {
-        match backfill_channel(pool, client, slack_token, storage, channel_id).await? {
+        match backfill_channel(pool, client, channel_id).await? {
             Some(channel_stats) => {
                 result.channels_processed += 1;
                 result.message_upserts += channel_stats.message_upserts;
@@ -589,8 +587,6 @@ fn should_sync_users(
 async fn backfill_channel<R, S>(
     repo: &R,
     client: &S,
-    slack_token: &str,
-    storage: Option<&R2Client>,
     channel_id: &str,
 ) -> anyhow::Result<Option<ChannelBackfillStats>>
 where
@@ -598,7 +594,7 @@ where
     S: SlackApi,
 {
     let oldest = repo.get_last_archived_ts(channel_id).await?;
-    let history_oldest = apply_history_overlap(oldest.as_deref());
+    let history_oldest = oldest.clone();
     info!(
         channel_id,
         oldest_ts = oldest.as_deref().unwrap_or("<none>"),
@@ -629,21 +625,14 @@ where
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
             stats.message_upserts += 1;
-            download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
+            enqueue_message_file_backfill(repo, channel_id, msg).await?;
             touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
                 // Thread root in this batch — fetch all replies.
                 info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
-                let reply_stats = backfill_replies(
-                    repo,
-                    client,
-                    slack_token,
-                    storage,
-                    channel_id,
-                    &msg.ts,
-                    &mut touched_threads,
-                )
-                .await?;
+                let reply_stats =
+                    backfill_replies(repo, client, channel_id, &msg.ts, &mut touched_threads)
+                        .await?;
                 stats.include_reply(reply_stats);
                 stale_threads.remove(&msg.ts);
             } else if let Some(tts) = &msg.thread_ts {
@@ -660,16 +649,8 @@ where
     stats.stale_threads = stale_threads.len();
     for thread_ts in stale_threads {
         info!(channel_id, %thread_ts, "backfilling stale thread");
-        let reply_stats = backfill_replies(
-            repo,
-            client,
-            slack_token,
-            storage,
-            channel_id,
-            &thread_ts,
-            &mut touched_threads,
-        )
-        .await?;
+        let reply_stats =
+            backfill_replies(repo, client, channel_id, &thread_ts, &mut touched_threads).await?;
         stats.include_reply(reply_stats);
     }
 
@@ -700,39 +681,9 @@ where
     Ok(Some(stats))
 }
 
-fn history_overlap_seconds() -> f64 {
-    std::env::var("BACKFILL_HISTORY_OVERLAP_SECONDS")
-        .ok()
-        .and_then(|raw| raw.parse::<f64>().ok())
-        .filter(|value| *value >= 0.0)
-        .unwrap_or(DEFAULT_BACKFILL_HISTORY_OVERLAP_SECONDS)
-}
-
-fn apply_history_overlap(oldest: Option<&str>) -> Option<String> {
-    let oldest = oldest?.trim();
-    if oldest.is_empty() {
-        return None;
-    }
-
-    let overlap = history_overlap_seconds();
-    if overlap <= 0.0 {
-        return Some(oldest.to_owned());
-    }
-
-    match oldest.parse::<f64>() {
-        Ok(value) => {
-            let adjusted = (value - overlap).max(0.0);
-            Some(format!("{adjusted:.6}"))
-        }
-        Err(_) => Some(oldest.to_owned()),
-    }
-}
-
 async fn backfill_replies<R, S>(
     repo: &R,
     client: &S,
-    slack_token: &str,
-    storage: Option<&R2Client>,
     channel_id: &str,
     thread_ts: &str,
     touched_threads: &mut HashSet<String>,
@@ -757,7 +708,7 @@ where
         );
         for msg in &messages {
             upsert_slack_message(repo, channel_id, msg).await?;
-            download_and_archive_files(repo, storage, slack_token, channel_id, msg).await?;
+            enqueue_message_file_backfill(repo, channel_id, msg).await?;
             touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
         }
         match next {
@@ -790,25 +741,21 @@ async fn upsert_slack_message<R: crate::db::Repository>(
     Ok(())
 }
 
-async fn download_and_archive_files<R: crate::db::Repository>(
+async fn enqueue_message_file_backfill<R: crate::db::Repository>(
     repo: &R,
-    storage: Option<&R2Client>,
-    slack_token: &str,
     channel_id: &str,
     msg: &SlackMessage,
 ) -> anyhow::Result<()> {
     let team_id = msg.raw["team"].as_str().unwrap_or("");
     let files_raw = msg.raw["files"].clone();
-    archive_files(
-        repo,
-        storage,
-        slack_token,
-        channel_id,
-        &msg.ts,
-        team_id,
-        &files_raw,
-    )
-    .await
+    let has_files = files_raw.as_array().is_some_and(|files| !files.is_empty());
+    if !has_files {
+        return Ok(());
+    }
+
+    repo.enqueue_file_backfill_job(team_id, channel_id, &msg.ts, &files_raw)
+        .await?;
+    Ok(())
 }
 
 pub async fn archive_files<R: crate::db::Repository>(

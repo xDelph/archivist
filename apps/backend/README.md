@@ -27,7 +27,11 @@ GET  /record/thread?channel_id=&ts=[&search=]
 POST /api/admin/sync  (bearer-token protected)
   → triggers a QStash publish to run the worker asynchronously
 POST /api/admin/sync/run (bearer-token protected)
-  → worker endpoint: runs full backfill, then drains aggregation
+  → worker phase 1: backfill messages + enqueue file jobs + enqueue aggregation jobs
+POST /api/admin/sync/files (bearer-token protected)
+  → worker phase 2: archive queued files to R2
+POST /api/admin/sync/aggregate (bearer-token protected)
+  → worker phase 3: drain aggregation jobs
 GET  /api/health
 ```
 
@@ -57,7 +61,9 @@ public/         Static assets (record.css, modal.js, og.png)
 | `POST /api/slack/events` | Receive Slack Events API payloads |
 | `GET /api/health` | Health check |
 | `POST /api/admin/sync` | Trigger endpoint: publishes one worker execution to QStash |
-| `POST /api/admin/sync/run` | Worker endpoint: full backfill + aggregation (sync) |
+| `POST /api/admin/sync/run` | Worker phase 1: backfill messages + queue files + queue aggregation |
+| `POST /api/admin/sync/files` | Worker phase 2: process queued file archival jobs |
+| `POST /api/admin/sync/aggregate` | Worker phase 3: drain aggregation jobs |
 | `GET /record` | **SSR thread viewer** — renders server-side with maud + HTMX |
 | `GET /record/weekly?tab=top|week|month` | SSR ranking tabs (all-time, weekly, monthly) with rank-change badges |
 | `GET /record/threads?sort=&period=&channel=&user=&search=` | HTMX fragment: filtered/sorted thread list |
@@ -110,11 +116,13 @@ cargo test
 | `UPSTASH_QSTASH_NEXT_SIGNING_KEY` | Upstash next signing key used during key rotation |
 | `BACKFILL_WORKER_TOKEN` | Bearer token forwarded by QStash to authenticate `/api/admin/sync/run` |
 | `BACKFILL_WORKER_URL` | Optional absolute worker URL override (defaults to `<base>/api/admin/sync/run`) |
+| `BACKFILL_FILES_WORKER_URL` | Optional absolute URL override for phase-2 worker (`/api/admin/sync/files`) |
+| `BACKFILL_AGGREGATE_WORKER_URL` | Optional absolute URL override for phase-3 worker (`/api/admin/sync/aggregate`) |
 | `QSTASH_TIMEOUT_SECONDS` | Optional timeout for publish HTTP call to QStash (default: `10`) |
-| `BACKFILL_HISTORY_OVERLAP_SECONDS` | Optional safety overlap for `conversations.history` oldest cutoff (default: `3600`) |
 | `AGGREGATION_JOBS_PER_BATCH` | Optional max aggregation jobs per batch while draining (default: `200`) |
 | `AGGREGATION_MAX_BATCHES_PER_RUN` | Optional max aggregation batches drained per worker run (default: `200`) |
 | `AGGREGATION_RUNNING_LEASE_MINUTES` | Optional timeout to recover stale `running` aggregation jobs (default: `15`) |
+| `FILE_BACKFILL_RUNNING_LEASE_MINUTES` | Optional timeout to recover stale `running` file jobs (default: `15`) |
 | `CLOUDFLARED_R2_ACCOUNT_ID` | Cloudflare account ID |
 | `CLOUDFLARED_R2_ACCESS_KEY` | R2 API token access key |
 | `CLOUDFLARED_R2_SECRET_KEY` | R2 API token secret key |
@@ -211,7 +219,9 @@ Backfill scheduling uses QStash:
 
 - `POST /api/admin/sync` is a trigger-only endpoint.
 - It publishes one call to `POST /api/admin/sync/run` via QStash.
-- `POST /api/admin/sync/run` runs full backfill, then drains aggregation jobs.
+- `POST /api/admin/sync/run` runs message backfill then publishes phase 2.
+- `POST /api/admin/sync/files` processes queued file archival jobs then publishes phase 3.
+- `POST /api/admin/sync/aggregate` drains aggregation jobs.
 - QStash handles async delivery and retries.
 
 ## Weekly ranking data

@@ -39,6 +39,13 @@ pub trait Repository {
     ) -> Result<Vec<ThreadMessage>>;
     async fn file_exists(&self, file_id: &str) -> Result<bool>;
     async fn insert_file(&self, f: &FileRecord) -> Result<()>;
+    async fn enqueue_file_backfill_job(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        message_ts: &str,
+        files_json: &serde_json::Value,
+    ) -> Result<()>;
     async fn get_files_for_messages(
         &self,
         channel_id: &str,

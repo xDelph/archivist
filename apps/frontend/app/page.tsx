@@ -29,9 +29,9 @@ const THEME_KEY = "archivist_theme"
 const DENSITY_KEY = "archivist_density"
 const STATS_VISIBILITY_KEY = "archivist_stats_visibility"
 const SEARCH_DEBOUNCE_MS = 250
-const TABS: DashboardTab[] = ["top", "week", "month", "recent"]
+const TABS: DashboardTab[] = ["recent", "week", "month", "top"]
 const EMPTY_DASHBOARD: DashboardData = {
-  tab: "top",
+  tab: "recent",
   workspaceUrl: null,
   threads: [],
   users: [],
@@ -50,10 +50,10 @@ const EMPTY_DASHBOARD: DashboardData = {
 }
 
 function parseTab(value: string | null): DashboardTab {
-  if (value === "week" || value === "month" || value === "recent") {
+  if (value === "recent" || value === "week" || value === "month" || value === "top") {
     return value
   }
-  return "top"
+  return "recent"
 }
 
 function parseSort(value: string | null): string {
@@ -156,7 +156,7 @@ export default function ArchivistDashboard() {
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<DashboardTab>("top")
+  const [activeTab, setActiveTab] = useState<DashboardTab>("recent")
   const [tabCache, setTabCache] = useState<Partial<Record<DashboardTab, DashboardData>>>({})
   const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
   const [theme, setTheme] = useState<ThemePref>("dark")
@@ -245,7 +245,7 @@ export default function ArchivistDashboard() {
     if (!ready) return
 
     const params = new URLSearchParams()
-    if (activeTab !== "top") params.set("tab", activeTab)
+    if (activeTab !== "recent") params.set("tab", activeTab)
     if (sortBy !== "score") params.set("sort", sortBy)
     if (period !== "all") params.set("period", period)
     if (selectedUser) params.set("user", selectedUser)
@@ -475,8 +475,8 @@ export default function ArchivistDashboard() {
             className="ml-4 hidden sm:flex"
           >
             <TabsList className="h-8 bg-secondary">
-              <TabsTrigger value="top" className="px-3 text-xs">
-                Top Threads
+              <TabsTrigger value="recent" className="px-3 text-xs">
+                Last 50
               </TabsTrigger>
               <TabsTrigger value="week" className="px-3 text-xs">
                 This Week
@@ -484,8 +484,8 @@ export default function ArchivistDashboard() {
               <TabsTrigger value="month" className="px-3 text-xs">
                 This Month
               </TabsTrigger>
-              <TabsTrigger value="recent" className="px-3 text-xs">
-                Last 50
+              <TabsTrigger value="top" className="px-3 text-xs">
+                Top Threads
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -551,8 +551,8 @@ export default function ArchivistDashboard() {
             }}
           >
             <TabsList className="w-full bg-secondary">
-              <TabsTrigger value="top" className="text-xs">
-                Top Threads
+              <TabsTrigger value="recent" className="text-xs">
+                Last 50
               </TabsTrigger>
               <TabsTrigger value="week" className="text-xs">
                 Week
@@ -560,8 +560,8 @@ export default function ArchivistDashboard() {
               <TabsTrigger value="month" className="text-xs">
                 Month
               </TabsTrigger>
-              <TabsTrigger value="recent" className="text-xs">
-                Last 50
+              <TabsTrigger value="top" className="text-xs">
+                Top Threads
               </TabsTrigger>
             </TabsList>
           </Tabs>
