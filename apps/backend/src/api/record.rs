@@ -53,6 +53,7 @@ const CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
 #[cfg(not(test))]
 struct AppCache {
     threads: Option<(Instant, Vec<ThreadSummary>)>,
+    recent_threads: Option<(Instant, Vec<ThreadSummary>)>,
     users: Option<(Instant, Vec<(String, String)>)>,
     channels: Option<(Instant, Vec<(String, String)>)>,
 }
@@ -65,6 +66,7 @@ fn app_cache() -> &'static RwLock<AppCache> {
     CACHE.get_or_init(|| {
         RwLock::new(AppCache {
             threads: None,
+            recent_threads: None,
             users: None,
             channels: None,
         })
@@ -102,6 +104,39 @@ pub(crate) async fn cached_threads<R: Repository>(
     repo: &R,
 ) -> std::result::Result<Vec<ThreadSummary>, anyhow::Error> {
     repo.get_top_threads(200).await
+}
+
+#[cfg(not(test))]
+pub(crate) async fn cached_recent_threads<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<ThreadSummary>, anyhow::Error> {
+    {
+        let c = app_cache().read().await;
+        if let Some((ts, data)) = &c.recent_threads
+            && ts.elapsed() < CACHE_TTL
+        {
+            return Ok(data.clone());
+        }
+    }
+    let data = repo.get_recent_threads(2000).await?;
+    let mut cache = app_cache().write().await;
+    if data.is_empty() {
+        if let Some((_, previous)) = &cache.recent_threads
+            && !previous.is_empty()
+        {
+            return Ok(previous.clone());
+        }
+        return Ok(data);
+    }
+    cache.recent_threads = Some((Instant::now(), data.clone()));
+    Ok(data)
+}
+
+#[cfg(test)]
+pub(crate) async fn cached_recent_threads<R: Repository>(
+    repo: &R,
+) -> std::result::Result<Vec<ThreadSummary>, anyhow::Error> {
+    repo.get_recent_threads(2000).await
 }
 
 #[cfg(not(test))]

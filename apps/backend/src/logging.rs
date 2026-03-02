@@ -105,30 +105,63 @@ pub fn init_tracing() {
 #[cfg(test)]
 mod tests {
     use super::is_service_env_development;
+    use std::sync::{Mutex, OnceLock};
+
+    static SERVICE_ENV_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn service_env_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        SERVICE_ENV_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("service env lock poisoned")
+    }
+
+    fn with_service_env<T>(value: Option<&str>, run: impl FnOnce() -> T) -> T {
+        let _guard = service_env_test_lock();
+        let previous = std::env::var("SERVICE_ENV").ok();
+        match value {
+            Some(next) => {
+                // SAFETY: test-only environment mutation is protected by a process-wide mutex.
+                unsafe { std::env::set_var("SERVICE_ENV", next) }
+            }
+            None => {
+                // SAFETY: test-only environment mutation is protected by a process-wide mutex.
+                unsafe { std::env::remove_var("SERVICE_ENV") }
+            }
+        }
+
+        let output = run();
+
+        match previous {
+            Some(prev) => {
+                // SAFETY: test-only environment mutation is protected by a process-wide mutex.
+                unsafe { std::env::set_var("SERVICE_ENV", prev) }
+            }
+            None => {
+                // SAFETY: test-only environment mutation is protected by a process-wide mutex.
+                unsafe { std::env::remove_var("SERVICE_ENV") }
+            }
+        }
+        output
+    }
 
     #[test]
     fn service_env_development_detection_handles_case_and_spaces() {
-        unsafe {
-            std::env::set_var("SERVICE_ENV", "development");
-        }
-        assert!(is_service_env_development());
-
-        unsafe {
-            std::env::set_var("SERVICE_ENV", "  DeVeLoPmEnT  ");
-        }
-        assert!(is_service_env_development());
+        with_service_env(Some("development"), || {
+            assert!(is_service_env_development());
+        });
+        with_service_env(Some("  DeVeLoPmEnT  "), || {
+            assert!(is_service_env_development());
+        });
     }
 
     #[test]
     fn service_env_development_detection_rejects_other_values() {
-        unsafe {
-            std::env::set_var("SERVICE_ENV", "production");
-        }
-        assert!(!is_service_env_development());
-
-        unsafe {
-            std::env::remove_var("SERVICE_ENV");
-        }
-        assert!(!is_service_env_development());
+        with_service_env(Some("production"), || {
+            assert!(!is_service_env_development());
+        });
+        with_service_env(None, || {
+            assert!(!is_service_env_development());
+        });
     }
 }

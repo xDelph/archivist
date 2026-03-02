@@ -3,7 +3,7 @@ use std::env;
 use std::time::Instant;
 
 use bytes::Bytes;
-use chrono::{Datelike, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use http::StatusCode;
 use serde::Serialize;
 use serde_json::Value;
@@ -221,13 +221,19 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
     apply_period_filter(&mut candidate_threads, period);
 
     let root_files = fetch_root_file_summary(repo, &candidate_threads).await?;
+    let mut overview_change_threads = crate::api::record::cached_recent_threads(repo)
+        .await
+        .map_err(|e| Error::from(e.to_string()))?;
+    apply_channel_and_search_filters(&mut overview_change_threads, channel, search);
+    apply_user_filter(&mut overview_change_threads, user);
+    let overview_change_files = fetch_root_file_summary(repo, &overview_change_threads).await?;
     apply_sort(&mut candidate_threads, sort);
     candidate_threads.truncate(limit);
 
     let total_files = sum_files_for_threads(&candidate_threads, &root_files.file_counts_by_thread);
     let overview_changes = compute_overview_changes(
-        &candidate_threads,
-        &root_files.file_counts_by_thread,
+        &overview_change_threads,
+        &overview_change_files.file_counts_by_thread,
         tab,
         period,
     );
@@ -651,12 +657,31 @@ fn compute_overview_changes(
     tab: &str,
     period: &str,
 ) -> OverviewChanges {
-    let Some(window_days) = change_window_days(tab, period) else {
+    compute_overview_changes_at(
+        baseline_threads,
+        file_counts_by_thread,
+        tab,
+        period,
+        Utc::now(),
+    )
+}
+
+fn compute_overview_changes_at(
+    baseline_threads: &[ThreadSummary],
+    file_counts_by_thread: &HashMap<(String, String), i64>,
+    tab: &str,
+    period: &str,
+    now: DateTime<Utc>,
+) -> OverviewChanges {
+    let Some((current_start, current_end, previous_start, previous_end)) =
+        change_windows(tab, period, now)
+    else {
         return OverviewChanges::default();
     };
-    let now = Utc::now().timestamp() as f64;
-    let current_start = now - (window_days as f64 * 86_400.0);
-    let previous_start = now - ((window_days * 2) as f64 * 86_400.0);
+    let current_start = current_start.timestamp() as f64;
+    let current_end = current_end.timestamp() as f64;
+    let previous_start = previous_start.timestamp() as f64;
+    let previous_end = previous_end.timestamp() as f64;
 
     let mut current = MetricAccumulator::default();
     let mut previous = MetricAccumulator::default();
@@ -668,9 +693,9 @@ fn compute_overview_changes(
             .copied()
             .unwrap_or(0);
 
-        if thread_ts >= current_start {
+        if thread_ts >= current_start && thread_ts < current_end {
             current.add(thread, file_count);
-        } else if thread_ts >= previous_start {
+        } else if thread_ts >= previous_start && thread_ts < previous_end {
             previous.add(thread, file_count);
         }
     }
@@ -701,20 +726,57 @@ fn sum_files_for_threads(
         .sum()
 }
 
-fn change_window_days(tab: &str, period: &str) -> Option<i64> {
-    if period == "7d" {
-        return Some(7);
+fn change_windows(
+    tab: &str,
+    period: &str,
+    now: DateTime<Utc>,
+) -> Option<(DateTime<Utc>, DateTime<Utc>, DateTime<Utc>, DateTime<Utc>)> {
+    if period == "7d" || period == "30d" {
+        let days = if period == "7d" { 7 } else { 30 };
+        let current_start = now - Duration::days(days);
+        let previous_start = current_start - Duration::days(days);
+        return Some((current_start, now, previous_start, current_start));
     }
-    if period == "30d" {
-        return Some(30);
+
+    if tab == "week" {
+        let day_start = now.date_naive();
+        let week_start_day =
+            day_start - Duration::days(day_start.weekday().num_days_from_monday() as i64);
+        let current_start = naive_midnight_utc(week_start_day);
+        let previous_start = current_start - Duration::days(7);
+        return Some((current_start, now, previous_start, current_start));
+    }
+
+    if tab == "month" {
+        let today = now.date_naive();
+        let current_month_start_day = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)?;
+        let (prev_year, prev_month) = if today.month() == 1 {
+            (today.year() - 1, 12)
+        } else {
+            (today.year(), today.month() - 1)
+        };
+        let previous_month_start_day = NaiveDate::from_ymd_opt(prev_year, prev_month, 1)?;
+        let current_start = naive_midnight_utc(current_month_start_day);
+        let previous_start = naive_midnight_utc(previous_month_start_day);
+        return Some((current_start, now, previous_start, current_start));
     }
 
     match tab {
-        "week" => Some(7),
-        "month" => Some(30),
-        "top" => Some(30),
+        "top" => Some((
+            now - Duration::days(30),
+            now,
+            now - Duration::days(60),
+            now - Duration::days(30),
+        )),
         _ => None,
     }
+}
+
+fn naive_midnight_utc(day: NaiveDate) -> DateTime<Utc> {
+    let naive_dt = day
+        .and_hms_opt(0, 0, 0)
+        .expect("valid midnight for naive date");
+    DateTime::<Utc>::from_naive_utc_and_offset(naive_dt, Utc)
 }
 
 fn percentage_change(current: i64, previous: i64) -> f64 {
@@ -878,4 +940,100 @@ fn percent_decode(s: &str) -> String {
         }
     }
     String::from_utf8_lossy(&bytes).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::ThreadSummary;
+
+    fn make_thread(ts: &str, user: &str) -> ThreadSummary {
+        ThreadSummary {
+            channel_id: "C001".to_owned(),
+            channel_name: "general".to_owned(),
+            thread_ts: ts.to_owned(),
+            text: "hello".to_owned(),
+            created_at: Utc::now(),
+            display_name: user.to_owned(),
+            avatar_url: String::new(),
+            search_text: String::new(),
+            reaction_count: 0,
+            reply_count: 0,
+            participant_count: 1,
+            file_count: 0,
+            score: 1,
+        }
+    }
+
+    fn ts(secs: i64) -> String {
+        format!("{secs}.000000")
+    }
+
+    #[test]
+    fn month_changes_use_calendar_boundaries() {
+        let now = DateTime::<Utc>::from_naive_utc_and_offset(
+            NaiveDate::from_ymd_opt(2026, 3, 2)
+                .expect("valid date")
+                .and_hms_opt(12, 0, 0)
+                .expect("valid time"),
+            Utc,
+        );
+
+        let feb_thread = make_thread(&ts(now.timestamp() - 20 * 86_400), "alice");
+        let mar_thread = make_thread(&ts(now.timestamp() - 1 * 86_400), "alice");
+        let threads = vec![feb_thread.clone(), mar_thread.clone()];
+
+        let mut files = HashMap::new();
+        files.insert(
+            (feb_thread.channel_id.clone(), feb_thread.thread_ts.clone()),
+            1,
+        );
+        files.insert(
+            (mar_thread.channel_id.clone(), mar_thread.thread_ts.clone()),
+            1,
+        );
+
+        let changes = compute_overview_changes_at(&threads, &files, "month", "all", now);
+        assert_eq!(changes.messages_change, 0.0);
+        assert_eq!(changes.threads_change, 0.0);
+        assert_eq!(changes.files_change, 0.0);
+        assert_eq!(changes.users_change, 0.0);
+    }
+
+    #[test]
+    fn week_changes_use_calendar_boundaries() {
+        let now = DateTime::<Utc>::from_naive_utc_and_offset(
+            NaiveDate::from_ymd_opt(2026, 3, 2)
+                .expect("valid date")
+                .and_hms_opt(12, 0, 0)
+                .expect("valid time"),
+            Utc,
+        );
+
+        let last_week_thread = make_thread(&ts(now.timestamp() - 24 * 3600), "alice");
+        let current_week_thread = make_thread(&ts(now.timestamp() - 1 * 3600), "alice");
+        let threads = vec![last_week_thread.clone(), current_week_thread.clone()];
+
+        let mut files = HashMap::new();
+        files.insert(
+            (
+                last_week_thread.channel_id.clone(),
+                last_week_thread.thread_ts.clone(),
+            ),
+            1,
+        );
+        files.insert(
+            (
+                current_week_thread.channel_id.clone(),
+                current_week_thread.thread_ts.clone(),
+            ),
+            1,
+        );
+
+        let changes = compute_overview_changes_at(&threads, &files, "week", "all", now);
+        assert_eq!(changes.messages_change, 0.0);
+        assert_eq!(changes.threads_change, 0.0);
+        assert_eq!(changes.files_change, 0.0);
+        assert_eq!(changes.users_change, 0.0);
+    }
 }
