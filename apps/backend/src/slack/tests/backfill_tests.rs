@@ -235,6 +235,10 @@ impl SlackApi for MockSlackApi {
     ) -> Result<(Vec<SlackUser>, Option<String>), SlackError> {
         Ok((vec![], None))
     }
+
+    async fn users_info(&self, _user_id: &str) -> Result<Option<SlackUser>, SlackError> {
+        Ok(None)
+    }
 }
 
 #[tokio::test]

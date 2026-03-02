@@ -105,7 +105,8 @@ impl Repository for InMemoryRepository {
         Ok(max)
     }
 
-    async fn upsert_user(&self, _u: &UserRecord) -> Result<()> {
+    async fn upsert_user(&self, u: &UserRecord) -> Result<()> {
+        let _ = u;
         Ok(())
     }
 

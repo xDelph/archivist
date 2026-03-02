@@ -1,9 +1,11 @@
 use std::env;
 
+use archivist::api::file_backfill_jobs::run_file_backfill_batch;
 use archivist::db::pool::create_pool;
 use archivist::logging::init_tracing;
-use archivist::slack::backfill::{SlackClient, run_backfill};
+use archivist::slack::backfill::{SlackClient, run_backfill, sync_all_users};
 use archivist::storage::R2Client;
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,6 +22,23 @@ async fn main() -> anyhow::Result<()> {
     let storage = R2Client::from_env().await.ok();
 
     run_backfill(&pool, &client, &slack_token, storage.as_ref()).await?;
+
+    loop {
+        let batch = run_file_backfill_batch(&pool, &slack_token, storage.as_ref()).await?;
+        info!(
+            claimed = batch.claimed,
+            succeeded = batch.succeeded,
+            failed = batch.failed,
+            requeued = batch.requeued,
+            "file backfill local batch complete"
+        );
+        if batch.claimed == 0 {
+            break;
+        }
+    }
+
+    let users_cached = sync_all_users(&pool, &client).await?;
+    info!(users_cached, "full users cache complete");
 
     Ok(())
 }

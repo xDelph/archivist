@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::time::Duration as StdDuration;
 
 use chrono::{DateTime, Duration, Utc};
 use reqwest::StatusCode;
@@ -80,6 +81,8 @@ pub trait SlackApi {
         &self,
         cursor: Option<&str>,
     ) -> Result<(Vec<SlackUser>, Option<String>), SlackError>;
+
+    async fn users_info(&self, user_id: &str) -> Result<Option<SlackUser>, SlackError>;
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -97,9 +100,14 @@ impl SlackClient {
     }
 
     pub fn with_base_url(bot_token: impl Into<String>, base_url: impl Into<String>) -> Self {
+        let timeout = StdDuration::from_secs(slack_api_timeout_seconds());
+        let http = reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             bot_token: bot_token.into(),
-            http: reqwest::Client::new(),
+            http,
             base_url: base_url.into(),
         }
     }
@@ -201,6 +209,11 @@ impl SlackApi for SlackClient {
         let users = parse_users(&json["members"])?;
         Ok((users, extract_cursor(&json)))
     }
+
+    async fn users_info(&self, user_id: &str) -> Result<Option<SlackUser>, SlackError> {
+        let json = self.get("users.info", &[("user", user_id)]).await?;
+        Ok(parse_user(&json["user"]))
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -212,32 +225,43 @@ fn extract_cursor(json: &serde_json::Value) -> Option<String> {
         .map(str::to_owned)
 }
 
+fn slack_api_timeout_seconds() -> u64 {
+    std::env::var("SLACK_API_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .unwrap_or(20)
+}
+
 fn parse_users(value: &serde_json::Value) -> Result<Vec<SlackUser>, SlackError> {
     let arr = value
         .as_array()
         .ok_or_else(|| SlackError::Api("members field missing or not an array".to_owned()))?;
-    Ok(arr
-        .iter()
-        .filter(|u| u["is_bot"].as_bool() != Some(true) && u["id"].as_str() != Some("USLACKBOT"))
-        .filter_map(|u| {
-            let user_id = u["id"].as_str()?.to_owned();
-            let team_id = u["team_id"].as_str().unwrap_or("").to_owned();
-            let profile = &u["profile"];
-            let display_name = profile["display_name"]
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .or_else(|| profile["real_name"].as_str())
-                .unwrap_or(&user_id)
-                .to_owned();
-            let avatar_url = profile["image_72"].as_str().unwrap_or("").to_owned();
-            Some(SlackUser {
-                user_id,
-                team_id,
-                display_name,
-                avatar_url,
-            })
-        })
-        .collect())
+    Ok(arr.iter().filter_map(parse_user).collect())
+}
+
+fn parse_user(value: &serde_json::Value) -> Option<SlackUser> {
+    if value["is_bot"].as_bool() == Some(true) || value["id"].as_str() == Some("USLACKBOT") {
+        return None;
+    }
+
+    let user_id = value["id"].as_str()?.to_owned();
+    let team_id = value["team_id"].as_str().unwrap_or("").to_owned();
+    let profile = &value["profile"];
+    let display_name = profile["display_name"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .or_else(|| profile["real_name"].as_str())
+        .unwrap_or(&user_id)
+        .to_owned();
+    let avatar_url = profile["image_72"].as_str().unwrap_or("").to_owned();
+
+    Some(SlackUser {
+        user_id,
+        team_id,
+        display_name,
+        avatar_url,
+    })
 }
 
 // ── Backfill orchestration ────────────────────────────────────────────────────
@@ -345,6 +369,12 @@ struct UserCacheSliceStats {
     missing_scope: bool,
 }
 
+#[derive(Debug, Default)]
+struct UserLookupCache {
+    refreshed: HashSet<String>,
+    skipped: HashSet<String>,
+}
+
 /// Backfills all channels the bot can see.
 ///
 /// For each channel:
@@ -363,6 +393,7 @@ where
     S: SlackApi,
 {
     let all_channels = discover_channels(client).await?;
+    let mut user_lookup_cache = UserLookupCache::default();
 
     info!(total = all_channels.len(), "channels discovered");
     let mut stats = BackfillRunStats {
@@ -372,7 +403,7 @@ where
 
     for ch in &all_channels {
         info!(channel_id = %ch.id, channel_name = %ch.name, "backfilling channel");
-        match backfill_channel(repo, client, &ch.id).await? {
+        match backfill_channel(repo, client, &ch.id, &mut user_lookup_cache).await? {
             Some(channel_stats) => {
                 stats.channels_processed += 1;
                 stats.include_channel(channel_stats);
@@ -384,7 +415,6 @@ where
     }
 
     let cached_channels = cache_channels(repo, &all_channels).await?;
-    let cached_users = cache_users(repo, client).await?;
 
     info!(
         channels_discovered = stats.channels_discovered,
@@ -400,7 +430,7 @@ where
         weekly_score_upserts = stats.weekly_score_upserts,
         aggregation_jobs_enqueued = stats.aggregation_jobs_enqueued,
         channels_cached = cached_channels,
-        users_cached = cached_users,
+        users_refreshed = user_lookup_cache.refreshed.len(),
         "backfill complete"
     );
     if stats.message_upserts == 0 {
@@ -439,9 +469,10 @@ pub async fn run_backfill_slice<S: SlackApi>(
         next_channel_id,
         ..BackfillSliceResult::default()
     };
+    let mut user_lookup_cache = UserLookupCache::default();
 
     for channel_id in &channel_ids {
-        match backfill_channel(pool, client, channel_id).await? {
+        match backfill_channel(pool, client, channel_id, &mut user_lookup_cache).await? {
             Some(channel_stats) => {
                 result.channels_processed += 1;
                 result.message_upserts += channel_stats.message_upserts;
@@ -588,6 +619,7 @@ async fn backfill_channel<R, S>(
     repo: &R,
     client: &S,
     channel_id: &str,
+    user_lookup_cache: &mut UserLookupCache,
 ) -> anyhow::Result<Option<ChannelBackfillStats>>
 where
     R: crate::db::Repository,
@@ -623,16 +655,22 @@ where
         stats.history_messages += messages.len();
         info!(channel_id, count = messages.len(), "fetched message batch");
         for msg in &messages {
-            upsert_slack_message(repo, channel_id, msg).await?;
+            upsert_slack_message(repo, client, user_lookup_cache, channel_id, msg).await?;
             stats.message_upserts += 1;
             enqueue_message_file_backfill(repo, channel_id, msg).await?;
             touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
             if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
                 // Thread root in this batch — fetch all replies.
                 info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
-                let reply_stats =
-                    backfill_replies(repo, client, channel_id, &msg.ts, &mut touched_threads)
-                        .await?;
+                let reply_stats = backfill_replies(
+                    repo,
+                    client,
+                    channel_id,
+                    &msg.ts,
+                    &mut touched_threads,
+                    user_lookup_cache,
+                )
+                .await?;
                 stats.include_reply(reply_stats);
                 stale_threads.remove(&msg.ts);
             } else if let Some(tts) = &msg.thread_ts {
@@ -649,8 +687,15 @@ where
     stats.stale_threads = stale_threads.len();
     for thread_ts in stale_threads {
         info!(channel_id, %thread_ts, "backfilling stale thread");
-        let reply_stats =
-            backfill_replies(repo, client, channel_id, &thread_ts, &mut touched_threads).await?;
+        let reply_stats = backfill_replies(
+            repo,
+            client,
+            channel_id,
+            &thread_ts,
+            &mut touched_threads,
+            user_lookup_cache,
+        )
+        .await?;
         stats.include_reply(reply_stats);
     }
 
@@ -687,6 +732,7 @@ async fn backfill_replies<R, S>(
     channel_id: &str,
     thread_ts: &str,
     touched_threads: &mut HashSet<String>,
+    user_lookup_cache: &mut UserLookupCache,
 ) -> anyhow::Result<ReplyBackfillStats>
 where
     R: crate::db::Repository,
@@ -707,7 +753,7 @@ where
             "fetched thread replies batch"
         );
         for msg in &messages {
-            upsert_slack_message(repo, channel_id, msg).await?;
+            upsert_slack_message(repo, client, user_lookup_cache, channel_id, msg).await?;
             enqueue_message_file_backfill(repo, channel_id, msg).await?;
             touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
         }
@@ -719,11 +765,19 @@ where
     Ok(stats)
 }
 
-async fn upsert_slack_message<R: crate::db::Repository>(
+async fn upsert_slack_message<R, S>(
     repo: &R,
+    client: &S,
+    user_lookup_cache: &mut UserLookupCache,
     channel_id: &str,
     msg: &SlackMessage,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    R: crate::db::Repository,
+    S: SlackApi,
+{
+    hydrate_user_profile(repo, client, msg.raw["user"].as_str(), user_lookup_cache).await?;
+
     use crate::db::MessageRecord;
     repo.upsert_message(&MessageRecord {
         team_id: msg.raw["team"].as_str().unwrap_or("").to_owned(),
@@ -738,6 +792,57 @@ async fn upsert_slack_message<R: crate::db::Repository>(
         raw_json: msg.raw.clone(),
     })
     .await?;
+    Ok(())
+}
+
+async fn hydrate_user_profile<R, S>(
+    repo: &R,
+    client: &S,
+    user_id: Option<&str>,
+    cache: &mut UserLookupCache,
+) -> anyhow::Result<()>
+where
+    R: crate::db::Repository,
+    S: SlackApi,
+{
+    let Some(user_id) = user_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    if cache.refreshed.contains(user_id) || cache.skipped.contains(user_id) {
+        return Ok(());
+    }
+
+    match client.users_info(user_id).await {
+        Ok(Some(user)) => {
+            repo.upsert_user(&crate::db::UserRecord {
+                user_id: user.user_id.clone(),
+                team_id: user.team_id,
+                display_name: user.display_name,
+                avatar_url: user.avatar_url,
+            })
+            .await?;
+            cache.refreshed.insert(user.user_id);
+        }
+        Ok(None) => {
+            cache.skipped.insert(user_id.to_owned());
+        }
+        Err(SlackError::Api(err))
+            if err == "users_not_found" || err == "user_not_found" || err == "missing_scope" =>
+        {
+            if err == "missing_scope" {
+                warn!(
+                    user_id,
+                    "users.info requires users:read scope — skipping user profile hydration"
+                );
+            }
+            cache.skipped.insert(user_id.to_owned());
+        }
+        Err(err) => {
+            warn!(user_id, error = %err, "users.info failed; skipping user profile hydration");
+            cache.skipped.insert(user_id.to_owned());
+        }
+    }
+
     Ok(())
 }
 
@@ -879,11 +984,12 @@ async fn cache_channels<R: crate::db::Repository>(
     Ok(channels.len())
 }
 
-async fn cache_users<R, S>(repo: &R, client: &S) -> anyhow::Result<usize>
+pub async fn sync_all_users<R, S>(repo: &R, client: &S) -> anyhow::Result<usize>
 where
     R: crate::db::Repository,
     S: SlackApi,
 {
+    info!("starting users cache");
     let stats = cache_users_slice(repo, client, None, usize::MAX).await?;
     info!(total = stats.users_cached, "users cached");
     Ok(stats.users_cached)
@@ -908,6 +1014,11 @@ where
     let mut stats = UserCacheSliceStats::default();
     let mut cursor = initial_cursor.map(str::to_owned);
     for _ in 0..max_pages {
+        info!(
+            page = stats.pages + 1,
+            has_cursor = cursor.is_some(),
+            "fetching users.list page"
+        );
         let (users, next) = match client.users_list(cursor.as_deref()).await {
             Ok(r) => r,
             Err(SlackError::Api(ref e)) if e == "missing_scope" => {
@@ -921,8 +1032,9 @@ where
             Err(e) => return Err(e.into()),
         };
 
+        let users_in_page = users.len();
         stats.pages += 1;
-        stats.users_cached += users.len();
+        stats.users_cached += users_in_page;
         for u in users {
             repo.upsert_user(&UserRecord {
                 user_id: u.user_id,
@@ -933,12 +1045,22 @@ where
             .await?;
         }
 
+        let has_next = next.is_some();
         match next {
             Some(next_cursor) => cursor = Some(next_cursor),
             None => {
                 cursor = None;
-                break;
             }
+        }
+        info!(
+            page = stats.pages,
+            users_in_page,
+            users_cached_total = stats.users_cached,
+            has_next,
+            "users.list page fetched"
+        );
+        if !has_next {
+            break;
         }
     }
 
