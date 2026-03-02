@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Heart, LoaderCircle, Paperclip } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { fetchThreadDetail } from "@/lib/api"
+import { formatMessageTimestamp } from "@/lib/datetime"
 import type { ThreadMessage } from "@/lib/types"
 
 function messageHtmlClassName(): string {
@@ -162,7 +163,9 @@ function ThreadPageContent() {
             </div>
 
             <div className="divide-y divide-border/60 px-4">
-              {messages.map((msg) => (
+              {messages.map((msg) => {
+                const formattedTimestamp = formatMessageTimestamp(msg.timestampIso, msg.ts)
+                return (
                 <div key={msg.id} className="flex gap-3 py-3">
                   <Avatar className="size-8 shrink-0">
                     {msg.author.avatarUrl && (
@@ -177,7 +180,7 @@ function ThreadPageContent() {
                     <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span className="text-xs font-medium text-foreground">{msg.author.name}</span>
                       <span className="text-[10px] text-muted-foreground" title={msg.timestampIso}>
-                        {msg.timestamp}
+                        {formattedTimestamp}
                       </span>
                     </div>
 
@@ -221,7 +224,7 @@ function ThreadPageContent() {
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}

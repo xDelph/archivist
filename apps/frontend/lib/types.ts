@@ -21,7 +21,6 @@ export interface ThreadMessage {
   }
   message: string
   messageHtml: string
-  timestamp: string
   timestampIso: string
   reactions?: number
   reactionDetails?: ReactionDetail[]

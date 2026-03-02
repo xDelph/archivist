@@ -106,7 +106,6 @@ struct ApiThreadMessage {
     author: ApiAuthor,
     message: String,
     message_html: String,
-    timestamp: String,
     timestamp_iso: String,
     reactions: i64,
     reaction_details: Vec<ApiReactionDetail>,
@@ -415,7 +414,6 @@ fn map_thread_message(
         ts: ts.clone(),
         message: text,
         message_html,
-        timestamp: format_time_24h(&ts),
         timestamp_iso: format_time_iso(&ts),
         reactions: reaction_total(&reactions),
         reaction_details,
@@ -806,12 +804,6 @@ fn is_trailing_url_punctuation(c: char) -> bool {
 
 fn format_day_date(ts: &str) -> String {
     timestamp_to_datetime(ts).format("%d %b %Y").to_string()
-}
-
-fn format_time_24h(ts: &str) -> String {
-    timestamp_to_datetime(ts)
-        .format("%d %b %Y %H:%M")
-        .to_string()
 }
 
 fn format_time_iso(ts: &str) -> String {

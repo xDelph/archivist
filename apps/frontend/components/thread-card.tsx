@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { formatMessageTimestamp } from "@/lib/datetime"
 import type { SlackThread, ThreadFile, ThreadMessage } from "@/lib/types"
 
 interface ThreadCardProps {
@@ -129,6 +130,7 @@ function ThreadMessageItem({
   onNavigateToThread?: (path: string) => void
 }) {
   const reactionDetails = (msg.reactionDetails ?? []).filter((reaction) => reaction.count > 0)
+  const formattedTimestamp = formatMessageTimestamp(msg.timestampIso, msg.ts)
 
   function handleMessageClick(event: React.MouseEvent<HTMLElement>): void {
     const mention = getClosestFromTarget(event.target, ".mention")
@@ -187,7 +189,7 @@ function ThreadMessageItem({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-xs font-medium text-foreground">{msg.author.name}</span>
           <span className="text-[10px] text-muted-foreground" title={msg.timestampIso}>
-            {msg.timestamp}
+            {formattedTimestamp}
           </span>
         </div>
         <div

@@ -105,7 +105,6 @@ interface ApiThreadMessage {
   }
   message: string
   messageHtml: string
-  timestamp: string
   timestampIso: string
   reactions: number
   reactionDetails: ApiReactionDetail[]
@@ -271,7 +270,6 @@ export async function fetchThreadMessages(
     },
     message: message.message,
     messageHtml: message.messageHtml,
-    timestamp: message.timestamp,
     timestampIso: message.timestampIso,
     reactions: message.reactions,
     reactionDetails: (message.reactionDetails ?? []).map((reaction) => ({
@@ -315,7 +313,6 @@ export async function fetchThreadDetail(
       },
       message: message.message,
       messageHtml: message.messageHtml,
-      timestamp: message.timestamp,
       timestampIso: message.timestampIso,
       reactions: message.reactions,
       reactionDetails: (message.reactionDetails ?? []).map((reaction) => ({
