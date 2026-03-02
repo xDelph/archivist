@@ -615,6 +615,16 @@ fn should_sync_users(
     }
 }
 
+fn has_thread_metadata(raw: &serde_json::Value) -> bool {
+    raw["reply_count"].as_i64().unwrap_or(0) > 0
+        || raw["reply_users_count"].as_i64().unwrap_or(0) > 0
+        || raw["latest_reply"].as_str().is_some()
+}
+
+fn is_thread_root_message(msg: &SlackMessage) -> bool {
+    msg.thread_ts.as_deref() == Some(msg.ts.as_str()) || has_thread_metadata(&msg.raw)
+}
+
 async fn backfill_channel<R, S>(
     repo: &R,
     client: &S,
@@ -638,6 +648,10 @@ where
     // Threads whose root was archived in a previous run — replies appear in
     // history but the root won't be re-fetched via conversations.history.
     let mut stale_threads: HashSet<String> = HashSet::new();
+    if let Some(oldest_ts) = oldest.as_deref() {
+        let seeded_threads = repo.get_recent_thread_roots(channel_id, oldest_ts).await?;
+        stale_threads.extend(seeded_threads);
+    }
     let mut touched_threads: HashSet<String> = HashSet::new();
     loop {
         let (messages, next) = match client
@@ -659,7 +673,7 @@ where
             stats.message_upserts += 1;
             enqueue_message_file_backfill(repo, channel_id, msg).await?;
             touched_threads.insert(msg.thread_ts.clone().unwrap_or_else(|| msg.ts.clone()));
-            if msg.thread_ts.as_deref() == Some(msg.ts.as_str()) {
+            if is_thread_root_message(msg) {
                 // Thread root in this batch — fetch all replies.
                 info!(channel_id, thread_ts = %msg.ts, "fetching thread replies");
                 let reply_stats = backfill_replies(

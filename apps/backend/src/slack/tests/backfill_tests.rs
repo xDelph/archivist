@@ -304,6 +304,73 @@ async fn test_backfill_fetches_replies_for_thread_parents() {
 }
 
 #[tokio::test]
+async fn test_backfill_fetches_replies_for_recent_thread_roots_from_db() {
+    let thread_ts = "1700000000.000100";
+    let existing_reply_ts = "1700000005.000100";
+    let new_reply_ts = "1700000007.000100";
+    let mock = MockSlackApi::new(vec![Channel {
+        id: "C001".into(),
+        name: "general".into(),
+        is_private: false,
+        is_member: true,
+    }])
+    // No reply visible in history for this run.
+    .with_history("C001", vec![make_message("1700000006.000100", None)])
+    // replies endpoint contains the new reply we want to capture.
+    .with_replies(
+        "C001",
+        thread_ts,
+        vec![
+            make_message(thread_ts, Some(thread_ts)),
+            make_message(existing_reply_ts, Some(thread_ts)),
+            make_message(new_reply_ts, Some(thread_ts)),
+        ],
+    );
+
+    let repo = InMemoryRepository::default();
+    // Existing root + reply from previous runs.
+    let _: uuid::Uuid = repo
+        .upsert_message(&crate::db::MessageRecord {
+            team_id: "T001".into(),
+            channel_id: "C001".into(),
+            ts: thread_ts.into(),
+            thread_ts: Some(thread_ts.into()),
+            user_id: Some("U001".into()),
+            text: "root".into(),
+            subtype: None,
+            edited_ts: None,
+            deleted: false,
+            raw_json: serde_json::Value::Null,
+        })
+        .await
+        .unwrap();
+    let _: uuid::Uuid = repo
+        .upsert_message(&crate::db::MessageRecord {
+            team_id: "T001".into(),
+            channel_id: "C001".into(),
+            ts: existing_reply_ts.into(),
+            thread_ts: Some(thread_ts.into()),
+            user_id: Some("U002".into()),
+            text: "existing reply".into(),
+            subtype: None,
+            edited_ts: None,
+            deleted: false,
+            raw_json: serde_json::Value::Null,
+        })
+        .await
+        .unwrap();
+
+    run_backfill(&repo, &mock, "", None).await.unwrap();
+
+    assert!(
+        repo.messages
+            .lock()
+            .unwrap()
+            .contains_key(&(String::from("C001"), new_reply_ts.to_owned()))
+    );
+}
+
+#[tokio::test]
 async fn test_backfill_uses_last_archived_ts_without_overlap() {
     let mock = MockSlackApi::new(vec![Channel {
         id: "C001".into(),

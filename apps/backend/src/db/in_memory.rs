@@ -37,6 +37,15 @@ impl InMemoryRepository {
     }
 }
 
+fn ts_gte(left: &str, right: &str) -> bool {
+    let left_num = left.parse::<f64>().ok();
+    let right_num = right.parse::<f64>().ok();
+    match (left_num, right_num) {
+        (Some(l), Some(r)) => l >= r,
+        _ => left >= right,
+    }
+}
+
 impl Repository for InMemoryRepository {
     async fn event_exists(&self, event_id: &str) -> Result<bool> {
         Ok(self.event_ids.lock().unwrap().contains(event_id))
@@ -103,6 +112,29 @@ impl Repository for InMemoryRepository {
             .map(|(_, ts)| ts.clone())
             .max();
         Ok(max)
+    }
+
+    async fn get_recent_thread_roots(
+        &self,
+        channel_id: &str,
+        oldest_ts: &str,
+    ) -> Result<Vec<String>> {
+        let store = self.messages.lock().unwrap();
+        let mut roots: HashSet<String> = HashSet::new();
+        for ((ch, _), (_, msg)) in store.iter() {
+            if ch != channel_id {
+                continue;
+            }
+            if !ts_gte(&msg.ts, oldest_ts) {
+                continue;
+            }
+            if let Some(thread_ts) = &msg.thread_ts
+                && !thread_ts.is_empty()
+            {
+                roots.insert(thread_ts.clone());
+            }
+        }
+        Ok(roots.into_iter().collect())
     }
 
     async fn upsert_user(&self, u: &UserRecord) -> Result<()> {

@@ -1,7 +1,10 @@
-use anyhow::Result;
-use tracing::{debug, info};
+use std::collections::HashSet;
 
-use crate::db::{MessageRecord, ReactionRecord, Repository, SlackEventRecord};
+use anyhow::Result;
+use tracing::{debug, info, warn};
+
+use crate::db::{MessageRecord, ReactionRecord, Repository, SlackEventRecord, UserRecord};
+use crate::slack::backfill::{SlackApi, SlackClient, SlackError, SlackMessage, archive_files};
 use crate::slack::types::{EventCallback, SlackEvent};
 use crate::storage::R2Client;
 
@@ -16,8 +19,282 @@ const IGNORED_SUBTYPES: &[&str] = &[
     "channel_archive",
     "channel_unarchive",
     "message_deleted",
-    "message_replied",
 ];
+
+#[derive(Default)]
+struct IngestUserLookupCache {
+    refreshed: HashSet<String>,
+    skipped: HashSet<String>,
+}
+
+struct CanonicalMessage {
+    ts: String,
+    thread_ts: Option<String>,
+    raw: serde_json::Value,
+}
+
+fn canonical_message_from_event(
+    team_id: &str,
+    event: &crate::slack::types::MessageEvent,
+    raw_payload: &serde_json::Value,
+) -> Option<CanonicalMessage> {
+    let subtype = event.subtype.as_deref();
+    let prefer_nested = matches!(subtype, Some("message_changed" | "message_replied"));
+    let (ts, user_id, text, thread_ts, edited_ts) = if prefer_nested {
+        if let Some(inner) = event.message.as_ref() {
+            (
+                inner.ts.clone(),
+                inner.user.clone(),
+                inner.text.clone().unwrap_or_default(),
+                inner.thread_ts.clone(),
+                inner.edited.as_ref().map(|edited| edited.ts.clone()),
+            )
+        } else {
+            (
+                event.ts.clone(),
+                event.user.clone(),
+                event.text.clone().unwrap_or_default(),
+                event.thread_ts.clone(),
+                None,
+            )
+        }
+    } else {
+        (
+            event.ts.clone(),
+            event.user.clone(),
+            event.text.clone().unwrap_or_default(),
+            event.thread_ts.clone(),
+            None,
+        )
+    };
+    if ts.trim().is_empty() {
+        return None;
+    }
+
+    let source = if prefer_nested {
+        &raw_payload["event"]["message"]
+    } else {
+        &raw_payload["event"]
+    };
+    let mut raw = if source.is_object() {
+        source.clone()
+    } else {
+        serde_json::json!({})
+    };
+
+    raw["ts"] = serde_json::Value::String(ts.clone());
+    raw["team"] = serde_json::Value::String(team_id.to_owned());
+    raw["text"] = serde_json::Value::String(text);
+    if let Some(user_id) = user_id {
+        raw["user"] = serde_json::Value::String(user_id);
+    }
+    if let Some(thread_ts) = thread_ts.clone() {
+        raw["thread_ts"] = serde_json::Value::String(thread_ts);
+    }
+    if let Some(subtype) = subtype {
+        raw["subtype"] = serde_json::Value::String(subtype.to_owned());
+    }
+    if let Some(edited_ts) = edited_ts {
+        raw["edited"] = serde_json::json!({ "ts": edited_ts });
+    }
+
+    Some(CanonicalMessage { ts, thread_ts, raw })
+}
+
+fn resolve_thread_root_ts(message: &CanonicalMessage, raw_payload: &serde_json::Value) -> String {
+    message
+        .thread_ts
+        .clone()
+        .filter(|thread_ts| !thread_ts.is_empty())
+        .or_else(|| {
+            raw_payload["event"]["message"]["thread_ts"]
+                .as_str()
+                .filter(|thread_ts| !thread_ts.is_empty())
+                .map(str::to_owned)
+        })
+        .or_else(|| {
+            raw_payload["event"]["message"]["ts"]
+                .as_str()
+                .filter(|thread_ts| !thread_ts.is_empty())
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| message.ts.clone())
+}
+
+fn should_sync_thread_snapshot(
+    event: &crate::slack::types::MessageEvent,
+    message: &CanonicalMessage,
+    raw_payload: &serde_json::Value,
+) -> bool {
+    if event.subtype.as_deref() == Some("message_replied") {
+        return true;
+    }
+    if let Some(thread_ts) = message.thread_ts.as_deref()
+        && thread_ts != message.ts
+    {
+        return true;
+    }
+    raw_payload["event"]["message"]["latest_reply"].as_str().is_some()
+        || raw_payload["event"]["message"]["reply_count"]
+            .as_i64()
+            .unwrap_or(0)
+            > 0
+}
+
+async fn hydrate_user_profile<R, S>(
+    repo: &R,
+    client: &S,
+    user_id: Option<&str>,
+    cache: &mut IngestUserLookupCache,
+) -> Result<()>
+where
+    R: Repository,
+    S: SlackApi,
+{
+    let Some(user_id) = user_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    if cache.refreshed.contains(user_id) || cache.skipped.contains(user_id) {
+        return Ok(());
+    }
+
+    match client.users_info(user_id).await {
+        Ok(Some(user)) => {
+            repo.upsert_user(&UserRecord {
+                user_id: user.user_id.clone(),
+                team_id: user.team_id,
+                display_name: user.display_name,
+                avatar_url: user.avatar_url,
+            })
+            .await?;
+            cache.refreshed.insert(user.user_id);
+        }
+        Ok(None) => {
+            cache.skipped.insert(user_id.to_owned());
+        }
+        Err(SlackError::Api(err))
+            if err == "users_not_found" || err == "user_not_found" || err == "missing_scope" =>
+        {
+            if err == "missing_scope" {
+                warn!(
+                    user_id,
+                    "users.info requires users:read scope — skipping user profile hydration"
+                );
+            }
+            cache.skipped.insert(user_id.to_owned());
+        }
+        Err(err) => {
+            warn!(user_id, error = %err, "users.info failed; skipping user profile hydration");
+            cache.skipped.insert(user_id.to_owned());
+        }
+    }
+
+    Ok(())
+}
+
+async fn upsert_slack_message<R, S>(
+    repo: &R,
+    client: Option<&S>,
+    user_lookup_cache: &mut IngestUserLookupCache,
+    channel_id: &str,
+    fallback_team_id: &str,
+    msg: &SlackMessage,
+) -> Result<()>
+where
+    R: Repository,
+    S: SlackApi,
+{
+    if let Some(client) = client {
+        hydrate_user_profile(repo, client, msg.raw["user"].as_str(), user_lookup_cache).await?;
+    }
+
+    let team_id = msg.raw["team"]
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback_team_id)
+        .to_owned();
+    repo.upsert_message(&MessageRecord {
+        team_id,
+        channel_id: channel_id.to_owned(),
+        ts: msg.ts.clone(),
+        thread_ts: msg.thread_ts.clone(),
+        user_id: msg.raw["user"].as_str().map(str::to_owned),
+        text: msg.raw["text"].as_str().unwrap_or("").to_owned(),
+        subtype: msg.raw["subtype"].as_str().map(str::to_owned),
+        edited_ts: msg.raw["edited"]["ts"].as_str().map(str::to_owned),
+        deleted: false,
+        raw_json: msg.raw.clone(),
+    })
+    .await?;
+    Ok(())
+}
+
+async fn sync_thread_snapshot<R, S>(
+    repo: &R,
+    client: &S,
+    storage: Option<&R2Client>,
+    slack_token: &str,
+    channel_id: &str,
+    fallback_team_id: &str,
+    thread_ts: &str,
+    user_lookup_cache: &mut IngestUserLookupCache,
+) -> Result<usize>
+where
+    R: Repository,
+    S: SlackApi,
+{
+    let mut cursor: Option<String> = None;
+    let mut processed_messages = 0usize;
+    loop {
+        let (messages, next) = client
+            .conversations_replies(channel_id, thread_ts, cursor.as_deref())
+            .await?;
+        if messages.is_empty() && next.is_none() {
+            break;
+        }
+        for msg in &messages {
+            upsert_slack_message(
+                repo,
+                Some(client),
+                user_lookup_cache,
+                channel_id,
+                fallback_team_id,
+                msg,
+            )
+            .await?;
+            let team_id = msg.raw["team"]
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .unwrap_or(fallback_team_id);
+            if let Err(err) = archive_files(
+                repo,
+                storage,
+                slack_token,
+                channel_id,
+                &msg.ts,
+                team_id,
+                &msg.raw["files"],
+            )
+            .await
+            {
+                warn!(
+                    channel_id,
+                    thread_ts,
+                    message_ts = %msg.ts,
+                    error = %err,
+                    "failed to archive files while syncing thread snapshot"
+                );
+            }
+            processed_messages += 1;
+        }
+        match next {
+            Some(next_cursor) => cursor = Some(next_cursor),
+            None => break,
+        }
+    }
+
+    Ok(processed_messages)
+}
 
 /// Processes a single Slack `event_callback` payload.
 ///
@@ -35,6 +312,9 @@ pub async fn handle_event<R: Repository>(
     cb: EventCallback,
     raw_payload: serde_json::Value,
 ) -> Result<()> {
+    let slack_client = (!slack_token.is_empty()).then(|| SlackClient::new(slack_token.to_owned()));
+    let mut user_lookup_cache = IngestUserLookupCache::default();
+
     // 1. Dedup
     if repo.event_exists(&cb.event_id).await? {
         info!(event_id = %cb.event_id, "duplicate event, skipping");
@@ -60,64 +340,99 @@ pub async fn handle_event<R: Repository>(
                 debug!(event_id = %cb.event_id, subtype = ?m.subtype, "ignored subtype");
                 return Ok(());
             }
+            let Some(canonical) = canonical_message_from_event(&cb.team_id, &m, &raw_payload) else {
+                warn!(event_id = %cb.event_id, channel_id = %m.channel, "message event missing ts");
+                return Ok(());
+            };
+            let canonical_msg = SlackMessage {
+                ts: canonical.ts.clone(),
+                thread_ts: canonical.thread_ts.clone(),
+                raw: canonical.raw.clone(),
+            };
 
-            // For message_changed the canonical ts/user/text live in the nested
-            // `message` object; the top-level ts is just the event notification ts.
-            let (ts, user_id, text, thread_ts, edited_ts) =
-                if m.subtype.as_deref() == Some("message_changed") {
-                    match m.message {
-                        Some(inner) => (
-                            inner.ts.clone(),
-                            inner.user.clone(),
-                            inner.text.clone().unwrap_or_default(),
-                            inner.thread_ts.clone(),
-                            inner.edited.as_ref().map(|e| e.ts.clone()),
-                        ),
-                        None => return Ok(()), // malformed event, nothing to update
-                    }
-                } else {
-                    (
-                        m.ts.clone(),
-                        m.user.clone(),
-                        m.text.unwrap_or_default(),
-                        m.thread_ts.clone(),
-                        None,
-                    )
-                };
-
-            info!(event_id = %cb.event_id, channel_id = %m.channel, %ts, "message upserted");
-            repo.upsert_message(&MessageRecord {
-                team_id: cb.team_id.clone(),
-                channel_id: m.channel.clone(),
-                ts: ts.clone(),
-                thread_ts,
-                user_id,
-                text,
-                subtype: m.subtype,
-                edited_ts,
-                deleted: false,
-                raw_json: raw_payload.clone(),
-            })
+            upsert_slack_message(
+                repo,
+                slack_client.as_ref(),
+                &mut user_lookup_cache,
+                &m.channel,
+                &cb.team_id,
+                &canonical_msg,
+            )
             .await?;
+            info!(
+                event_id = %cb.event_id,
+                channel_id = %m.channel,
+                ts = %canonical_msg.ts,
+                "message upserted"
+            );
 
-            repo.upsert_thread_weekly_score(&m.channel, &ts).await?;
-            repo.enqueue_thread_aggregation(&m.channel, &ts, "slack_event")
+            repo.upsert_thread_weekly_score(&m.channel, &canonical_msg.ts)
+                .await?;
+            repo.enqueue_thread_aggregation(&m.channel, &canonical_msg.ts, "slack_event")
                 .await?;
 
-            // Archive any attached files to R2
-            crate::slack::backfill::archive_files(
+            let team_id = canonical_msg.raw["team"]
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .unwrap_or(&cb.team_id);
+            if let Err(err) = archive_files(
                 repo,
                 storage,
                 slack_token,
                 &m.channel,
-                &ts,
-                raw_payload["event"]["team"].as_str().unwrap_or(""),
-                &raw_payload["event"]["files"],
+                &canonical_msg.ts,
+                team_id,
+                &canonical_msg.raw["files"],
             )
-            .await?;
+            .await
+            {
+                warn!(
+                    event_id = %cb.event_id,
+                    channel_id = %m.channel,
+                    ts = %canonical_msg.ts,
+                    error = %err,
+                    "failed to archive files for event message"
+                );
+            }
+
+            if let Some(client) = slack_client.as_ref()
+                && should_sync_thread_snapshot(&m, &canonical, &raw_payload)
+            {
+                let thread_ts = resolve_thread_root_ts(&canonical, &raw_payload);
+                match sync_thread_snapshot(
+                    repo,
+                    client,
+                    storage,
+                    slack_token,
+                    &m.channel,
+                    &cb.team_id,
+                    &thread_ts,
+                    &mut user_lookup_cache,
+                )
+                .await
+                {
+                    Ok(processed) => info!(
+                        event_id = %cb.event_id,
+                        channel_id = %m.channel,
+                        thread_ts,
+                        processed_messages = processed,
+                        "thread snapshot synced from Slack"
+                    ),
+                    Err(err) => warn!(
+                        event_id = %cb.event_id,
+                        channel_id = %m.channel,
+                        thread_ts,
+                        error = %err,
+                        "failed to sync thread snapshot from Slack"
+                    ),
+                }
+            }
         }
         SlackEvent::ReactionAdded(r) => {
             info!(event_id = %cb.event_id, reaction = %r.reaction, "reaction inserted");
+            if let Some(client) = slack_client.as_ref() {
+                hydrate_user_profile(repo, client, Some(&r.user), &mut user_lookup_cache).await?;
+            }
             let channel_id = r.item.channel.clone();
             let message_ts = r.item.ts.clone();
             repo.insert_reaction(&ReactionRecord {

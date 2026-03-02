@@ -132,6 +132,29 @@ impl Repository for PgPool {
         Ok(ts)
     }
 
+    async fn get_recent_thread_roots(
+        &self,
+        channel_id: &str,
+        oldest_ts: &str,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT DISTINCT m.thread_ts
+            FROM messages m
+            WHERE m.channel_id = $1
+              AND m.ts >= $2
+              AND m.thread_ts IS NOT NULL
+              AND m.thread_ts <> ''
+            "#,
+        )
+        .bind(channel_id)
+        .bind(oldest_ts)
+        .fetch_all(self)
+        .await?;
+
+        Ok(rows.into_iter().map(|row| row.get("thread_ts")).collect())
+    }
+
     async fn upsert_user(&self, u: &UserRecord) -> Result<()> {
         sqlx::query!(
             r#"

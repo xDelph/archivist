@@ -109,7 +109,6 @@ async fn test_all_ignored_subtypes_are_skipped() {
         "channel_name",
         "channel_archive",
         "channel_unarchive",
-        "message_replied",
     ];
     for (i, subtype) in ignored.iter().enumerate() {
         let repo = InMemoryRepository::default();
@@ -122,6 +121,54 @@ async fn test_all_ignored_subtypes_are_skipped() {
             "subtype '{subtype}' should be ignored"
         );
     }
+}
+
+#[tokio::test]
+async fn test_message_replied_is_processed() {
+    let repo = InMemoryRepository::default();
+    let cb = EventCallback {
+        team_id: "T001".into(),
+        api_app_id: "A001".into(),
+        event_id: "Ev040".into(),
+        event_time: 1_700_000_020,
+        event: SlackEvent::Message(MessageEvent {
+            channel: "C001".into(),
+            user: None,
+            text: None,
+            ts: "1700000010.000100".into(),
+            thread_ts: None,
+            subtype: Some("message_replied".into()),
+            message: Some(Box::new(MessageUpdate {
+                user: Some("U002".into()),
+                text: Some("parent update".into()),
+                ts: "1700000000.000100".into(),
+                thread_ts: Some("1700000000.000100".into()),
+                edited: None,
+            })),
+        }),
+    };
+    let raw = serde_json::json!({
+        "type": "event_callback",
+        "team_id": "T001",
+        "event_id": "Ev040",
+        "event": {
+            "type": "message",
+            "subtype": "message_replied",
+            "channel": "C001",
+            "ts": "1700000010.000100",
+            "message": {
+                "ts": "1700000000.000100",
+                "thread_ts": "1700000000.000100",
+                "user": "U002",
+                "text": "parent update"
+            }
+        }
+    });
+
+    handle_event(&repo, None, "", cb, raw).await.unwrap();
+
+    let store = repo.messages.lock().unwrap();
+    assert!(store.contains_key(&("C001".into(), "1700000000.000100".into())));
 }
 
 #[tokio::test]

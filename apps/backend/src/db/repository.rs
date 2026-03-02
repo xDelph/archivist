@@ -18,6 +18,11 @@ pub trait Repository {
     async fn upsert_message(&self, msg: &MessageRecord) -> Result<Uuid>;
     async fn insert_reaction(&self, r: &ReactionRecord) -> Result<()>;
     async fn get_last_archived_ts(&self, channel_id: &str) -> Result<Option<String>>;
+    async fn get_recent_thread_roots(
+        &self,
+        channel_id: &str,
+        oldest_ts: &str,
+    ) -> Result<Vec<String>>;
     async fn upsert_user(&self, u: &UserRecord) -> Result<()>;
     async fn upsert_channel(&self, c: &ChannelRecord) -> Result<()>;
     async fn get_top_threads(&self, limit: i64) -> Result<Vec<ThreadSummary>>;
