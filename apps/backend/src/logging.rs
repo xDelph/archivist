@@ -57,8 +57,12 @@ fn is_service_env_development() -> bool {
 }
 
 fn default_env_filter(is_dev: bool) -> String {
-    let base = if is_dev { "trace" } else { "info" };
-    format!("{base},sqlx::query=warn")
+    let base = if is_dev {
+        "info,archivist=debug"
+    } else {
+        "info"
+    };
+    format!("{base},sqlx::query=warn,hyper_util::client::legacy::pool=warn,reqwest::retry=warn")
 }
 
 pub fn init_tracing() {
@@ -170,8 +174,19 @@ mod tests {
     }
 
     #[test]
-    fn default_filter_always_reduces_sqlx_query_noise() {
-        assert!(default_env_filter(true).contains("sqlx::query=warn"));
-        assert!(default_env_filter(false).contains("sqlx::query=warn"));
+    fn default_filter_reduces_library_noise() {
+        let dev = default_env_filter(true);
+        let prod = default_env_filter(false);
+        assert!(dev.contains("sqlx::query=warn"));
+        assert!(prod.contains("sqlx::query=warn"));
+        assert!(dev.contains("hyper_util::client::legacy::pool=warn"));
+        assert!(prod.contains("hyper_util::client::legacy::pool=warn"));
+        assert!(dev.contains("reqwest::retry=warn"));
+        assert!(prod.contains("reqwest::retry=warn"));
+    }
+
+    #[test]
+    fn development_default_keeps_app_debug_visibility() {
+        assert!(default_env_filter(true).starts_with("info,archivist=debug"));
     }
 }

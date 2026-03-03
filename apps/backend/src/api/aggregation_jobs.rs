@@ -1,10 +1,13 @@
 use anyhow::Result;
 use serde::Serialize;
 use sqlx::{PgPool, Row};
+use std::time::Instant;
 use tracing::{info, warn};
 
 const MAX_ERROR_LEN: usize = 8_000;
 const DEFAULT_AGGREGATION_RUNNING_LEASE_MINUTES: i64 = 15;
+const DEFAULT_AGGREGATION_PROGRESS_EVERY: usize = 25;
+const DEFAULT_AGGREGATION_SLOW_JOB_MS: u128 = 1_500;
 
 #[derive(Debug, Default, Serialize)]
 pub struct AggregationBatchResult {
@@ -24,8 +27,18 @@ struct AggregationJobClaim {
 }
 
 pub async fn run_aggregation_batch(pool: &PgPool, max_jobs: i64) -> Result<AggregationBatchResult> {
+    let batch_started_at = Instant::now();
+
     expire_stale_running_aggregation_jobs(pool).await?;
+
+    let claim_started_at = Instant::now();
     let jobs = claim_next_aggregation_jobs(pool, max_jobs).await?;
+    info!(
+        max_jobs,
+        claimed = jobs.len(),
+        claim_elapsed_ms = claim_started_at.elapsed().as_millis(),
+        "aggregation batch claimed jobs"
+    );
     if jobs.is_empty() {
         info!("aggregation batch empty");
         return Ok(AggregationBatchResult::default());
@@ -36,7 +49,10 @@ pub async fn run_aggregation_batch(pool: &PgPool, max_jobs: i64) -> Result<Aggre
         ..AggregationBatchResult::default()
     };
 
-    for job in jobs {
+    let progress_every = aggregation_progress_every();
+    let slow_job_ms = aggregation_slow_job_ms();
+    for (index, job) in jobs.into_iter().enumerate() {
+        let job_started_at = Instant::now();
         match recompute_thread_rollups(pool, &job.channel_id, &job.thread_ts).await {
             Ok(()) => {
                 mark_aggregation_job_succeeded(pool, &job.id).await?;
@@ -70,14 +86,50 @@ pub async fn run_aggregation_batch(pool: &PgPool, max_jobs: i64) -> Result<Aggre
                 }
             }
         }
+
+        let processed = index + 1;
+        let job_elapsed_ms = job_started_at.elapsed().as_millis();
+        if job_elapsed_ms >= slow_job_ms {
+            warn!(
+                job_id = %job.id,
+                channel_id = %job.channel_id,
+                thread_ts = %job.thread_ts,
+                attempts = job.attempts,
+                elapsed_ms = job_elapsed_ms,
+                slow_job_threshold_ms = slow_job_ms,
+                "aggregation job was slow"
+            );
+        }
+
+        if processed % progress_every == 0 || processed == result.claimed {
+            let batch_elapsed_ms = batch_started_at.elapsed().as_millis();
+            let avg_job_ms = batch_elapsed_ms / processed as u128;
+            info!(
+                processed,
+                total = result.claimed,
+                succeeded = result.succeeded,
+                requeued = result.requeued,
+                failed = result.failed,
+                last_job_elapsed_ms = job_elapsed_ms,
+                batch_elapsed_ms,
+                avg_job_ms,
+                "aggregation batch progress"
+            );
+        }
     }
 
+    let overview_started_at = Instant::now();
     recompute_workspace_overview_rollup(pool).await?;
+    info!(
+        elapsed_ms = overview_started_at.elapsed().as_millis(),
+        "workspace overview rollup recomputed"
+    );
     info!(
         claimed = result.claimed,
         succeeded = result.succeeded,
         requeued = result.requeued,
         failed = result.failed,
+        total_elapsed_ms = batch_started_at.elapsed().as_millis(),
         "aggregation batch complete"
     );
     Ok(result)
@@ -244,6 +296,22 @@ async fn mark_aggregation_job_failed(pool: &PgPool, job_id: &str, error: &str) -
 
     let status: String = row.get("status");
     Ok(status == "failed")
+}
+
+fn aggregation_progress_every() -> usize {
+    std::env::var("AGGREGATION_PROGRESS_EVERY")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_AGGREGATION_PROGRESS_EVERY)
+}
+
+fn aggregation_slow_job_ms() -> u128 {
+    std::env::var("AGGREGATION_SLOW_JOB_MS")
+        .ok()
+        .and_then(|value| value.parse::<u128>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_AGGREGATION_SLOW_JOB_MS)
 }
 
 async fn recompute_thread_rollups(pool: &PgPool, channel_id: &str, thread_ts: &str) -> Result<()> {

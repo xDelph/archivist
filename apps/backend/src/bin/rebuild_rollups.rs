@@ -1,4 +1,5 @@
 use std::env;
+use std::time::Instant;
 
 use archivist::api::aggregation_jobs::run_aggregation_batch;
 use archivist::db::pool::create_pool;
@@ -115,9 +116,21 @@ async fn main() -> anyhow::Result<()> {
     let mut total_succeeded = 0usize;
     let mut total_requeued = 0usize;
     let mut total_failed = 0usize;
+    let rebuild_started_at = Instant::now();
+    let mut batch_index = 0usize;
     loop {
+        batch_index += 1;
+        let batch_started_at = Instant::now();
+        info!(batch_index, batch_size, "starting rollup batch");
         let batch = run_aggregation_batch(&pool, batch_size).await?;
+        let batch_elapsed_ms = batch_started_at.elapsed().as_millis();
         if batch.claimed == 0 {
+            info!(
+                batch_index,
+                batch_elapsed_ms,
+                total_elapsed_ms = rebuild_started_at.elapsed().as_millis(),
+                "rollup batch returned empty queue"
+            );
             break;
         }
         total_claimed += batch.claimed;
@@ -129,13 +142,21 @@ async fn main() -> anyhow::Result<()> {
             succeeded = batch.succeeded,
             requeued = batch.requeued,
             failed = batch.failed,
+            batch_index,
+            batch_elapsed_ms,
+            total_elapsed_ms = rebuild_started_at.elapsed().as_millis(),
             "processed rollup batch"
         );
     }
 
     info!(
         total_claimed,
-        total_succeeded, total_requeued, total_failed, "rebuild rollups complete"
+        total_succeeded,
+        total_requeued,
+        total_failed,
+        batch_count = batch_index.saturating_sub(1),
+        total_elapsed_ms = rebuild_started_at.elapsed().as_millis(),
+        "rebuild rollups complete"
     );
     Ok(())
 }
