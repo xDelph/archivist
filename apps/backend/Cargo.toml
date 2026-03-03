@@ -76,6 +76,18 @@ name = "admin_backfill_worker"
 path = "api/backfill_worker.rs"
 
 [[bin]]
+name = "sync_run_worker"
+path = "api/sync_run_worker.rs"
+
+[[bin]]
+name = "sync_files_worker"
+path = "api/sync_files_worker.rs"
+
+[[bin]]
+name = "sync_aggregate_worker"
+path = "api/sync_aggregate_worker.rs"
+
+[[bin]]
 name = "backfill_local"
 path = "src/bin/backfill_local.rs"
 
