@@ -15,8 +15,7 @@ use tracing::{error, info, warn};
 use vercel_runtime::{Error, Request, Response, ResponseBody};
 
 use crate::api::worker_engine::{
-    execute_aggregation_phase, execute_files_phase, execute_messages_phase, release_worker_lock,
-    try_acquire_worker_lock,
+    execute_aggregation_phase, execute_files_phase, execute_messages_phase,
 };
 use crate::db::pool::create_pool;
 use crate::storage::R2Client;
@@ -25,7 +24,7 @@ const DEFAULT_QSTASH_TIMEOUT_SECONDS: u64 = 10;
 static POOL: OnceCell<PgPool> = OnceCell::const_new();
 
 #[derive(Debug, Clone, Copy)]
-enum WorkerPhase {
+pub(crate) enum WorkerPhase {
     Messages,
     Files,
     Aggregate,
@@ -68,13 +67,33 @@ async fn pool() -> Result<&'static PgPool, Error> {
 }
 
 pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
+    let phase = WorkerPhase::from_path(req.uri().path());
+    handler_for_phase(req, phase).await
+}
+
+pub async fn run_handler(req: Request) -> Result<Response<ResponseBody>, Error> {
+    handler_for_phase(req, WorkerPhase::Messages).await
+}
+
+pub async fn files_handler(req: Request) -> Result<Response<ResponseBody>, Error> {
+    handler_for_phase(req, WorkerPhase::Files).await
+}
+
+pub async fn aggregate_handler(req: Request) -> Result<Response<ResponseBody>, Error> {
+    handler_for_phase(req, WorkerPhase::Aggregate).await
+}
+
+async fn handler_for_phase(
+    req: Request,
+    phase: WorkerPhase,
+) -> Result<Response<ResponseBody>, Error> {
     let method = req.method().to_string();
     let path = req.uri().path().to_owned();
     let query = req.uri().query().unwrap_or("").to_owned();
-    match tokio::spawn(async move { handle_request(req).await }).await {
+    match tokio::spawn(async move { handle_request(req, phase).await }).await {
         Ok(Ok(resp)) => Ok(resp),
         Ok(Err(err)) => {
-            error!(method, path, query, error = %err, "admin worker handler failed");
+            error!(method, path, query, phase = phase.as_str(), error = %err, "admin worker handler failed");
             internal_error_response()
         }
         Err(join_err) => {
@@ -82,6 +101,7 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
                 method,
                 path,
                 query,
+                phase = phase.as_str(),
                 is_panic = join_err.is_panic(),
                 error = %join_err,
                 "admin worker handler task crashed"
@@ -91,7 +111,7 @@ pub async fn handler(req: Request) -> Result<Response<ResponseBody>, Error> {
     }
 }
 
-async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
+async fn handle_request(req: Request, phase: WorkerPhase) -> Result<Response<ResponseBody>, Error> {
     let admin_token = env::var("ADMIN_TOKEN").unwrap_or_default();
     let worker_token = env::var("BACKFILL_WORKER_TOKEN").ok();
     let current_signing_key = env::var("UPSTASH_QSTASH_CURRENT_SIGNING_KEY").ok();
@@ -111,7 +131,6 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         .filter(|value| !value.is_empty())
         .unwrap_or("worker")
         .to_owned();
-    let phase = WorkerPhase::from_path(req.uri().path());
 
     let auth = process(
         &admin_token,
@@ -128,21 +147,6 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
 
     let pool = pool().await?;
     let storage = R2Client::from_env().await.ok();
-
-    let Some(mut worker_lock_conn) = try_acquire_worker_lock(pool).await? else {
-        info!(phase = phase.as_str(), requested_by, "admin worker lock busy");
-        let body = serde_json::json!({
-            "ok": true,
-            "phase": phase.as_str(),
-            "requestedBy": requested_by,
-            "status": "busy",
-        })
-        .to_string();
-        return Ok(Response::builder()
-            .status(StatusCode::ACCEPTED)
-            .header("Content-Type", "application/json")
-            .body(ResponseBody::from(Bytes::from(body)))?);
-    };
 
     let phase_result = async {
         let (worker_result, next_phase) = match phase {
@@ -181,10 +185,6 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
         Ok::<(Value, Option<NextPhaseDispatch>), Error>((worker_result, next_phase))
     }
     .await;
-
-    if let Err(err) = release_worker_lock(&mut worker_lock_conn).await {
-        warn!(error = %err, "failed to release worker advisory lock");
-    }
 
     let (worker_result, next_phase_to_publish) = phase_result?;
     let next_phase = if let Some(next) = next_phase_to_publish {

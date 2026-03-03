@@ -134,7 +134,9 @@ fn should_sync_thread_snapshot(
     {
         return true;
     }
-    raw_payload["event"]["message"]["latest_reply"].as_str().is_some()
+    raw_payload["event"]["message"]["latest_reply"]
+        .as_str()
+        .is_some()
         || raw_payload["event"]["message"]["reply_count"]
             .as_i64()
             .unwrap_or(0)
@@ -229,15 +231,20 @@ where
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct ThreadSyncContext<'a> {
+    storage: Option<&'a R2Client>,
+    slack_token: &'a str,
+    channel_id: &'a str,
+    fallback_team_id: &'a str,
+    thread_ts: &'a str,
+}
+
 async fn sync_thread_snapshot<R, S>(
     repo: &R,
     client: &S,
-    storage: Option<&R2Client>,
-    slack_token: &str,
-    channel_id: &str,
-    fallback_team_id: &str,
-    thread_ts: &str,
     user_lookup_cache: &mut IngestUserLookupCache,
+    ctx: ThreadSyncContext<'_>,
 ) -> Result<usize>
 where
     R: Repository,
@@ -247,7 +254,7 @@ where
     let mut processed_messages = 0usize;
     loop {
         let (messages, next) = client
-            .conversations_replies(channel_id, thread_ts, cursor.as_deref())
+            .conversations_replies(ctx.channel_id, ctx.thread_ts, cursor.as_deref())
             .await?;
         if messages.is_empty() && next.is_none() {
             break;
@@ -257,20 +264,20 @@ where
                 repo,
                 Some(client),
                 user_lookup_cache,
-                channel_id,
-                fallback_team_id,
+                ctx.channel_id,
+                ctx.fallback_team_id,
                 msg,
             )
             .await?;
             let team_id = msg.raw["team"]
                 .as_str()
                 .filter(|value| !value.is_empty())
-                .unwrap_or(fallback_team_id);
+                .unwrap_or(ctx.fallback_team_id);
             if let Err(err) = archive_files(
                 repo,
-                storage,
-                slack_token,
-                channel_id,
+                ctx.storage,
+                ctx.slack_token,
+                ctx.channel_id,
                 &msg.ts,
                 team_id,
                 &msg.raw["files"],
@@ -278,8 +285,8 @@ where
             .await
             {
                 warn!(
-                    channel_id,
-                    thread_ts,
+                    channel_id = ctx.channel_id,
+                    thread_ts = ctx.thread_ts,
                     message_ts = %msg.ts,
                     error = %err,
                     "failed to archive files while syncing thread snapshot"
@@ -340,7 +347,8 @@ pub async fn handle_event<R: Repository>(
                 debug!(event_id = %cb.event_id, subtype = ?m.subtype, "ignored subtype");
                 return Ok(());
             }
-            let Some(canonical) = canonical_message_from_event(&cb.team_id, &m, &raw_payload) else {
+            let Some(canonical) = canonical_message_from_event(&cb.team_id, &m, &raw_payload)
+            else {
                 warn!(event_id = %cb.event_id, channel_id = %m.channel, "message event missing ts");
                 return Ok(());
             };
@@ -402,12 +410,14 @@ pub async fn handle_event<R: Repository>(
                 match sync_thread_snapshot(
                     repo,
                     client,
-                    storage,
-                    slack_token,
-                    &m.channel,
-                    &cb.team_id,
-                    &thread_ts,
                     &mut user_lookup_cache,
+                    ThreadSyncContext {
+                        storage,
+                        slack_token,
+                        channel_id: &m.channel,
+                        fallback_team_id: &cb.team_id,
+                        thread_ts: &thread_ts,
+                    },
                 )
                 .await
                 {

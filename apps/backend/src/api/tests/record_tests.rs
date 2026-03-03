@@ -152,8 +152,12 @@ fn test_render_slack_text_url_with_label() {
 
 #[test]
 fn test_render_slack_text_url_without_label() {
-    let html = render_slack_text("<https://ship-fast.devliv.io/>", &HashMap::new(), &HashMap::new())
-        .into_string();
+    let html = render_slack_text(
+        "<https://ship-fast.devliv.io/>",
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .into_string();
     assert!(html.contains("href=\"https://ship-fast.devliv.io/\""));
     assert!(html.contains(">https://ship-fast.devliv.io/</a>"));
 }

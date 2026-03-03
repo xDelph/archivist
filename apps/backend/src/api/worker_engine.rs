@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::Serialize;
-use sqlx::{PgPool, Postgres, Row, pool::PoolConnection};
+use sqlx::PgPool;
 use tracing::{info, warn};
 
 use crate::api::aggregation_jobs::{pending_aggregation_jobs_count, run_aggregation_batch};
@@ -8,7 +8,6 @@ use crate::api::file_backfill_jobs::{FileBackfillBatchResult, run_file_backfill_
 use crate::slack::backfill::{SlackClient, run_backfill};
 use crate::storage::R2Client;
 
-const DEFAULT_WORKER_LOCK_KEY: i64 = 1_048_729;
 const DEFAULT_AGGREGATION_JOBS_PER_BATCH: i64 = 200;
 const DEFAULT_AGGREGATION_MAX_BATCHES_PER_RUN: usize = 200;
 
@@ -89,9 +88,7 @@ async fn drain_aggregation_jobs(pool: &PgPool) -> Result<AggregationOutcome> {
     let pending_before = pending_aggregation_jobs_count(pool).await?;
     info!(
         pending_ready = pending_before,
-        jobs_per_batch,
-        max_batches,
-        "aggregation drain start"
+        jobs_per_batch, max_batches, "aggregation drain start"
     );
 
     let mut out = AggregationOutcome::default();
@@ -119,31 +116,6 @@ async fn drain_aggregation_jobs(pool: &PgPool) -> Result<AggregationOutcome> {
         "aggregation drain complete"
     );
     Ok(out)
-}
-
-pub async fn try_acquire_worker_lock(pool: &PgPool) -> Result<Option<PoolConnection<Postgres>>> {
-    let mut conn = pool.acquire().await?;
-    let row = sqlx::query("SELECT pg_try_advisory_lock($1) AS acquired")
-        .bind(worker_lock_key())
-        .fetch_one(&mut *conn)
-        .await?;
-    let acquired: bool = row.get("acquired");
-    if acquired { Ok(Some(conn)) } else { Ok(None) }
-}
-
-pub async fn release_worker_lock(conn: &mut PoolConnection<Postgres>) -> Result<()> {
-    sqlx::query("SELECT pg_advisory_unlock($1)")
-        .bind(worker_lock_key())
-        .execute(&mut **conn)
-        .await?;
-    Ok(())
-}
-
-fn worker_lock_key() -> i64 {
-    std::env::var("BACKFILL_WORKER_LOCK_KEY")
-        .ok()
-        .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_WORKER_LOCK_KEY)
 }
 
 fn aggregation_jobs_per_batch() -> i64 {

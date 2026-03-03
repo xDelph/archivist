@@ -10,6 +10,8 @@ use tracing::{info, warn};
 
 use crate::storage::R2Client;
 
+const HISTORY_LOOKBACK_SECONDS: i64 = 60 * 60;
+
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -636,7 +638,7 @@ where
     S: SlackApi,
 {
     let oldest = repo.get_last_archived_ts(channel_id).await?;
-    let history_oldest = oldest.clone();
+    let history_oldest = apply_history_overlap(oldest.as_deref());
     info!(
         channel_id,
         oldest_ts = oldest.as_deref().unwrap_or("<none>"),
@@ -648,7 +650,7 @@ where
     // Threads whose root was archived in a previous run — replies appear in
     // history but the root won't be re-fetched via conversations.history.
     let mut stale_threads: HashSet<String> = HashSet::new();
-    if let Some(oldest_ts) = oldest.as_deref() {
+    if let Some(oldest_ts) = history_oldest.as_deref() {
         let seeded_threads = repo.get_recent_thread_roots(channel_id, oldest_ts).await?;
         stale_threads.extend(seeded_threads);
     }
@@ -738,6 +740,28 @@ where
     );
 
     Ok(Some(stats))
+}
+
+fn apply_history_overlap(oldest_ts: Option<&str>) -> Option<String> {
+    let oldest_ts = oldest_ts?;
+    subtract_seconds_from_slack_ts(oldest_ts, HISTORY_LOOKBACK_SECONDS)
+        .or_else(|| Some(oldest_ts.to_owned()))
+}
+
+fn subtract_seconds_from_slack_ts(ts: &str, seconds: i64) -> Option<String> {
+    if seconds <= 0 {
+        return Some(ts.to_owned());
+    }
+    let (seconds_part, fractional_part) = match ts.split_once('.') {
+        Some((secs, frac)) => (secs, Some(frac)),
+        None => (ts, None),
+    };
+    let seconds_value = seconds_part.parse::<i64>().ok()?;
+    let adjusted = seconds_value.saturating_sub(seconds);
+    Some(match fractional_part {
+        Some(frac) => format!("{adjusted}.{frac}"),
+        None => adjusted.to_string(),
+    })
 }
 
 async fn backfill_replies<R, S>(

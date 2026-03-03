@@ -724,11 +724,9 @@ fn sum_files_for_threads(
         .sum()
 }
 
-fn change_windows(
-    tab: &str,
-    period: &str,
-    now: DateTime<Utc>,
-) -> Option<(DateTime<Utc>, DateTime<Utc>, DateTime<Utc>, DateTime<Utc>)> {
+type ChangeWindows = (DateTime<Utc>, DateTime<Utc>, DateTime<Utc>, DateTime<Utc>);
+
+fn change_windows(tab: &str, period: &str, now: DateTime<Utc>) -> Option<ChangeWindows> {
     if period == "7d" || period == "30d" {
         let days = if period == "7d" { 7 } else { 30 };
         let current_start = now - Duration::days(days);
@@ -1016,7 +1014,7 @@ mod tests {
         );
 
         let feb_thread = make_thread(&ts(now.timestamp() - 20 * 86_400), "alice");
-        let mar_thread = make_thread(&ts(now.timestamp() - 1 * 86_400), "alice");
+        let mar_thread = make_thread(&ts(now.timestamp() - 86_400), "alice");
         let threads = vec![feb_thread.clone(), mar_thread.clone()];
 
         let mut files = HashMap::new();
@@ -1047,7 +1045,7 @@ mod tests {
         );
 
         let last_week_thread = make_thread(&ts(now.timestamp() - 24 * 3600), "alice");
-        let current_week_thread = make_thread(&ts(now.timestamp() - 1 * 3600), "alice");
+        let current_week_thread = make_thread(&ts(now.timestamp() - 3600), "alice");
         let threads = vec![last_week_thread.clone(), current_week_thread.clone()];
 
         let mut files = HashMap::new();
@@ -1085,7 +1083,10 @@ mod tests {
     #[test]
     fn extract_first_url_supports_slack_wrapped_url_with_label() {
         let text = "Check <https://example.com/docs|Example docs> please";
-        assert_eq!(extract_first_url(text).as_deref(), Some("https://example.com/docs"));
+        assert_eq!(
+            extract_first_url(text).as_deref(),
+            Some("https://example.com/docs")
+        );
     }
 
     #[test]
