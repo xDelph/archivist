@@ -10,6 +10,7 @@ use serde_json::Value;
 use tracing::{error, info};
 use vercel_runtime::{Error, Response};
 
+use crate::api::auth::AuthContext;
 use crate::db::{FileRow, PeriodRankedThread, Repository, ThreadMessage, ThreadSummary};
 use crate::render::text::{demojify, highlight_search, render_slack_text};
 
@@ -155,11 +156,12 @@ pub(crate) async fn process<R: Repository>(
     repo: &R,
     path: &str,
     query: &str,
+    viewer: Option<&AuthContext>,
 ) -> Result<Response<Bytes>, Error> {
     let result = if path.ends_with("/thread") {
-        thread_json(repo, query).await
+        thread_json(repo, query, viewer).await
     } else {
-        threads_json(repo, query).await
+        threads_json(repo, query, viewer).await
     };
 
     match result {
@@ -177,7 +179,11 @@ pub(crate) async fn process<R: Repository>(
     }
 }
 
-async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {
+async fn threads_json<R: Repository>(
+    repo: &R,
+    query: &str,
+    viewer: Option<&AuthContext>,
+) -> Result<Response<Bytes>, Error> {
     let request_started = Instant::now();
     let params = parse_query(query);
     let tab = match params.get("tab").map(String::as_str) {
@@ -207,7 +213,8 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
     } else {
         limit as i64
     };
-    let base_threads = load_threads_for_tab(repo, tab, base_limit).await?;
+    let mut base_threads = load_threads_for_tab(repo, tab, base_limit).await?;
+    apply_viewer_identity_override_to_threads(&mut base_threads, viewer);
 
     let mut filtered_for_users = base_threads.clone();
     apply_channel_and_search_filters(&mut filtered_for_users, channel, search);
@@ -223,6 +230,7 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
     let mut overview_change_threads = crate::api::record::cached_recent_threads(repo)
         .await
         .map_err(|e| Error::from(e.to_string()))?;
+    apply_viewer_identity_override_to_threads(&mut overview_change_threads, viewer);
     apply_channel_and_search_filters(&mut overview_change_threads, channel, search);
     apply_user_filter(&mut overview_change_threads, user);
     let overview_change_files = fetch_root_file_summary(repo, &overview_change_threads).await?;
@@ -313,7 +321,11 @@ async fn threads_json<R: Repository>(repo: &R, query: &str) -> Result<Response<B
     json_ok(&resp)
 }
 
-async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<Bytes>, Error> {
+async fn thread_json<R: Repository>(
+    repo: &R,
+    query: &str,
+    viewer: Option<&AuthContext>,
+) -> Result<Response<Bytes>, Error> {
     let request_started = Instant::now();
     let params = parse_query(query);
     let channel_id = match params.get("channel_id") {
@@ -326,12 +338,13 @@ async fn thread_json<R: Repository>(repo: &R, query: &str) -> Result<Response<By
     };
     let search = params.get("search").map(String::as_str).unwrap_or("");
 
-    let (messages, users_vec, channels_vec) = tokio::try_join!(
+    let (mut messages, users_vec, channels_vec) = tokio::try_join!(
         repo.get_thread_messages(&channel_id, &ts),
         crate::api::record::cached_users(repo),
         crate::api::record::cached_channels(repo),
     )
     .map_err(|e| Error::from(e.to_string()))?;
+    apply_viewer_identity_override_to_messages(&mut messages, viewer);
     let users_map: HashMap<String, String> = users_vec.into_iter().collect();
     let channels_map: HashMap<String, String> = channels_vec.into_iter().collect();
 
@@ -380,6 +393,7 @@ fn map_thread_message(
 ) -> ApiThreadMessage {
     let ThreadMessage {
         ts,
+        user_id: _,
         text,
         display_name,
         avatar_url,
@@ -466,6 +480,36 @@ fn normalize_ranked_threads(rows: Vec<PeriodRankedThread>) -> Vec<ThreadSummary>
             thread
         })
         .collect()
+}
+
+fn apply_viewer_identity_override_to_threads(
+    threads: &mut [ThreadSummary],
+    viewer: Option<&AuthContext>,
+) {
+    let Some(viewer) = viewer else {
+        return;
+    };
+    for thread in threads.iter_mut() {
+        if thread.user_id == viewer.slack_user_id {
+            thread.display_name = viewer.display_name.clone();
+            thread.avatar_url = viewer.avatar_url.clone();
+        }
+    }
+}
+
+fn apply_viewer_identity_override_to_messages(
+    messages: &mut [ThreadMessage],
+    viewer: Option<&AuthContext>,
+) {
+    let Some(viewer) = viewer else {
+        return;
+    };
+    for message in messages.iter_mut() {
+        if message.user_id == viewer.slack_user_id {
+            message.display_name = viewer.display_name.clone();
+            message.avatar_url = viewer.avatar_url.clone();
+        }
+    }
 }
 
 fn apply_period_filter(threads: &mut Vec<ThreadSummary>, period: &str) {
@@ -929,7 +973,6 @@ fn json_ok<T: Serialize>(value: &T) -> Result<Response<Bytes>, Error> {
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json; charset=utf-8")
-        .header("Access-Control-Allow-Origin", "*")
         .body(Bytes::from(json))?)
 }
 
@@ -937,7 +980,6 @@ fn error_response(status: StatusCode, msg: &str) -> Result<Response<Bytes>, Erro
     Ok(Response::builder()
         .status(status)
         .header("Content-Type", "text/plain; charset=utf-8")
-        .header("Access-Control-Allow-Origin", "*")
         .body(Bytes::from(msg.to_owned()))?)
 }
 
@@ -979,13 +1021,16 @@ fn percent_decode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::auth::AuthContext;
     use crate::db::ThreadSummary;
+    use uuid::Uuid;
 
     fn make_thread(ts: &str, user: &str) -> ThreadSummary {
         ThreadSummary {
             channel_id: "C001".to_owned(),
             channel_name: "general".to_owned(),
             thread_ts: ts.to_owned(),
+            user_id: "U_TEST".to_owned(),
             text: "hello".to_owned(),
             created_at: Utc::now(),
             display_name: user.to_owned(),
@@ -1001,6 +1046,16 @@ mod tests {
 
     fn ts(secs: i64) -> String {
         format!("{secs}.000000")
+    }
+
+    fn viewer(slack_user_id: &str, display_name: &str, avatar_url: &str) -> AuthContext {
+        AuthContext {
+            account_id: Uuid::nil(),
+            slack_user_id: slack_user_id.to_owned(),
+            is_anonymous: true,
+            display_name: display_name.to_owned(),
+            avatar_url: avatar_url.to_owned(),
+        }
     }
 
     #[test]
@@ -1096,5 +1151,81 @@ mod tests {
             extract_first_url(text).as_deref(),
             Some("https://ship-fast.devliv.io/")
         );
+    }
+
+    #[test]
+    fn viewer_identity_override_updates_own_threads_only() {
+        let me = viewer("U_ME", "Thomas", "https://avatar/me.png");
+        let mut threads = vec![
+            ThreadSummary {
+                channel_id: "C001".to_owned(),
+                channel_name: "general".to_owned(),
+                thread_ts: "1.0".to_owned(),
+                user_id: "U_ME".to_owned(),
+                text: "mine".to_owned(),
+                created_at: Utc::now(),
+                display_name: "Anonymous".to_owned(),
+                avatar_url: "/placeholder-user.jpg".to_owned(),
+                search_text: String::new(),
+                reaction_count: 0,
+                reply_count: 0,
+                participant_count: 1,
+                file_count: 0,
+                score: 1,
+            },
+            ThreadSummary {
+                channel_id: "C001".to_owned(),
+                channel_name: "general".to_owned(),
+                thread_ts: "2.0".to_owned(),
+                user_id: "U_OTHER".to_owned(),
+                text: "other".to_owned(),
+                created_at: Utc::now(),
+                display_name: "Anonymous".to_owned(),
+                avatar_url: "/placeholder-user.jpg".to_owned(),
+                search_text: String::new(),
+                reaction_count: 0,
+                reply_count: 0,
+                participant_count: 1,
+                file_count: 0,
+                score: 1,
+            },
+        ];
+
+        apply_viewer_identity_override_to_threads(&mut threads, Some(&me));
+
+        assert_eq!(threads[0].display_name, "Thomas");
+        assert_eq!(threads[0].avatar_url, "https://avatar/me.png");
+        assert_eq!(threads[1].display_name, "Anonymous");
+        assert_eq!(threads[1].avatar_url, "/placeholder-user.jpg");
+    }
+
+    #[test]
+    fn viewer_identity_override_updates_own_messages_only() {
+        let me = viewer("U_ME", "Thomas", "https://avatar/me.png");
+        let mut messages = vec![
+            ThreadMessage {
+                ts: "1.0".to_owned(),
+                user_id: "U_ME".to_owned(),
+                text: "mine".to_owned(),
+                display_name: "Anonymous".to_owned(),
+                avatar_url: "/placeholder-user.jpg".to_owned(),
+                reactions: serde_json::json!([]),
+            },
+            ThreadMessage {
+                ts: "2.0".to_owned(),
+                user_id: "U_OTHER".to_owned(),
+                text: "other".to_owned(),
+                display_name: "Anonymous".to_owned(),
+                avatar_url: "/placeholder-user.jpg".to_owned(),
+                reactions: serde_json::json!([]),
+            },
+        ];
+
+        apply_viewer_identity_override_to_messages(&mut messages, Some(&me));
+
+        assert_eq!(messages[0].display_name, "Thomas");
+        assert_eq!(messages[0].avatar_url, "https://avatar/me.png");
+        assert_eq!(messages[1].display_name, "Anonymous");
+        assert_eq!(messages[1].avatar_url, "/placeholder-user.jpg");
     }
 }

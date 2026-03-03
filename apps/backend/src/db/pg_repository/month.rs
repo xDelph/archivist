@@ -15,11 +15,24 @@ pub(super) async fn get_monthly_ranked_threads(
                 tr.channel_id,
                 COALESCE(ch.name, tr.channel_id)              AS channel_name,
                 tr.thread_ts,
+                COALESCE(tr.root_user_id, '')                   AS user_id,
                 tr.root_text                                   AS text,
                 tr.search_text                                 AS search_text,
                 tr.root_created_at                             AS created_at,
-                COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
-                COALESCE(u.avatar_url, '')                    AS avatar_url,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN 'Anonymous'
+                    ELSE COALESCE(u.display_name, tr.root_user_id, '')
+                END                                            AS display_name,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN '/placeholder-user.jpg'
+                    ELSE COALESCE(u.avatar_url, '')
+                END                                            AS avatar_url,
                 tr.reaction_count_total                        AS reaction_count,
                 tr.reply_count_total                           AS reply_count,
                 tr.participant_count_total                     AS participant_count,
@@ -36,6 +49,9 @@ pub(super) async fn get_monthly_ranked_threads(
                AND tr.thread_ts = tps.thread_ts
             LEFT JOIN users u
                 ON u.user_id = tr.root_user_id
+            LEFT JOIN auth_accounts aa
+                ON aa.slack_user_id = u.user_id
+               AND aa.disabled_at IS NULL
             LEFT JOIN channels ch
                 ON ch.channel_id = tr.channel_id
             WHERE tps.period_kind = 'month'
@@ -125,11 +141,24 @@ pub(super) async fn get_monthly_ranked_threads(
             cur.channel_id,
             COALESCE(ch.name, cur.channel_id)                         AS channel_name,
             cur.thread_ts,
+            COALESCE(s.user_id, '')                                   AS user_id,
             s.text,
             ''::text                                                AS search_text,
             s.created_at,
-            COALESCE(u.display_name, s.user_id, '')                   AS display_name,
-            COALESCE(u.avatar_url, '')                                 AS avatar_url,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN 'Anonymous'
+                ELSE COALESCE(u.display_name, s.user_id, '')
+            END                                                        AS display_name,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN '/placeholder-user.jpg'
+                ELSE COALESCE(u.avatar_url, '')
+            END                                                        AS avatar_url,
             s.reaction_count,
             s.reply_count,
             s.participant_count,
@@ -144,6 +173,9 @@ pub(super) async fn get_monthly_ranked_threads(
            AND s.thread_ts = cur.thread_ts
         LEFT JOIN users u
             ON u.user_id = s.user_id
+        LEFT JOIN auth_accounts aa
+            ON aa.slack_user_id = u.user_id
+           AND aa.disabled_at IS NULL
         LEFT JOIN channels ch
             ON ch.channel_id = cur.channel_id
         WHERE COALESCE(ch.name, cur.channel_id) != 'intro'

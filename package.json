@@ -10,7 +10,7 @@
     "typecheck": "turbo run typecheck",
     "check": "turbo run check",
     "fmt": "turbo run fmt",
-    "dev:backend": "vercel dev --yes --listen 3100",
+    "dev:backend": "cargo run --manifest-path apps/backend/Cargo.toml --bin record",
     "dev:frontend": "cd apps/frontend && pnpm run dev --port 3001",
     "check:backend:dev": "bash scripts/dev/check-backend.sh",
     "release:preflight": "bash scripts/release/preflight-check.sh",

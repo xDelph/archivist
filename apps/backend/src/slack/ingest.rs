@@ -3,8 +3,10 @@ use std::collections::HashSet;
 use anyhow::Result;
 use tracing::{debug, info, warn};
 
-use crate::db::{MessageRecord, ReactionRecord, Repository, SlackEventRecord, UserRecord};
-use crate::slack::backfill::{SlackApi, SlackClient, SlackError, SlackMessage, archive_files};
+use crate::db::{MessageRecord, ReactionRecord, Repository, SlackEventRecord};
+use crate::slack::backfill::{
+    SlackApi, SlackClient, SlackError, SlackMessage, archive_files, to_user_record,
+};
 use crate::slack::types::{EventCallback, SlackEvent};
 use crate::storage::R2Client;
 
@@ -162,14 +164,10 @@ where
 
     match client.users_info(user_id).await {
         Ok(Some(user)) => {
-            repo.upsert_user(&UserRecord {
-                user_id: user.user_id.clone(),
-                team_id: user.team_id,
-                display_name: user.display_name,
-                avatar_url: user.avatar_url,
-            })
-            .await?;
-            cache.refreshed.insert(user.user_id);
+            let user_id = user.user_id.clone();
+            let record = to_user_record(user)?;
+            repo.upsert_user(&record).await?;
+            cache.refreshed.insert(user_id);
         }
         Ok(None) => {
             cache.skipped.insert(user_id.to_owned());

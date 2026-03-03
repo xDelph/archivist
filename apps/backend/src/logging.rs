@@ -1,28 +1,9 @@
 use std::env;
-use std::fs;
-use std::io::Write;
 use std::sync::OnceLock;
 
-use tracing::info;
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 
-static FILE_LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 static PANIC_HOOK_SET: OnceLock<()> = OnceLock::new();
-
-fn append_raw_log_line(line: &str) {
-    if fs::create_dir_all("./logs").is_err() {
-        return;
-    }
-    if let Ok(mut file) = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("./logs/app.log")
-    {
-        let _ = writeln!(file, "{line}");
-    }
-}
 
 fn install_panic_hook() {
     if PANIC_HOOK_SET.set(()).is_err() {
@@ -41,11 +22,11 @@ fn install_panic_hook() {
         } else {
             "non-string panic payload".to_owned()
         };
-        append_raw_log_line(&format!(
+        eprintln!(
             r#"{{"level":"ERROR","target":"panic","message":"panic caught","location":"{}","payload":"{}"}}"#,
             location.replace('"', "'"),
             payload.replace('"', "'")
-        ));
+        );
         previous_hook(panic_info);
     }));
 }
@@ -76,38 +57,11 @@ pub fn init_tracing() {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(default_env_filter(is_dev)));
 
-    if is_dev {
-        if let Err(err) = fs::create_dir_all("./logs") {
-            eprintln!("failed to create ./logs directory: {err}");
-        } else {
-            let file_appender = tracing_appender::rolling::never("./logs", "app.log");
-            let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
-            let _ = FILE_LOG_GUARD.set(guard);
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(tracing_subscriber::fmt::layer().json())
-                .with(
-                    tracing_subscriber::fmt::layer()
-                        .json()
-                        .with_writer(file_writer),
-                )
-                .try_init()
-                .ok();
-            info!(
-                service_env = "development",
-                file = "./logs/app.log",
-                "tracing initialized"
-            );
-            return;
-        }
-    }
-
     tracing_subscriber::fmt()
         .json()
         .with_env_filter(env_filter)
         .try_init()
         .ok();
-    info!(service_env = ?env::var("SERVICE_ENV").ok(), "tracing initialized");
 }
 
 #[cfg(test)]

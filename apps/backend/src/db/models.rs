@@ -34,6 +34,10 @@ pub struct UserRecord {
     pub team_id: String,
     pub display_name: String,
     pub avatar_url: String,
+    pub email_ciphertext: Option<String>,
+    pub email_lookup_hash: Option<String>,
+    pub is_active: bool,
+    pub is_deleted: bool,
 }
 
 pub struct ChannelRecord {
@@ -47,6 +51,7 @@ pub struct ThreadSummary {
     pub channel_id: String,
     pub channel_name: String,
     pub thread_ts: String,
+    pub user_id: String,
     pub text: String,
     pub created_at: DateTime<Utc>,
     pub display_name: String,
@@ -76,6 +81,7 @@ pub struct PeriodRankedThread {
 
 pub struct ThreadMessage {
     pub ts: String,
+    pub user_id: String,
     pub text: String,
     pub display_name: String,
     pub avatar_url: String,

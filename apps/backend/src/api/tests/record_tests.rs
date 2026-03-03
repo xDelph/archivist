@@ -32,6 +32,7 @@ fn make_thread(score: i64, channel_name: &str) -> ThreadSummary {
         channel_id: "C123".to_owned(),
         channel_name: channel_name.to_owned(),
         thread_ts: "1700000000.000000".to_owned(),
+        user_id: "U123".to_owned(),
         text: "Hello :thumbsup:".to_owned(),
         created_at: Utc::now(),
         display_name: "Alice".to_owned(),
@@ -57,6 +58,7 @@ fn make_thread_days_ago(
         channel_id: "C123".to_owned(),
         channel_name: channel_name.to_owned(),
         thread_ts: format!("{ts:.6}"),
+        user_id: "U123".to_owned(),
         text: "Hello :thumbsup:".to_owned(),
         created_at: Utc::now(),
         display_name: display_name.to_owned(),
@@ -510,7 +512,7 @@ fn test_thread_card_with_position_change_badge() {
 #[tokio::test]
 async fn test_record_page_returns_html() {
     let repo = InMemoryRepository::default();
-    let resp = process(&repo, make_get("/record")).await.unwrap();
+    let resp = process(&repo, make_get("/record"), None).await.unwrap();
     assert_eq!(resp.status(), 200);
     assert!(
         resp.headers()
@@ -526,7 +528,7 @@ async fn test_api_record_threads_returns_json() {
     let repo = InMemoryRepository::default();
     *repo.threads.lock().unwrap() = vec![make_thread(10, "eng"), make_thread(5, "general")];
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=top"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=top"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -565,7 +567,7 @@ async fn test_api_record_threads_supports_recent_tab() {
         make_thread_days_ago(8, "general", "Bob", 1, 0),
     ];
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=recent&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=recent&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -587,7 +589,7 @@ async fn test_api_record_threads_supports_week_tab() {
     let repo = InMemoryRepository::default();
     *repo.weekly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(13, "eng")];
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=week&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=week&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -609,7 +611,7 @@ async fn test_api_record_threads_supports_month_tab() {
     let repo = InMemoryRepository::default();
     *repo.monthly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(21, "general")];
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=month&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=month&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -631,7 +633,7 @@ async fn test_api_record_threads_invalid_tab_defaults_to_top() {
     let repo = InMemoryRepository::default();
     *repo.threads.lock().unwrap() = vec![make_thread(10, "eng")];
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=invalid&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=invalid&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -656,7 +658,7 @@ async fn test_api_record_threads_top_error_returns_http_500() {
         .unwrap()
         .insert("get_top_threads".to_owned());
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=top&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=top&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 500);
@@ -672,7 +674,7 @@ async fn test_api_record_threads_week_error_returns_http_500() {
         .unwrap()
         .insert("get_weekly_ranked_threads".to_owned());
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=week&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=week&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 500);
@@ -688,7 +690,7 @@ async fn test_api_record_threads_month_error_returns_http_500() {
         .unwrap()
         .insert("get_monthly_ranked_threads".to_owned());
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=month&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=month&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 500);
@@ -704,7 +706,7 @@ async fn test_api_record_threads_recent_error_returns_http_500() {
         .unwrap()
         .insert("get_recent_threads".to_owned());
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=recent&limit=50"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=recent&limit=50"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 500);
@@ -723,6 +725,7 @@ async fn test_api_record_threads_search_matches_search_text_field() {
     let resp = process(
         &repo,
         make_get("/api/record/threads?tab=top&search=searchable"),
+        None,
     )
     .await
     .unwrap();
@@ -747,6 +750,7 @@ async fn test_api_record_threads_accepts_hashed_channel_filter() {
     let resp = process(
         &repo,
         make_get("/api/record/threads?tab=top&channel=%23eng"),
+        None,
     )
     .await
     .unwrap();
@@ -772,7 +776,7 @@ async fn test_api_record_threads_overview_changes_are_computed() {
         make_thread_days_ago(8, "eng", "Alice", 35, 0),
     ];
 
-    let resp = process(&repo, make_get("/api/record/threads?tab=top&period=all"))
+    let resp = process(&repo, make_get("/api/record/threads?tab=top&period=all"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -801,6 +805,7 @@ async fn test_api_record_thread_returns_json() {
     let resp = process(
         &repo,
         make_get("/api/record/thread?channel_id=C123&ts=1700000000.000000"),
+        None,
     )
     .await
     .unwrap();
@@ -832,7 +837,7 @@ async fn test_weekly_page_returns_html() {
     let repo = InMemoryRepository::default();
     *repo.top_threads_with_weekly.lock().unwrap() = vec![make_top_thread_with_weekly(42, 7, "eng")];
 
-    let resp = process(&repo, make_get("/record/weekly")).await.unwrap();
+    let resp = process(&repo, make_get("/record/weekly"), None).await.unwrap();
     assert_eq!(resp.status(), 200);
 
     let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
@@ -849,7 +854,7 @@ async fn test_weekly_page_with_trailing_slash_returns_tabs() {
     let repo = InMemoryRepository::default();
     *repo.top_threads_with_weekly.lock().unwrap() = vec![make_top_thread_with_weekly(42, 7, "eng")];
 
-    let resp = process(&repo, make_get("/record/weekly/")).await.unwrap();
+    let resp = process(&repo, make_get("/record/weekly/"), None).await.unwrap();
     assert_eq!(resp.status(), 200);
 
     let body = String::from_utf8(resp.into_body().to_vec()).unwrap();
@@ -863,7 +868,7 @@ async fn test_weekly_page_week_tab_has_no_position_change_badge() {
     let repo = InMemoryRepository::default();
     *repo.weekly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(13, "eng")];
 
-    let resp = process(&repo, make_get("/record/weekly?tab=week"))
+    let resp = process(&repo, make_get("/record/weekly?tab=week"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -881,7 +886,7 @@ async fn test_weekly_page_month_tab_has_no_position_change_badge() {
     let repo = InMemoryRepository::default();
     *repo.monthly_ranked_threads.lock().unwrap() = vec![make_ranked_thread(21, "general")];
 
-    let resp = process(&repo, make_get("/record/weekly?tab=month"))
+    let resp = process(&repo, make_get("/record/weekly?tab=month"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -900,7 +905,7 @@ async fn test_weekly_top_page_renders_more_than_fifty_cards_when_available() {
         .map(|i| make_top_thread_with_weekly(100 - i, i, &format!("ch{i}")))
         .collect();
 
-    let resp = process(&repo, make_get("/record/weekly?tab=top"))
+    let resp = process(&repo, make_get("/record/weekly?tab=top"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -912,7 +917,7 @@ async fn test_weekly_top_page_renders_more_than_fifty_cards_when_available() {
 #[tokio::test]
 async fn test_thread_fragment_missing_params_returns_400() {
     let repo = InMemoryRepository::default();
-    let resp = process(&repo, make_get("/record/thread")).await.unwrap();
+    let resp = process(&repo, make_get("/record/thread"), None).await.unwrap();
     assert_eq!(resp.status(), 400);
 }
 
@@ -920,7 +925,7 @@ async fn test_thread_fragment_missing_params_returns_400() {
 async fn test_threads_fragment_returns_html() {
     let repo = InMemoryRepository::default();
     *repo.threads.lock().unwrap() = vec![make_thread(10, "eng"), make_thread(5, "general")];
-    let resp = process(&repo, make_get("/record/threads?sort=score&period=all"))
+    let resp = process(&repo, make_get("/record/threads?sort=score&period=all"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -936,7 +941,7 @@ async fn test_threads_fragment_sort_replies() {
     t2.reply_count = 10;
     let repo = InMemoryRepository::default();
     *repo.threads.lock().unwrap() = vec![t1, t2];
-    let resp = process(&repo, make_get("/record/threads?sort=replies&period=all"))
+    let resp = process(&repo, make_get("/record/threads?sort=replies&period=all"), None)
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
@@ -953,6 +958,7 @@ async fn test_thread_fragment_returns_html() {
     let resp = process(
         &repo,
         make_get("/record/thread?channel_id=C123&ts=1700000000.000000"),
+        None,
     )
     .await
     .unwrap();

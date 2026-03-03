@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatCard } from "@/components/stat-card"
 import { ThreadCard } from "@/components/thread-card"
 import { ActivityChart } from "@/components/activity-chart"
+import { AccountMenu } from "@/components/account-menu"
 import { ChannelSidebar } from "@/components/channel-sidebar"
 import { SearchBar } from "@/components/search-bar"
 import { fetchDashboardData, fetchThreadMessages } from "@/lib/api"
@@ -448,6 +449,14 @@ export default function ArchivistDashboard() {
     setLoadError(null)
   }
 
+  async function logout(): Promise<void> {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" })
+    } finally {
+      window.location.href = "/login"
+    }
+  }
+
   if (!ready || (isInitialLoad && !loadError)) {
     return <InitialLoadingShell />
   }
@@ -534,6 +543,7 @@ export default function ArchivistDashboard() {
                 <span>Open Slack</span>
               </a>
             )}
+            <AccountMenu onLogout={logout} />
           </div>
         </div>
       </header>

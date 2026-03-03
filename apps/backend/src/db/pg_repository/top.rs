@@ -12,11 +12,24 @@ pub(super) async fn get_top_threads(pool: &PgPool, limit: i64) -> Result<Vec<Thr
                 tr.channel_id,
                 COALESCE(ch.name, tr.channel_id)         AS channel_name,
                 tr.thread_ts,
+                COALESCE(tr.root_user_id, '')              AS user_id,
                 tr.root_text                              AS text,
                 tr.search_text                            AS search_text,
                 tr.root_created_at                        AS created_at,
-                COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
-                COALESCE(u.avatar_url, '')               AS avatar_url,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN 'Anonymous'
+                    ELSE COALESCE(u.display_name, tr.root_user_id, '')
+                END                                       AS display_name,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN '/placeholder-user.jpg'
+                    ELSE COALESCE(u.avatar_url, '')
+                END                                       AS avatar_url,
                 tr.reaction_count_total                   AS reaction_count,
                 tr.reply_count_total                      AS reply_count,
                 tr.participant_count_total                AS participant_count,
@@ -25,6 +38,9 @@ pub(super) async fn get_top_threads(pool: &PgPool, limit: i64) -> Result<Vec<Thr
             FROM thread_rollups tr
             LEFT JOIN users u
                 ON u.user_id = tr.root_user_id
+            LEFT JOIN auth_accounts aa
+                ON aa.slack_user_id = u.user_id
+               AND aa.disabled_at IS NULL
             LEFT JOIN channels ch
                 ON ch.channel_id = tr.channel_id
             WHERE COALESCE(ch.name, tr.channel_id) != 'intro'
@@ -91,10 +107,23 @@ pub(super) async fn get_top_threads(pool: &PgPool, limit: i64) -> Result<Vec<Thr
             s.channel_id,
             COALESCE(ch.name, s.channel_id)         AS channel_name,
             s.thread_ts,
+            COALESCE(s.user_id, '')                  AS user_id,
             s.text,
             s.created_at,
-            COALESCE(u.display_name, s.user_id, '') AS display_name,
-            COALESCE(u.avatar_url, '')              AS avatar_url,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN 'Anonymous'
+                ELSE COALESCE(u.display_name, s.user_id, '')
+            END                                     AS display_name,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN '/placeholder-user.jpg'
+                ELSE COALESCE(u.avatar_url, '')
+            END                                     AS avatar_url,
             ''::text                                 AS search_text,
             s.reaction_count                        AS reaction_count,
             s.reply_count                           AS reply_count,
@@ -105,6 +134,9 @@ pub(super) async fn get_top_threads(pool: &PgPool, limit: i64) -> Result<Vec<Thr
                 + s.participant_count)              AS score
         FROM stats s
         LEFT JOIN users    u  ON u.user_id    = s.user_id
+        LEFT JOIN auth_accounts aa
+            ON aa.slack_user_id = u.user_id
+           AND aa.disabled_at IS NULL
         LEFT JOIN channels ch ON ch.channel_id = s.channel_id
         WHERE COALESCE(ch.name, s.channel_id) != 'intro'
         ORDER BY s.reaction_count * 2 + s.reply_count + s.participant_count DESC
@@ -131,11 +163,24 @@ pub(super) async fn get_top_threads_with_weekly(
                 tr.channel_id,
                 COALESCE(ch.name, tr.channel_id)              AS channel_name,
                 tr.thread_ts,
+                COALESCE(tr.root_user_id, '')                   AS user_id,
                 tr.root_text                                   AS text,
                 tr.search_text                                 AS search_text,
                 tr.root_created_at                             AS created_at,
-                COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
-                COALESCE(u.avatar_url, '')                    AS avatar_url,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN 'Anonymous'
+                    ELSE COALESCE(u.display_name, tr.root_user_id, '')
+                END                                            AS display_name,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN '/placeholder-user.jpg'
+                    ELSE COALESCE(u.avatar_url, '')
+                END                                            AS avatar_url,
                 tr.reaction_count_total                        AS reaction_count,
                 tr.reply_count_total                           AS reply_count,
                 tr.participant_count_total                     AS participant_count,
@@ -145,6 +190,9 @@ pub(super) async fn get_top_threads_with_weekly(
             FROM thread_rollups tr
             LEFT JOIN users u
                 ON u.user_id = tr.root_user_id
+            LEFT JOIN auth_accounts aa
+                ON aa.slack_user_id = u.user_id
+               AND aa.disabled_at IS NULL
             LEFT JOIN channels ch
                 ON ch.channel_id = tr.channel_id
             LEFT JOIN thread_period_scores tps
@@ -215,11 +263,24 @@ pub(super) async fn get_top_threads_with_weekly(
             s.channel_id,
             COALESCE(ch.name, s.channel_id)                           AS channel_name,
             s.thread_ts,
+            COALESCE(s.user_id, '')                                    AS user_id,
             s.text,
             ''::text                                                AS search_text,
             s.created_at,
-            COALESCE(u.display_name, s.user_id, '')                   AS display_name,
-            COALESCE(u.avatar_url, '')                                 AS avatar_url,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN 'Anonymous'
+                ELSE COALESCE(u.display_name, s.user_id, '')
+            END                                                        AS display_name,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN '/placeholder-user.jpg'
+                ELSE COALESCE(u.avatar_url, '')
+            END                                                        AS avatar_url,
             s.reaction_count,
             s.reply_count,
             s.participant_count,
@@ -229,6 +290,9 @@ pub(super) async fn get_top_threads_with_weekly(
         FROM stats s
         LEFT JOIN users u
             ON u.user_id = s.user_id
+        LEFT JOIN auth_accounts aa
+            ON aa.slack_user_id = u.user_id
+           AND aa.disabled_at IS NULL
         LEFT JOIN channels ch
             ON ch.channel_id = s.channel_id
         LEFT JOIN thread_weekly_scores tws

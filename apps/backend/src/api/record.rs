@@ -223,8 +223,32 @@ async fn handle_request(req: Request) -> Result<Response<ResponseBody>, Error> {
     let (parts, body) = req.into_parts();
     let bytes = body.collect().await?.to_bytes();
     let req = http::Request::from_parts(parts, bytes);
-    let (parts, body) = process(pool().await?, req).await?.into_parts();
+    let pool = pool().await?;
+
+    if req.uri().path().starts_with("/api/auth") {
+        let (parts, body) = crate::api::auth::process(pool, req).await?.into_parts();
+        return Ok(Response::from_parts(parts, ResponseBody::from(body)));
+    }
+
+    let mut viewer = None;
+    if path_requires_auth(req.uri().path()) {
+        match crate::api::auth::authorize_request(pool, &req).await {
+            Ok(ctx) => {
+                viewer = Some(ctx);
+            }
+            Err(resp) => {
+                let (parts, body) = resp.into_parts();
+                return Ok(Response::from_parts(parts, ResponseBody::from(body)));
+            }
+        }
+    }
+
+    let (parts, body) = process(pool, req, viewer.as_ref()).await?.into_parts();
     Ok(Response::from_parts(parts, ResponseBody::from(body)))
+}
+
+fn path_requires_auth(path: &str) -> bool {
+    path.starts_with("/api/record") || path.starts_with("/record")
 }
 
 fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
@@ -238,6 +262,7 @@ fn internal_error_response() -> Result<Response<ResponseBody>, Error> {
 pub(crate) async fn process<R: Repository>(
     repo: &R,
     req: http::Request<Bytes>,
+    viewer: Option<&crate::api::auth::AuthContext>,
 ) -> Result<Response<Bytes>, Error> {
     let raw_path = req.uri().path();
     let path = if raw_path == "/" {
@@ -248,7 +273,7 @@ pub(crate) async fn process<R: Repository>(
     let query = req.uri().query().unwrap_or("");
 
     if path.starts_with("/api/record") {
-        return crate::api::record_json::process(repo, path, query).await;
+        return crate::api::record_json::process(repo, path, query, viewer).await;
     }
 
     if path.ends_with("/thread") {

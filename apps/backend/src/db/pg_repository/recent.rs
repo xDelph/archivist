@@ -12,11 +12,24 @@ pub(super) async fn get_recent_threads(pool: &PgPool, limit: i64) -> Result<Vec<
                 tr.channel_id,
                 COALESCE(ch.name, tr.channel_id)              AS channel_name,
                 tr.thread_ts,
+                COALESCE(tr.root_user_id, '')                   AS user_id,
                 tr.root_text                                   AS text,
                 tr.search_text                                 AS search_text,
                 tr.root_created_at                             AS created_at,
-                COALESCE(u.display_name, tr.root_user_id, '') AS display_name,
-                COALESCE(u.avatar_url, '')                    AS avatar_url,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN 'Anonymous'
+                    ELSE COALESCE(u.display_name, tr.root_user_id, '')
+                END                                            AS display_name,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN '/placeholder-user.jpg'
+                    ELSE COALESCE(u.avatar_url, '')
+                END                                            AS avatar_url,
                 tr.reaction_count_total                        AS reaction_count,
                 tr.reply_count_total                           AS reply_count,
                 tr.participant_count_total                     AS participant_count,
@@ -25,6 +38,9 @@ pub(super) async fn get_recent_threads(pool: &PgPool, limit: i64) -> Result<Vec<
             FROM thread_rollups tr
             LEFT JOIN users u
                 ON u.user_id = tr.root_user_id
+            LEFT JOIN auth_accounts aa
+                ON aa.slack_user_id = u.user_id
+               AND aa.disabled_at IS NULL
             LEFT JOIN channels ch
                 ON ch.channel_id = tr.channel_id
             WHERE COALESCE(ch.name, tr.channel_id) != 'intro'
@@ -90,11 +106,24 @@ pub(super) async fn get_recent_threads(pool: &PgPool, limit: i64) -> Result<Vec<
             r.channel_id,
             COALESCE(ch.name, r.channel_id)                           AS channel_name,
             r.thread_ts,
+            COALESCE(r.user_id, '')                                   AS user_id,
             r.text,
             ''::text                                                   AS search_text,
             r.created_at,
-            COALESCE(u.display_name, r.user_id, '')                   AS display_name,
-            COALESCE(u.avatar_url, '')                                AS avatar_url,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN 'Anonymous'
+                ELSE COALESCE(u.display_name, r.user_id, '')
+            END                                                        AS display_name,
+            CASE
+                WHEN COALESCE(u.is_active, TRUE) = FALSE
+                  OR COALESCE(u.is_deleted, FALSE) = TRUE
+                  OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                THEN '/placeholder-user.jpg'
+                ELSE COALESCE(u.avatar_url, '')
+            END                                                        AS avatar_url,
             r.reaction_count,
             r.reply_count,
             r.participant_count,
@@ -103,6 +132,9 @@ pub(super) async fn get_recent_threads(pool: &PgPool, limit: i64) -> Result<Vec<
         FROM roots r
         LEFT JOIN users u
             ON u.user_id = r.user_id
+        LEFT JOIN auth_accounts aa
+            ON aa.slack_user_id = u.user_id
+           AND aa.disabled_at IS NULL
         LEFT JOIN channels ch
             ON ch.channel_id = r.channel_id
         WHERE COALESCE(ch.name, r.channel_id) != 'intro'

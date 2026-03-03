@@ -8,6 +8,7 @@ use sqlx::{PgPool, Row};
 use thiserror::Error;
 use tracing::{info, warn};
 
+use crate::security::{email_lookup_hash, encrypt_email, normalize_email};
 use crate::storage::R2Client;
 
 const HISTORY_LOOKBACK_SECONDS: i64 = 60 * 60;
@@ -54,6 +55,9 @@ pub struct SlackUser {
     pub team_id: String,
     pub display_name: String,
     pub avatar_url: String,
+    pub email: Option<String>,
+    pub is_active: bool,
+    pub is_deleted: bool,
 }
 
 // ── Trait ─────────────────────────────────────────────────────────────────────
@@ -257,12 +261,43 @@ fn parse_user(value: &serde_json::Value) -> Option<SlackUser> {
         .unwrap_or(&user_id)
         .to_owned();
     let avatar_url = profile["image_72"].as_str().unwrap_or("").to_owned();
+    let email = profile["email"]
+        .as_str()
+        .map(normalize_email)
+        .filter(|value| !value.is_empty());
+    let is_deleted = value["deleted"].as_bool().unwrap_or(false);
+    let is_active = !is_deleted;
 
     Some(SlackUser {
         user_id,
         team_id,
         display_name,
         avatar_url,
+        email,
+        is_active,
+        is_deleted,
+    })
+}
+
+pub(crate) fn to_user_record(user: SlackUser) -> anyhow::Result<crate::db::UserRecord> {
+    let (email_ciphertext, email_lookup_hash_value) = match user.email.as_deref() {
+        Some(email) => {
+            let ciphertext = encrypt_email(email)?;
+            let hash = email_lookup_hash(email)?;
+            (Some(ciphertext), Some(hash))
+        }
+        None => (None, None),
+    };
+
+    Ok(crate::db::UserRecord {
+        user_id: user.user_id,
+        team_id: user.team_id,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+        email_ciphertext,
+        email_lookup_hash: email_lookup_hash_value,
+        is_active: user.is_active,
+        is_deleted: user.is_deleted,
     })
 }
 
@@ -852,14 +887,10 @@ where
 
     match client.users_info(user_id).await {
         Ok(Some(user)) => {
-            repo.upsert_user(&crate::db::UserRecord {
-                user_id: user.user_id.clone(),
-                team_id: user.team_id,
-                display_name: user.display_name,
-                avatar_url: user.avatar_url,
-            })
-            .await?;
-            cache.refreshed.insert(user.user_id);
+            let user_id = user.user_id.clone();
+            let record = to_user_record(user)?;
+            repo.upsert_user(&record).await?;
+            cache.refreshed.insert(user_id);
         }
         Ok(None) => {
             cache.skipped.insert(user_id.to_owned());
@@ -1043,8 +1074,6 @@ where
     R: crate::db::Repository,
     S: SlackApi,
 {
-    use crate::db::UserRecord;
-
     if max_pages == 0 {
         return Ok(UserCacheSliceStats::default());
     }
@@ -1071,16 +1100,27 @@ where
         };
 
         let users_in_page = users.len();
+        let humans_in_page = users
+            .iter()
+            .filter(|user| user.user_id != "USLACKBOT")
+            .count();
+        let humans_with_email_in_page = users
+            .iter()
+            .filter(|user| user.user_id != "USLACKBOT")
+            .filter(|user| user.email.is_some())
+            .count();
+        if humans_in_page > 0 && humans_with_email_in_page == 0 {
+            warn!(
+                page = stats.pages + 1,
+                humans_in_page,
+                "users.list returned no user emails in this page; likely missing users:read.email scope or stale token install"
+            );
+        }
         stats.pages += 1;
         stats.users_cached += users_in_page;
         for u in users {
-            repo.upsert_user(&UserRecord {
-                user_id: u.user_id,
-                team_id: u.team_id,
-                display_name: u.display_name,
-                avatar_url: u.avatar_url,
-            })
-            .await?;
+            let record = to_user_record(u)?;
+            repo.upsert_user(&record).await?;
         }
 
         let has_next = next.is_some();

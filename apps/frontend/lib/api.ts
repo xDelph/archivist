@@ -7,7 +7,7 @@ import type {
   ThreadMessage,
 } from "@/lib/types"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? ""
+const API_BASE_URL = ""
 
 const AUTHOR_COLORS = [
   "bg-chart-1",
@@ -207,6 +207,10 @@ function mapOverviewStats(stats: ApiOverviewStats): OverviewStats {
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: "no-store" })
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login"
+      throw new Error("Unauthorized")
+    }
     const bodyPreview = (await response.text()).slice(0, 140).replace(/\s+/g, " ").trim()
     throw new Error(
       bodyPreview

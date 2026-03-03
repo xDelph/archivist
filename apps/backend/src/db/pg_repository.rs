@@ -18,6 +18,7 @@ pub(super) fn row_to_thread_summary(row: &sqlx::postgres::PgRow) -> Result<Threa
         channel_id: row.try_get("channel_id")?,
         channel_name: row.try_get("channel_name")?,
         thread_ts: row.try_get("thread_ts")?,
+        user_id: row.try_get("user_id")?,
         text: row.try_get("text")?,
         created_at: row.try_get("created_at")?,
         display_name: row.try_get("display_name")?,
@@ -156,20 +157,45 @@ impl Repository for PgPool {
     }
 
     async fn upsert_user(&self, u: &UserRecord) -> Result<()> {
-        sqlx::query!(
+        sqlx::query(
             r#"
-            INSERT INTO users (user_id, team_id, display_name, avatar_url)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users (
+                user_id,
+                team_id,
+                display_name,
+                avatar_url,
+                email_ciphertext,
+                email_lookup_hash,
+                is_active,
+                is_deleted,
+                disabled_at,
+                last_synced_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $7 = FALSE OR $8 = TRUE THEN NOW() ELSE NULL END, NOW())
             ON CONFLICT (user_id) DO UPDATE SET
                 display_name = EXCLUDED.display_name,
-                avatar_url   = EXCLUDED.avatar_url,
-                cached_at    = NOW()
+                avatar_url = EXCLUDED.avatar_url,
+                email_ciphertext = COALESCE(EXCLUDED.email_ciphertext, users.email_ciphertext),
+                email_lookup_hash = COALESCE(EXCLUDED.email_lookup_hash, users.email_lookup_hash),
+                is_active = EXCLUDED.is_active,
+                is_deleted = EXCLUDED.is_deleted,
+                disabled_at = CASE
+                    WHEN EXCLUDED.is_active = FALSE OR EXCLUDED.is_deleted = TRUE
+                        THEN COALESCE(users.disabled_at, NOW())
+                    ELSE NULL
+                END,
+                cached_at = NOW(),
+                last_synced_at = NOW()
             "#,
-            u.user_id,
-            u.team_id,
-            u.display_name,
-            u.avatar_url,
         )
+        .bind(&u.user_id)
+        .bind(&u.team_id)
+        .bind(&u.display_name)
+        .bind(&u.avatar_url)
+        .bind(&u.email_ciphertext)
+        .bind(&u.email_lookup_hash)
+        .bind(u.is_active)
+        .bind(u.is_deleted)
         .execute(self)
         .await?;
         Ok(())
@@ -390,9 +416,22 @@ impl Repository for PgPool {
             r#"
             SELECT
                 m.ts,
+                COALESCE(m.user_id, '')                     AS user_id,
                 m.text,
-                COALESCE(u.display_name, m.user_id, '') AS display_name,
-                COALESCE(u.avatar_url, '')               AS avatar_url,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN 'Anonymous'
+                    ELSE COALESCE(u.display_name, m.user_id, '')
+                END                                      AS display_name,
+                CASE
+                    WHEN COALESCE(u.is_active, TRUE) = FALSE
+                      OR COALESCE(u.is_deleted, FALSE) = TRUE
+                      OR COALESCE(aa.is_anonymous, FALSE) = TRUE
+                    THEN '/placeholder-user.jpg'
+                    ELSE COALESCE(u.avatar_url, '')
+                END                                      AS avatar_url,
                 COALESCE(
                     (SELECT jsonb_agg(
                                 jsonb_build_object('name', reaction_name, 'count', cnt)
@@ -431,6 +470,9 @@ impl Repository for PgPool {
                 )                                        AS reactions
             FROM messages m
             LEFT JOIN users u ON u.user_id = m.user_id
+            LEFT JOIN auth_accounts aa
+                ON aa.slack_user_id = u.user_id
+               AND aa.disabled_at IS NULL
             WHERE m.channel_id = $1
               AND (m.thread_ts = $2 OR m.ts = $2)
             ORDER BY m.ts ASC
@@ -445,6 +487,7 @@ impl Repository for PgPool {
             .map(|row| -> Result<ThreadMessage> {
                 Ok(ThreadMessage {
                     ts: row.try_get("ts")?,
+                    user_id: row.try_get("user_id")?,
                     text: row.try_get("text")?,
                     display_name: row.try_get("display_name")?,
                     avatar_url: row.try_get("avatar_url")?,

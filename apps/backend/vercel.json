@@ -13,6 +13,7 @@
     { "src": "/api/sync/aggregate", "dest": "/api/sync_aggregate_worker.rs" },
     { "src": "/api/admin/sync", "dest": "/api/backfill.rs" },
     { "src": "/api/sync", "dest": "/api/backfill.rs" },
+    { "src": "/api/auth(/.*)?", "dest": "/api/record.rs" },
     { "src": "/api/record(/.*)?", "dest": "/api/record.rs" },
     { "src": "/record(/.*)?", "dest": "/api/record.rs" }
   ]
