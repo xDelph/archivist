@@ -160,8 +160,14 @@ fn render_tokens_and_plain(
             }
             if end < len {
                 let inner = &text[start..end];
-                out.push_str(&render_token(inner, users, channels));
-                i = end + 1;
+                if is_supported_slack_token(inner) {
+                    out.push_str(&render_token(inner, users, channels));
+                    i = end + 1;
+                } else {
+                    // Not a Slack token (e.g. "en < 1 min ..."), keep '<' literal and continue.
+                    out.push_str("&lt;");
+                    i += 1;
+                }
             } else {
                 out.push_str("&lt;");
                 i += 1;
@@ -179,6 +185,19 @@ fn render_tokens_and_plain(
     }
 
     out
+}
+
+fn is_supported_slack_token(inner: &str) -> bool {
+    if inner.contains('<') {
+        return false;
+    }
+    inner.starts_with('@')
+        || inner.starts_with('#')
+        || inner == "!here"
+        || inner == "!channel"
+        || inner == "!everyone"
+        || inner.starts_with("http://")
+        || inner.starts_with("https://")
 }
 
 fn render_code_block(raw: &str) -> String {
@@ -315,9 +334,13 @@ fn render_token(
 
     // URL: <https://...|label> or <https://...>
     if inner.starts_with("http://") || inner.starts_with("https://") {
-        let has_label = inner.contains('|');
+        let has_label = inner
+            .split_once('|')
+            .map(|(_, label)| !label.trim().is_empty())
+            .unwrap_or(false);
         let (url, label) = split_pipe(inner);
-        return render_url(url, label, channels, has_label);
+        let effective_label = if has_label { label } else { url };
+        return render_url(url, effective_label, channels, has_label);
     }
 
     // Unknown — escape and render as literal
@@ -442,11 +465,22 @@ pub fn highlight_search(html: &str, search: &str) -> String {
 /// Decode the three HTML entities that Slack pre-encodes in message text.
 /// Must be applied before `escape_html` to avoid double-encoding.
 fn decode_slack_entities(s: &str) -> String {
-    // Order matters: decode &lt;/&gt; before &amp; so we don't turn
-    // "&amp;lt;" into "<" instead of the correct "&lt;".
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
+    let mut current = s.to_owned();
+    // Decode up to two passes to handle inputs like "&amp;lt;https://...&amp;gt;"
+    // while avoiding unbounded decoding loops.
+    for _ in 0..2 {
+        // Order matters: decode &lt;/&gt; before &amp; so we don't turn
+        // "&amp;lt;" into "<" in the same pass unexpectedly.
+        let next = current
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&");
+        if next == current {
+            break;
+        }
+        current = next;
+    }
+    current
 }
 
 /// Parse an internal Slack thread URL into `(channel_id, ts)` when it matches

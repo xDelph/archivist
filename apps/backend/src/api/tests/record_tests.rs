@@ -151,6 +151,50 @@ fn test_render_slack_text_url_with_label() {
 }
 
 #[test]
+fn test_render_slack_text_url_without_label() {
+    let html = render_slack_text("<https://ship-fast.devliv.io/>", &HashMap::new(), &HashMap::new())
+        .into_string();
+    assert!(html.contains("href=\"https://ship-fast.devliv.io/\""));
+    assert!(html.contains(">https://ship-fast.devliv.io/</a>"));
+}
+
+#[test]
+fn test_render_slack_text_url_with_empty_label_falls_back_to_url() {
+    let html = render_slack_text(
+        "<https://ship-fast.devliv.io/|>",
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .into_string();
+    assert!(html.contains("href=\"https://ship-fast.devliv.io/\""));
+    assert!(html.contains(">https://ship-fast.devliv.io/</a>"));
+}
+
+#[test]
+fn test_render_slack_text_double_encoded_slack_url_is_linkified() {
+    let html = render_slack_text(
+        "&amp;lt;https://ship-fast.devliv.io/&amp;gt;",
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .into_string();
+    assert!(html.contains("href=\"https://ship-fast.devliv.io/\""));
+    assert!(html.contains(">https://ship-fast.devliv.io/</a>"));
+}
+
+#[test]
+fn test_render_slack_text_handles_literal_lt_before_slack_url_token() {
+    let html = render_slack_text(
+        "en < 1 min ... <https://ship-fast.devliv.io/>",
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .into_string();
+    assert!(html.contains("en &lt; 1 min"));
+    assert!(html.contains(r#"href="https://ship-fast.devliv.io/""#));
+}
+
+#[test]
 fn test_render_slack_text_plain_url_is_linkified() {
     let html = render_slack_text(
         "See https://example.com/docs.",

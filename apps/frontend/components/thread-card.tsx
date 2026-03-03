@@ -22,6 +22,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { formatMessageTimestamp } from "@/lib/datetime"
+import { extractSlackUrlsInOrder } from "@/lib/slack-links"
 import type { SlackThread, ThreadFile, ThreadMessage } from "@/lib/types"
 
 interface ThreadCardProps {
@@ -38,6 +39,149 @@ interface ThreadCardProps {
 
 interface ViewerFile extends ThreadFile {
   key: string
+}
+
+interface LinkPreviewPayload {
+  url: string
+  title: string | null
+  description: string | null
+  image: string | null
+  siteName: string | null
+}
+
+interface LinkPreviewState {
+  loading: boolean
+  payload: LinkPreviewPayload | null
+}
+
+const linkPreviewCache = new Map<string, LinkPreviewPayload | null>()
+const linkPreviewInflight = new Map<string, Promise<LinkPreviewPayload | null>>()
+const linkPreviewQueue: Array<() => void> = []
+const LINK_PREVIEW_CONCURRENCY = 3
+let activeLinkPreviewRequests = 0
+
+function drainLinkPreviewQueue(): void {
+  while (
+    activeLinkPreviewRequests < LINK_PREVIEW_CONCURRENCY &&
+    linkPreviewQueue.length > 0
+  ) {
+    const task = linkPreviewQueue.shift()
+    if (!task) return
+    activeLinkPreviewRequests += 1
+    task()
+  }
+}
+
+async function scheduleLinkPreviewFetch(url: string): Promise<LinkPreviewPayload | null> {
+  return await new Promise<LinkPreviewPayload | null>((resolve) => {
+    const run = () => {
+      fetchLinkPreview(url)
+        .then(resolve)
+        .catch(() => resolve(null))
+        .finally(() => {
+          activeLinkPreviewRequests = Math.max(activeLinkPreviewRequests - 1, 0)
+          drainLinkPreviewQueue()
+        })
+    }
+    linkPreviewQueue.push(run)
+    drainLinkPreviewQueue()
+  })
+}
+
+async function fetchLinkPreview(url: string): Promise<LinkPreviewPayload | null> {
+  const endpoint = `/api/link-preview?url=${encodeURIComponent(url)}`
+  const response = await fetch(endpoint, { method: "GET", cache: "force-cache" })
+  if (!response.ok) return null
+  const payload = (await response.json()) as LinkPreviewPayload | null
+  return payload
+}
+
+async function resolveLinkPreview(url: string): Promise<LinkPreviewPayload | null> {
+  if (linkPreviewCache.has(url)) {
+    return linkPreviewCache.get(url) ?? null
+  }
+  const existing = linkPreviewInflight.get(url)
+  if (existing) return existing
+
+  const request = scheduleLinkPreviewFetch(url)
+    .then((payload) => {
+      linkPreviewCache.set(url, payload)
+      return payload
+    })
+    .catch(() => {
+      linkPreviewCache.set(url, null)
+      return null
+    })
+    .finally(() => {
+      linkPreviewInflight.delete(url)
+    })
+  linkPreviewInflight.set(url, request)
+  return request
+}
+
+function useLinkPreviews(urls: string[]): Record<string, LinkPreviewState> {
+  const [states, setStates] = useState<Record<string, LinkPreviewState>>({})
+
+  useEffect(() => {
+    if (urls.length === 0) {
+      setStates({})
+      return
+    }
+
+    const nextStates: Record<string, LinkPreviewState> = {}
+    for (const url of urls) {
+      if (linkPreviewCache.has(url)) {
+        nextStates[url] = {
+          loading: false,
+          payload: linkPreviewCache.get(url) ?? null,
+        }
+      } else {
+        nextStates[url] = { loading: true, payload: null }
+      }
+    }
+    setStates(nextStates)
+
+    let cancelled = false
+    let timeoutId: number | null = null
+    let idleId: number | null = null
+
+    const startFetches = () => {
+      for (const url of urls) {
+        if (linkPreviewCache.has(url)) continue
+        void resolveLinkPreview(url).then((payload) => {
+          if (cancelled) return
+          setStates((current) => {
+            if (!current[url]) return current
+            return {
+              ...current,
+              [url]: { loading: false, payload },
+            }
+          })
+        })
+      }
+    }
+
+    // Defer previews slightly so thread message rendering wins first.
+    timeoutId = window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(() => {
+          if (!cancelled) startFetches()
+        })
+      } else {
+        startFetches()
+      }
+    }, 120)
+
+    return () => {
+      cancelled = true
+      if (timeoutId != null) window.clearTimeout(timeoutId)
+      if (idleId != null && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId)
+      }
+    }
+  }, [urls])
+
+  return states
 }
 
 function getClosestFromTarget(target: EventTarget | null, selector: string): Element | null {
@@ -131,6 +275,12 @@ function ThreadMessageItem({
 }) {
   const reactionDetails = (msg.reactionDetails ?? []).filter((reaction) => reaction.count > 0)
   const formattedTimestamp = formatMessageTimestamp(msg.timestampIso, msg.ts)
+  const previewLinks = useMemo(() => {
+    const extracted = extractSlackUrlsInOrder(msg.message)
+    const fileUrls = new Set((msg.files ?? []).map((file) => file.url))
+    return extracted.filter((url) => !fileUrls.has(url))
+  }, [msg.files, msg.message])
+  const linkPreviews = useLinkPreviews(previewLinks)
 
   function handleMessageClick(event: React.MouseEvent<HTMLElement>): void {
     const mention = getClosestFromTarget(event.target, ".mention")
@@ -199,7 +349,7 @@ function ThreadMessageItem({
           onClickCapture={handleMessageClick}
           dangerouslySetInnerHTML={{ __html: msg.messageHtml }}
         />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2">
           {(msg.files ?? []).length > 0 && (
             <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
               {(msg.files ?? []).map((file, idx) => {
@@ -240,6 +390,50 @@ function ThreadMessageItem({
               })}
             </div>
           )}
+          {previewLinks.length > 0 && (
+            <div className="flex w-full flex-col gap-2">
+              {previewLinks.map((url, idx) => {
+                const state = linkPreviews[url]
+                const preview = state?.payload
+                return (
+                  <a
+                    key={`${msg.id}:link:${idx}:${url}`}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group overflow-hidden rounded-md border border-border/70 bg-secondary/40 text-left transition-colors hover:border-primary/50 hover:bg-secondary/70"
+                  >
+                    {preview?.image && (
+                      <img
+                        src={preview.image}
+                        alt={preview.title ?? preview.siteName ?? url}
+                        loading="lazy"
+                        className="h-32 w-full object-cover"
+                      />
+                    )}
+                    <div className="flex items-start gap-2 px-3 py-2">
+                      <Link2 className="mt-0.5 size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-xs font-medium text-foreground">
+                          {preview?.title ?? url}
+                        </p>
+                        {preview?.description && (
+                          <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+                            {preview.description}
+                          </p>
+                        )}
+                        <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                          {preview?.siteName ?? new URL(url).hostname}
+                          {state?.loading ? " · loading preview…" : ""}
+                        </p>
+                      </div>
+                    </div>
+                  </a>
+                )
+              })}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
           {reactionDetails.length > 0 && (
             <div className="flex flex-wrap items-center gap-1">
               {reactionDetails.map((reaction) => (
@@ -260,6 +454,7 @@ function ThreadMessageItem({
               {msg.reactions}
             </span>
           )}
+          </div>
         </div>
       </div>
     </div>

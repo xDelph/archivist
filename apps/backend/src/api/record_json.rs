@@ -786,16 +786,60 @@ fn percentage_change(current: i64, previous: i64) -> f64 {
 }
 
 fn extract_first_url(text: &str) -> Option<String> {
-    text.split_whitespace().find_map(|token| {
-        if token.starts_with("http://") || token.starts_with("https://") {
-            return Some(
-                token
-                    .trim_end_matches(is_trailing_url_punctuation)
-                    .to_owned(),
-            );
+    let mut idx = 0usize;
+    while idx < text.len() {
+        let remaining = &text[idx..];
+        let is_http = remaining.starts_with("http://");
+        let is_https = remaining.starts_with("https://");
+        if is_http || is_https {
+            let prev = text[..idx].chars().next_back();
+            let is_boundary = prev
+                .map(|c| c.is_whitespace() || matches!(c, '(' | '[' | '{' | '"' | '\''))
+                .unwrap_or(true);
+            if is_boundary {
+                let mut end = text.len();
+                for (offset, ch) in remaining.char_indices() {
+                    if ch.is_whitespace() {
+                        end = idx + offset;
+                        break;
+                    }
+                }
+                let normalized = text[idx..end].trim_end_matches(is_trailing_url_punctuation);
+                if normalized.starts_with("http://") || normalized.starts_with("https://") {
+                    return Some(normalized.to_owned());
+                }
+                idx = end;
+                continue;
+            }
         }
-        None
-    })
+
+        if text.as_bytes()[idx] == b'<' {
+            let rest = &text[idx + 1..];
+            if let Some(close_rel) = rest.find('>') {
+                let inner = &rest[..close_rel];
+                if inner.contains('<') {
+                    idx += 1;
+                    continue;
+                }
+                let url_part = inner.split_once('|').map(|(url, _)| url).unwrap_or(inner);
+                let normalized = url_part
+                    .trim()
+                    .trim_end_matches(is_trailing_url_punctuation);
+                if normalized.starts_with("http://") || normalized.starts_with("https://") {
+                    return Some(normalized.to_owned());
+                }
+                idx += close_rel + 2;
+                continue;
+            }
+        }
+        idx += text[idx..]
+            .chars()
+            .next()
+            .map(|ch| ch.len_utf8())
+            .unwrap_or(1);
+    }
+
+    None
 }
 
 fn is_trailing_url_punctuation(c: char) -> bool {
@@ -1027,5 +1071,29 @@ mod tests {
         assert_eq!(changes.threads_change, 0.0);
         assert_eq!(changes.files_change, 0.0);
         assert_eq!(changes.users_change, 0.0);
+    }
+
+    #[test]
+    fn extract_first_url_supports_slack_wrapped_url_without_label() {
+        let text = "Ship it <https://ship-fast.devliv.io/> now";
+        assert_eq!(
+            extract_first_url(text).as_deref(),
+            Some("https://ship-fast.devliv.io/")
+        );
+    }
+
+    #[test]
+    fn extract_first_url_supports_slack_wrapped_url_with_label() {
+        let text = "Check <https://example.com/docs|Example docs> please";
+        assert_eq!(extract_first_url(text).as_deref(), Some("https://example.com/docs"));
+    }
+
+    #[test]
+    fn extract_first_url_handles_literal_lt_before_slack_link() {
+        let text = "en < 1 min ... <https://ship-fast.devliv.io/>";
+        assert_eq!(
+            extract_first_url(text).as_deref(),
+            Some("https://ship-fast.devliv.io/")
+        );
     }
 }

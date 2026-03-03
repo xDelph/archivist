@@ -56,6 +56,11 @@ fn is_service_env_development() -> bool {
         .unwrap_or(false)
 }
 
+fn default_env_filter(is_dev: bool) -> String {
+    let base = if is_dev { "trace" } else { "info" };
+    format!("{base},sqlx::query=warn")
+}
+
 pub fn init_tracing() {
     // Local `vercel dev` may not expose shell env vars directly to Rust lambdas.
     // Load `.env` as a fallback source for SERVICE_ENV.
@@ -64,9 +69,8 @@ pub fn init_tracing() {
     install_panic_hook();
 
     let is_dev = is_service_env_development();
-    let default_level = if is_dev { "trace" } else { "info" };
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(default_env_filter(is_dev)));
 
     if is_dev {
         if let Err(err) = fs::create_dir_all("./logs") {
@@ -104,7 +108,7 @@ pub fn init_tracing() {
 
 #[cfg(test)]
 mod tests {
-    use super::is_service_env_development;
+    use super::{default_env_filter, is_service_env_development};
     use std::sync::{Mutex, OnceLock};
 
     static SERVICE_ENV_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -163,5 +167,11 @@ mod tests {
         with_service_env(None, || {
             assert!(!is_service_env_development());
         });
+    }
+
+    #[test]
+    fn default_filter_always_reduces_sqlx_query_noise() {
+        assert!(default_env_filter(true).contains("sqlx::query=warn"));
+        assert!(default_env_filter(false).contains("sqlx::query=warn"));
     }
 }
