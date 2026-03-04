@@ -14,19 +14,19 @@ This repository uses a monorepo layout with Turborepo orchestration.
 ## Tooling
 
 - Turborepo for task orchestration
-- pnpm workspaces for JS package management
+- Bun workspaces for JS package management
 - Cargo for Rust workspace/package management
 
 ## Local Dev
 
-- Backend: `pnpm run dev:backend` (Vercel dev on `http://localhost:3100`)
-- Frontend: `pnpm run dev:frontend` (Next.js on `http://localhost:3001`)
+- Backend: `bun run dev:backend` (Vercel dev on `http://localhost:3100`)
+- Frontend: `bun run dev:frontend` (Next.js on `http://localhost:3001`)
 - Keep port `3000` free when running backend locally: current `vercel_runtime` binds function workers to `127.0.0.1:3000`.
-- Backend regression smoke check (API + logs): `pnpm run check:backend:dev` (or `pnpm run check:backend:dev -- http://localhost:3100`)
+- Backend regression smoke check (API + logs): `bun run check:backend:dev` (or `bun run check:backend:dev -- http://localhost:3100`)
 
 ## Release Prep
 
 - Env template: `.env.example`
 - Phase 5 runbook: `docs/phase5-deploy-cutover.md`
-- Preflight check: `pnpm run release:preflight`
-- Smoke test: `pnpm run release:smoke -- <backend_url> <frontend_url>`
+- Preflight check: `bun run release:preflight`
+- Smoke test: `bun run release:smoke -- <backend_url> <frontend_url>`
