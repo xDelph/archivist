@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run typecheck"
+    "check": "bun run typecheck"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

@@ -13,7 +13,7 @@ Prepared assets in repo:
 - Access to Vercel team/project settings
 - Access to Slack App configuration
 - Access to GitHub repo secrets
-- Local tools: `pnpm`, `cargo`, `vercel` CLI (optional but recommended)
+- Local tools: `bun`, `cargo`, `vercel` CLI (optional but recommended)
 
 ## 1. Create Two Vercel Projects
 
@@ -81,13 +81,13 @@ Suggested flow:
 Local preflight (checks required env keys):
 
 ```bash
-pnpm run release:preflight
+bun run release:preflight
 ```
 
 Smoke test deployed pair:
 
 ```bash
-pnpm run release:smoke -- https://<backend-domain> https://<frontend-domain>
+bun run release:smoke -- https://<backend-domain> https://<frontend-domain>
 ```
 
 Or run from GitHub Actions:

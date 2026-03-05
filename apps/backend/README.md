@@ -167,14 +167,14 @@ scripts/db/probe_read_model_queries.sh --tab week --limit 100 --explain
 Use this script to validate local backend behavior end-to-end (health + each tab + one thread payload + new log lines):
 
 ```bash
-pnpm run check:backend:dev
+bun run check:backend:dev
 ```
 
 Optional arguments:
 
 ```bash
-pnpm run check:backend:dev -- http://localhost:3100
-pnpm run check:backend:dev -- http://localhost:3100 ./logs/app.log
+bun run check:backend:dev -- http://localhost:3100
+bun run check:backend:dev -- http://localhost:3100 ./logs/app.log
 ```
 
 ## Deployment

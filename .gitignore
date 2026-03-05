@@ -12,5 +12,5 @@ target/
 node_modules/
 apps/*/node_modules/
 apps/frontend/.next/
-.pnpm-store/
+.bun/
 .env*.local
