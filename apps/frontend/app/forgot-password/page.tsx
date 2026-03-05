@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-base md:text-sm"
           />
         </label>
 

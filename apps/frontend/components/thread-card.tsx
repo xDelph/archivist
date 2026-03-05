@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   MessageSquare,
@@ -13,7 +13,6 @@ import {
   ExternalLink,
   ChevronDown,
   Paperclip,
-  LoaderCircle,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -58,6 +57,8 @@ const linkPreviewCache = new Map<string, LinkPreviewPayload | null>()
 const linkPreviewInflight = new Map<string, Promise<LinkPreviewPayload | null>>()
 const linkPreviewQueue: Array<() => void> = []
 const LINK_PREVIEW_CONCURRENCY = 3
+const COLLAPSE_SCROLL_TOP_OFFSET_PX = 96
+const THREAD_LOADING_INDICATOR_DELAY_MS = 180
 let activeLinkPreviewRequests = 0
 
 function drainLinkPreviewQueue(): void {
@@ -479,15 +480,33 @@ export function ThreadCard({
     thread.threadMessages ?? null
   )
   const [loading, setLoading] = useState(false)
+  const [showLoadingState, setShowLoadingState] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setMessages(thread.threadMessages ?? null)
     setLoading(false)
+    setShowLoadingState(false)
     setLoadError(null)
     setViewerIndex(null)
   }, [thread.id, thread.threadMessages])
+
+  useEffect(() => {
+    if (!loading) {
+      setShowLoadingState(false)
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowLoadingState(true)
+    }, THREAD_LOADING_INDICATOR_DELAY_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [loading])
 
   const scoreScaleMax = Math.max(maxScore ?? thread.score, 1)
   const scorePercent = Math.min((thread.score / scoreScaleMax) * 100, 100)
@@ -544,11 +563,39 @@ export function ThreadCard({
     }
   }, [viewerIndex, viewerFiles.length])
 
+  function scrollPreviewIntoViewAfterCollapse(preview: HTMLDivElement): void {
+    const rect = preview.getBoundingClientRect()
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+    const shouldAdjust =
+      rect.top < COLLAPSE_SCROLL_TOP_OFFSET_PX || rect.bottom > viewportHeight
+
+    if (!shouldAdjust) return
+
+    const targetTop = Math.max(
+      window.scrollY + rect.top - COLLAPSE_SCROLL_TOP_OFFSET_PX,
+      0
+    )
+    window.scrollTo({ top: targetTop, behavior: "smooth" })
+  }
+
   async function toggleExpanded(): Promise<void> {
     const next = !expanded
-    onExpandedChange(next)
+    if (!next) {
+      onExpandedChange(false)
+      const preview = cardRef.current
+      if (preview) {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            scrollPreviewIntoViewAfterCollapse(preview)
+          })
+        })
+      }
+      return
+    }
 
-    if (!next || !canExpand || messages !== null || !onLoadThreadMessages || loading) {
+    onExpandedChange(true)
+
+    if (!canExpand || messages !== null || !onLoadThreadMessages || loading) {
       return
     }
 
@@ -624,6 +671,7 @@ export function ThreadCard({
   return (
     <>
       <div
+        ref={cardRef}
         className={`group relative rounded-lg border transition-colors ${
           expanded
             ? "border-primary/40 bg-card"
@@ -751,11 +799,18 @@ export function ThreadCard({
         </div>
 
         {expanded && canExpand && (
-          <div id={`thread-messages-${thread.id}`} className="border-t border-border">
-            {loading && (
-              <div className="flex items-center gap-2 px-4 py-4 pl-14 text-xs text-muted-foreground sm:pl-[4.25rem]">
-                <LoaderCircle className="size-3.5 animate-spin" />
-                Loading thread...
+          <div
+            id={`thread-messages-${thread.id}`}
+            className="border-t border-border motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-200"
+          >
+            {loading && showLoadingState && (
+              <div className="px-4 py-4 pl-14 sm:pl-[4.25rem]">
+                <div className="space-y-2 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200">
+                  <div className="h-2.5 w-24 rounded-full bg-secondary/90" />
+                  <div className="h-2 w-full max-w-[28rem] rounded-full bg-secondary/70" />
+                  <div className="h-2 w-full max-w-[22rem] rounded-full bg-secondary/70" />
+                </div>
+                <span className="sr-only">Loading thread...</span>
               </div>
             )}
 
@@ -766,7 +821,7 @@ export function ThreadCard({
             )}
 
             {!loading && !loadError && loadedMessages.length > 0 && (
-              <>
+              <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-2 motion-safe:duration-300">
                 <div className="flex items-center gap-2 bg-secondary/50 px-4 py-2">
                   <MessageSquare className="size-3.5 text-primary" />
                   <span className="text-xs font-medium text-foreground">
@@ -810,7 +865,7 @@ export function ThreadCard({
                 <button
                   type="button"
                   className="flex w-full items-center justify-between border-t border-border/50 px-4 py-2.5 pl-14 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground sm:pl-[4.25rem]"
-                  onClick={() => onExpandedChange(false)}
+                  onClick={() => void toggleExpanded()}
                 >
                   <span>End of thread</span>
                   <span className="flex items-center gap-1">
@@ -818,7 +873,7 @@ export function ThreadCard({
                     <ChevronDown className="size-3 rotate-180" />
                   </span>
                 </button>
-              </>
+              </div>
             )}
 
             {!loading && !loadError && loadedMessages.length === 0 && (

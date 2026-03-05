@@ -62,7 +62,7 @@ export default function ResetPasswordPage() {
             required
             value={token}
             onChange={(event) => setToken(event.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-base md:text-sm"
           />
         </label>
 
@@ -74,7 +74,7 @@ export default function ResetPasswordPage() {
             required
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-base md:text-sm"
           />
         </label>
 

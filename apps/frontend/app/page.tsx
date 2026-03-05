@@ -31,6 +31,8 @@ const DENSITY_KEY = "archivist_density"
 const STATS_VISIBILITY_KEY = "archivist_stats_visibility"
 const SEARCH_DEBOUNCE_MS = 250
 const TABS: DashboardTab[] = ["recent", "week", "month", "top"]
+const TAB_TRANSITION_DURATION_MS = 1000
+const LANDING_FADE_DURATION_MS = 1000
 const EMPTY_DASHBOARD: DashboardData = {
   tab: "recent",
   workspaceUrl: null,
@@ -84,6 +86,25 @@ function tabDocumentLabel(tab: DashboardTab): string {
   return "Top Threads"
 }
 
+function buildStatsMotionKey(dashboard: DashboardData): string {
+  const stats = dashboard.overviewStats
+  const channelsPart = dashboard.channelStats
+    .map((channel) => `${channel.name}:${channel.count}`)
+    .join("|")
+  const activityPart = dashboard.activityData
+    .map((point) => `${point.date}:${point.messages}:${point.threads}`)
+    .join("|")
+  return [
+    dashboard.tab,
+    stats.totalMessages,
+    stats.totalThreads,
+    stats.totalFiles,
+    stats.totalUsers,
+    channelsPart,
+    activityPart,
+  ].join("::")
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
@@ -132,9 +153,9 @@ function highlightHtml(html: string, term: string): string {
   })
 }
 
-function InitialLoadingShell() {
+function InitialLoadingShell({ className = "min-h-screen" }: { className?: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className={`flex ${className} items-center justify-center bg-background px-4`}>
       <div className="select-none text-center">
         <h1 className="text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
           Archivist
@@ -158,6 +179,8 @@ export default function ArchivistDashboard() {
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<DashboardTab>("recent")
+  const [pendingTab, setPendingTab] = useState<DashboardTab | null>(null)
+  const [tabTransitionDirection, setTabTransitionDirection] = useState<1 | -1>(1)
   const [tabCache, setTabCache] = useState<Partial<Record<DashboardTab, DashboardData>>>({})
   const [lastDashboard, setLastDashboard] = useState<DashboardData | null>(null)
   const [theme, setTheme] = useState<ThemePref>("dark")
@@ -166,7 +189,16 @@ export default function ArchivistDashboard() {
   const [loadingTabs, setLoadingTabs] = useState<DashboardTab[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  const [isDesktopViewport, setIsDesktopViewport] = useState(false)
+  const [threadListMinHeight, setThreadListMinHeight] = useState<number | null>(null)
+  const [isSlideAnimating, setIsSlideAnimating] = useState(false)
+  const [showLandingOverlay, setShowLandingOverlay] = useState(true)
+  const [isLandingOverlayFading, setIsLandingOverlayFading] = useState(false)
+  const [isDashboardVisible, setIsDashboardVisible] = useState(false)
   const inFlightTabs = useRef<Set<DashboardTab>>(new Set())
+  const tabSwitchTimeoutRef = useRef<number | null>(null)
+  const threadListRef = useRef<HTMLElement | null>(null)
+  const landingOverlayTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -195,6 +227,7 @@ export default function ArchivistDashboard() {
       }
     } catch (_err) {}
 
+    setIsDesktopViewport(window.matchMedia("(min-width: 1024px)").matches)
     setReady(true)
   }, [])
 
@@ -227,6 +260,17 @@ export default function ArchivistDashboard() {
   }, [ready, theme])
 
   useEffect(() => {
+    return () => {
+      if (tabSwitchTimeoutRef.current != null) {
+        window.clearTimeout(tabSwitchTimeoutRef.current)
+      }
+      if (landingOverlayTimeoutRef.current != null) {
+        window.clearTimeout(landingOverlayTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (!ready) return
     const root = document.documentElement
     root.classList.toggle("compact-mode", density === "compact")
@@ -234,6 +278,21 @@ export default function ArchivistDashboard() {
       localStorage.setItem(DENSITY_KEY, density)
     } catch (_err) {}
   }, [ready, density])
+
+  useEffect(() => {
+    if (!ready) return
+    const mediaQuery = window.matchMedia("(min-width: 1024px)")
+    const syncViewport = () => setIsDesktopViewport(mediaQuery.matches)
+    syncViewport()
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncViewport)
+      return () => mediaQuery.removeEventListener("change", syncViewport)
+    }
+
+    mediaQuery.addListener(syncViewport)
+    return () => mediaQuery.removeListener(syncViewport)
+  }, [ready])
 
   useEffect(() => {
     if (!ready) return
@@ -328,9 +387,17 @@ export default function ArchivistDashboard() {
 
   const currentDashboard =
     activeDashboard ?? (loadError && !activeDashboard ? EMPTY_DASHBOARD : lastDashboard ?? EMPTY_DASHBOARD)
+  const motionTab = isSlideAnimating && pendingTab ? pendingTab : null
+  const motionDashboard =
+    motionTab && tabCache[motionTab] ? tabCache[motionTab] : currentDashboard
+  const statsMotionKey = useMemo(
+    () => buildStatsMotionKey(motionDashboard),
+    [motionDashboard]
+  )
   const isLoading = loadingTabs.length > 0
   const hasAnyDashboard = Boolean(activeDashboard || lastDashboard)
   const isInitialLoad = ready && !hasAnyDashboard && isLoading
+  const shouldShowInitialLoading = !ready || (isInitialLoad && !loadError)
   const isTabTransitionLoading = isLoading && Boolean(lastDashboard) && !activeDashboard
   const loadingTab = loadingTabs[loadingTabs.length - 1] ?? activeTab
   const loadingLabel =
@@ -340,10 +407,50 @@ export default function ArchivistDashboard() {
         ? "weekly"
         : loadingTab === "month"
           ? "monthly"
-          : "recent"
+        : "recent"
 
-  const currentThreads = useMemo(() => {
-    const threads = [...currentDashboard.threads]
+  useEffect(() => {
+    if (landingOverlayTimeoutRef.current != null) {
+      window.clearTimeout(landingOverlayTimeoutRef.current)
+      landingOverlayTimeoutRef.current = null
+    }
+
+    if (shouldShowInitialLoading) {
+      setShowLandingOverlay(true)
+      setIsLandingOverlayFading(false)
+      setIsDashboardVisible(false)
+      return
+    }
+
+    setIsDashboardVisible(true)
+    setIsLandingOverlayFading(true)
+    landingOverlayTimeoutRef.current = window.setTimeout(() => {
+      setShowLandingOverlay(false)
+      landingOverlayTimeoutRef.current = null
+    }, LANDING_FADE_DURATION_MS)
+  }, [shouldShowInitialLoading])
+
+  useEffect(() => {
+    if (pendingTab !== null && pendingTab !== activeTab) {
+      const list = threadListRef.current
+      if (list) {
+        setThreadListMinHeight(list.offsetHeight)
+      }
+      return
+    }
+
+    if (threadListMinHeight == null) return
+    const timeout = window.setTimeout(() => {
+      setThreadListMinHeight(null)
+    }, TAB_TRANSITION_DURATION_MS)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [pendingTab, activeTab, threadListMinHeight])
+
+  const buildThreadsForDashboard = useCallback((dashboard: DashboardData): SlackThread[] => {
+    const threads = [...dashboard.threads]
     const searchTerm = normalizeSearchValue(debouncedQuery)
     const selectedChannelNormalized = selectedChannel?.replace(/^#/, "") ?? null
     const cutoffSecs =
@@ -390,7 +497,41 @@ export default function ArchivistDashboard() {
       ...thread,
       messageHtml: highlightHtml(thread.messageHtml, debouncedQuery),
     }))
-  }, [currentDashboard.threads, debouncedQuery, period, selectedChannel, selectedUser, sortBy])
+  }, [debouncedQuery, period, selectedChannel, selectedUser, sortBy])
+
+  const filteredThreadsByTab = useMemo(() => {
+    const byTab: Partial<Record<DashboardTab, SlackThread[]>> = {}
+    for (const tab of TABS) {
+      const dashboard = tabCache[tab]
+      if (dashboard) {
+        byTab[tab] = buildThreadsForDashboard(dashboard)
+      }
+    }
+    if (!byTab[currentDashboard.tab]) {
+      byTab[currentDashboard.tab] = buildThreadsForDashboard(currentDashboard)
+    }
+    return byTab
+  }, [tabCache, currentDashboard, buildThreadsForDashboard])
+
+  const currentThreads = useMemo(
+    () => filteredThreadsByTab[currentDashboard.tab] ?? buildThreadsForDashboard(currentDashboard),
+    [filteredThreadsByTab, currentDashboard, buildThreadsForDashboard]
+  )
+
+  const paneTabs = useMemo(
+    () =>
+      TABS.filter((tab) => tab === activeTab || tab === pendingTab || Boolean(tabCache[tab])),
+    [activeTab, pendingTab, tabCache]
+  )
+
+  const scoreScaleByTab = useMemo(() => {
+    const byTab: Partial<Record<DashboardTab, number>> = {}
+    for (const tab of paneTabs) {
+      const threads = filteredThreadsByTab[tab] ?? []
+      byTab[tab] = Math.max(1, ...threads.map((thread) => thread.score))
+    }
+    return byTab
+  }, [paneTabs, filteredThreadsByTab])
 
   useEffect(() => {
     if (!expandedThreadId) return
@@ -399,11 +540,6 @@ export default function ArchivistDashboard() {
       setExpandedThreadId(null)
     }
   }, [currentThreads, expandedThreadId])
-
-  const scoreScaleMax = useMemo(
-    () => Math.max(1, ...currentThreads.map((thread) => thread.score)),
-    [currentThreads]
-  )
 
   const loadThreadMessages = useCallback(
     async (thread: SlackThread): Promise<ThreadMessage[]> =>
@@ -457,13 +593,176 @@ export default function ArchivistDashboard() {
     }
   }
 
-  if (!ready || (isInitialLoad && !loadError)) {
-    return <InitialLoadingShell />
+  const isOutgoingPhase = pendingTab !== null && pendingTab !== activeTab
+
+  const threadListMotionStyle = {
+    minHeight: threadListMinHeight ?? undefined,
+  }
+
+  const outgoingPaneStyle = {
+    transform: isOutgoingPhase
+      ? isSlideAnimating
+        ? tabTransitionDirection > 0
+          ? "translateX(-100%)"
+          : "translateX(100%)"
+        : "translateX(0%)"
+      : "translateX(0%)",
+    transitionDuration: `${TAB_TRANSITION_DURATION_MS}ms`,
+    transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+  }
+
+  const incomingPaneStyle = {
+    transform: isOutgoingPhase
+      ? isSlideAnimating
+        ? "translateX(0%)"
+        : tabTransitionDirection > 0
+          ? "translateX(100%)"
+          : "translateX(-100%)"
+      : "translateX(0%)",
+    transitionDuration: `${TAB_TRANSITION_DURATION_MS}ms`,
+    transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+  }
+
+  function handleTabChange(value: string): void {
+    const nextTab = value as DashboardTab
+    if (nextTab === activeTab || nextTab === pendingTab) return
+    const currentIndex = TABS.indexOf(activeTab)
+    const nextIndex = TABS.indexOf(nextTab)
+    setTabTransitionDirection(nextIndex >= currentIndex ? 1 : -1)
+    setExpandedThreadId(null)
+
+    if (!tabCache[nextTab] && !inFlightTabs.current.has(nextTab)) {
+      void fetchTabData(nextTab, false)
+    }
+
+    setIsSlideAnimating(false)
+    setPendingTab(nextTab)
+
+    if (tabSwitchTimeoutRef.current != null) {
+      window.clearTimeout(tabSwitchTimeoutRef.current)
+    }
+
+    window.requestAnimationFrame(() => {
+      setIsSlideAnimating(true)
+
+      tabSwitchTimeoutRef.current = window.setTimeout(() => {
+        setActiveTab(nextTab)
+        setPendingTab(null)
+        setIsSlideAnimating(false)
+        if (nextTab === "recent" && sortBy === "score") {
+          setSortBy("date")
+        }
+        tabSwitchTimeoutRef.current = null
+      }, TAB_TRANSITION_DURATION_MS)
+    })
+  }
+
+  function renderPaneContent(tab: DashboardTab) {
+    const dashboardForTab =
+      tabCache[tab] ?? (tab === currentDashboard.tab ? currentDashboard : null)
+
+    if (!dashboardForTab) {
+      return (
+        <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
+          <LoaderCircle className="size-4 animate-spin" />
+          Loading tab...
+        </div>
+      )
+    }
+
+    const threads = filteredThreadsByTab[tab] ?? []
+    const paneScoreScale = scoreScaleByTab[tab] ?? 1
+    const isActivePane = tab === activeTab
+    const canInteract = isActivePane && !isOutgoingPhase
+    const showActiveStates = isActivePane && !isOutgoingPhase
+
+    if (showActiveStates && isLoading && threads.length === 0 && !isTabTransitionLoading) {
+      return (
+        <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
+          <LoaderCircle className="size-4 animate-spin" />
+          Loading dashboard...
+        </div>
+      )
+    }
+
+    if (showActiveStates && loadError && !activeDashboard) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-center">
+          <p className="text-sm text-muted-foreground">{loadError}</p>
+          <button onClick={retryCurrentTab} className="text-xs text-primary hover:underline">
+            Retry
+          </button>
+        </div>
+      )
+    }
+
+    if (threads.length === 0 && (!showActiveStates || (!isLoading && !loadError))) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-center">
+          <p className="text-sm text-muted-foreground">
+            No threads found matching your filters.
+          </p>
+          {showActiveStates && (
+            <button
+              onClick={() => {
+                setQuery("")
+                setDebouncedQuery("")
+                setPeriod("all")
+                setSelectedUser(null)
+                setSelectedChannel(null)
+                setExpandedThreadId(null)
+              }}
+              className="text-xs text-primary hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <div className="relative flex flex-col gap-2">
+        {showActiveStates && isTabTransitionLoading && (
+          <div className="pointer-events-none absolute inset-0 z-10 rounded-lg bg-background/45 backdrop-blur-[1px]">
+            <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
+              <span className="size-1.5 animate-pulse rounded-full bg-primary/70" />
+              Updating {loadingLabel} data...
+            </div>
+          </div>
+        )}
+
+        {threads.map((thread, index) => (
+          <ThreadCard
+            key={`pane:${tab}:${thread.id}`}
+            thread={thread}
+            rank={index + 1}
+            expanded={canInteract && expandedThreadId === thread.id}
+            onExpandedChange={(nextExpanded) => {
+              if (canInteract) {
+                setExpandedThreadId(nextExpanded ? thread.id : null)
+              }
+            }}
+            maxScore={paneScoreScale}
+            density={density}
+            onLoadThreadMessages={canInteract ? loadThreadMessages : undefined}
+            onMentionClick={canInteract ? applyUserFilterFromMention : undefined}
+            onChannelClick={canInteract ? applyChannelFilterFromMention : undefined}
+          />
+        ))}
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
+    <div className="relative min-h-screen overflow-x-clip bg-background">
+      <div
+        className={`transition-opacity ${
+          isDashboardVisible ? "opacity-100" : "opacity-0"
+        }`}
+        style={{ transitionDuration: `${LANDING_FADE_DURATION_MS}ms` }}
+      >
+        <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-screen-2xl items-center gap-4 px-4 lg:px-6">
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
@@ -473,27 +772,33 @@ export default function ArchivistDashboard() {
           </div>
 
           <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              const nextTab = value as DashboardTab
-              setActiveTab(nextTab)
-              if (nextTab === "recent" && sortBy === "score") {
-                setSortBy("date")
-              }
-            }}
+            value={pendingTab ?? activeTab}
+            onValueChange={handleTabChange}
             className="ml-4 hidden sm:flex"
           >
             <TabsList className="h-8 bg-secondary">
-              <TabsTrigger value="recent" className="px-3 text-xs">
+              <TabsTrigger
+                value="recent"
+                className="px-3 text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 Last 50
               </TabsTrigger>
-              <TabsTrigger value="week" className="px-3 text-xs">
+              <TabsTrigger
+                value="week"
+                className="px-3 text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 This Week
               </TabsTrigger>
-              <TabsTrigger value="month" className="px-3 text-xs">
+              <TabsTrigger
+                value="month"
+                className="px-3 text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 This Month
               </TabsTrigger>
-              <TabsTrigger value="top" className="px-3 text-xs">
+              <TabsTrigger
+                value="top"
+                className="px-3 text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 Top Threads
               </TabsTrigger>
             </TabsList>
@@ -546,31 +851,37 @@ export default function ArchivistDashboard() {
             <AccountMenu onLogout={logout} />
           </div>
         </div>
-      </header>
+        </header>
 
-      <main className="mx-auto max-w-screen-2xl px-4 py-6 lg:px-6">
+        <main className="mx-auto max-w-screen-2xl px-4 py-6 lg:px-6">
         <div className="mb-4 sm:hidden">
           <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              const nextTab = value as DashboardTab
-              setActiveTab(nextTab)
-              if (nextTab === "recent" && sortBy === "score") {
-                setSortBy("date")
-              }
-            }}
+            value={pendingTab ?? activeTab}
+            onValueChange={handleTabChange}
           >
             <TabsList className="w-full bg-secondary">
-              <TabsTrigger value="recent" className="text-xs">
+              <TabsTrigger
+                value="recent"
+                className="text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 Last 50
               </TabsTrigger>
-              <TabsTrigger value="week" className="text-xs">
+              <TabsTrigger
+                value="week"
+                className="text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 Week
               </TabsTrigger>
-              <TabsTrigger value="month" className="text-xs">
+              <TabsTrigger
+                value="month"
+                className="text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 Month
               </TabsTrigger>
-              <TabsTrigger value="top" className="text-xs">
+              <TabsTrigger
+                value="top"
+                className="text-xs transition-all duration-300 data-[state=active]:-translate-y-px"
+              >
                 Top Threads
               </TabsTrigger>
             </TabsList>
@@ -582,56 +893,78 @@ export default function ArchivistDashboard() {
             <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatCard
                 title="Total Messages"
-                value={currentDashboard.overviewStats.totalMessages.toLocaleString()}
+                value={motionDashboard.overviewStats.totalMessages}
+                syncKey={statsMotionKey}
                 change={
-                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.messagesChange
+                  motionDashboard.tab === "recent"
+                    ? undefined
+                    : motionDashboard.overviewStats.messagesChange
                 }
                 icon="messages"
               />
               <StatCard
                 title="Threads"
-                value={currentDashboard.overviewStats.totalThreads.toLocaleString()}
+                value={motionDashboard.overviewStats.totalThreads}
+                syncKey={statsMotionKey}
                 change={
-                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.threadsChange
+                  motionDashboard.tab === "recent"
+                    ? undefined
+                    : motionDashboard.overviewStats.threadsChange
                 }
                 icon="threads"
               />
               <StatCard
                 title="Files Archived"
-                value={currentDashboard.overviewStats.totalFiles.toLocaleString()}
+                value={motionDashboard.overviewStats.totalFiles}
+                syncKey={statsMotionKey}
                 change={
-                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.filesChange
+                  motionDashboard.tab === "recent"
+                    ? undefined
+                    : motionDashboard.overviewStats.filesChange
                 }
                 icon="files"
               />
               <StatCard
                 title="Active Users"
-                value={currentDashboard.overviewStats.totalUsers.toLocaleString()}
+                value={motionDashboard.overviewStats.totalUsers}
+                syncKey={statsMotionKey}
                 change={
-                  activeTab === "recent" ? undefined : currentDashboard.overviewStats.usersChange
+                  motionDashboard.tab === "recent"
+                    ? undefined
+                    : motionDashboard.overviewStats.usersChange
                 }
                 icon="users"
               />
             </section>
 
             <section className="mb-6 grid gap-4 lg:grid-cols-[1fr_260px]">
-              <ActivityChart data={currentDashboard.activityData} tab={activeTab} />
-              <div className="hidden lg:block">
-                <ChannelSidebar
-                  channels={currentDashboard.channelStats}
-                  selected={selectedChannel}
-                  onSelect={toggleChannelFilter}
-                />
-              </div>
+              <ActivityChart
+                data={motionDashboard.activityData}
+                tab={motionDashboard.tab}
+                syncKey={statsMotionKey}
+              />
+              {isDesktopViewport && (
+                <div className="hidden lg:block">
+                  <ChannelSidebar
+                    channels={motionDashboard.channelStats}
+                    selected={selectedChannel}
+                    onSelect={toggleChannelFilter}
+                    syncKey={statsMotionKey}
+                  />
+                </div>
+              )}
             </section>
 
-            <div className="mb-4 lg:hidden">
-              <ChannelSidebar
-                channels={currentDashboard.channelStats}
-                selected={selectedChannel}
-                onSelect={toggleChannelFilter}
-              />
-            </div>
+            {!isDesktopViewport && (
+              <div className="mb-4 lg:hidden">
+                <ChannelSidebar
+                  channels={motionDashboard.channelStats}
+                  selected={selectedChannel}
+                  onSelect={toggleChannelFilter}
+                  syncKey={statsMotionKey}
+                />
+              </div>
+            )}
           </>
         )}
 
@@ -649,60 +982,36 @@ export default function ArchivistDashboard() {
           />
         </section>
 
-        <section className="flex flex-col gap-2">
-          {isLoading && currentThreads.length === 0 && (
-            <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" />
-              Loading dashboard...
-            </div>
-          )}
+        <section
+          ref={threadListRef}
+          className={`relative overflow-x-clip ${isOutgoingPhase ? "pointer-events-none" : ""}`}
+          style={threadListMotionStyle}
+        >
+          <div className="relative">
+            {paneTabs.map((tab) => {
+              const isActivePane = tab === activeTab
+              const isPendingPane = pendingTab === tab
+              const shouldShowPane = isOutgoingPhase ? isActivePane || isPendingPane : isActivePane
+              const paneClass = [
+                "flex flex-col gap-2 will-change-transform",
+                isPendingPane && isOutgoingPhase ? "absolute inset-0" : "relative",
+                shouldShowPane ? "" : "hidden",
+              ].join(" ")
+              const paneStyle = isOutgoingPhase
+                ? isActivePane
+                  ? outgoingPaneStyle
+                  : isPendingPane
+                    ? incomingPaneStyle
+                    : undefined
+                : undefined
 
-          {loadError && !activeDashboard && (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-center">
-              <p className="text-sm text-muted-foreground">{loadError}</p>
-              <button onClick={retryCurrentTab} className="text-xs text-primary hover:underline">
-                Retry
-              </button>
-            </div>
-          )}
-
-          {!isLoading && !loadError && currentThreads.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-center">
-              <p className="text-sm text-muted-foreground">
-                No threads found matching your filters.
-              </p>
-              <button
-                onClick={() => {
-                  setQuery("")
-                  setDebouncedQuery("")
-                  setPeriod("all")
-                  setSelectedUser(null)
-                  setSelectedChannel(null)
-                  setExpandedThreadId(null)
-                }}
-                className="text-xs text-primary hover:underline"
-              >
-                Clear filters
-              </button>
-            </div>
-          )}
-
-          {currentThreads.map((thread, index) => (
-            <ThreadCard
-              key={thread.id}
-              thread={thread}
-              rank={index + 1}
-              expanded={expandedThreadId === thread.id}
-              onExpandedChange={(nextExpanded) =>
-                setExpandedThreadId(nextExpanded ? thread.id : null)
-              }
-              maxScore={scoreScaleMax}
-              density={density}
-              onLoadThreadMessages={loadThreadMessages}
-              onMentionClick={applyUserFilterFromMention}
-              onChannelClick={applyChannelFilterFromMention}
-            />
-          ))}
+              return (
+                <div key={`pane:${tab}`} className={paneClass} style={paneStyle}>
+                  {renderPaneContent(tab)}
+                </div>
+              )
+            })}
+          </div>
         </section>
 
         <footer className="mt-8 border-t border-border pt-4 text-center text-xs text-muted-foreground">
@@ -710,14 +1019,16 @@ export default function ArchivistDashboard() {
           <br />
           Showing {currentThreads.length} threads sorted by {sortBy}.
         </footer>
-      </main>
-
-      {isTabTransitionLoading && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm">
-            <LoaderCircle className="size-4 animate-spin" />
-            Updating {loadingLabel} data...
-          </div>
+        </main>
+      </div>
+      {showLandingOverlay && (
+        <div
+          className={`pointer-events-none fixed inset-0 z-[100] transition-opacity ${
+            isLandingOverlayFading ? "opacity-0" : "opacity-100"
+          }`}
+          style={{ transitionDuration: `${LANDING_FADE_DURATION_MS}ms` }}
+        >
+          <InitialLoadingShell className="h-full" />
         </div>
       )}
     </div>

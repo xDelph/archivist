@@ -28,6 +28,8 @@ const CHANNEL_COLORS = [
   "bg-warning/15 text-warning",
 ]
 
+const AVATAR_PROXY_HOST_SUFFIXES = ["slack-edge.com", "gravatar.com"]
+
 interface ApiThread {
   id: string
   channelId: string
@@ -145,6 +147,26 @@ function hashIndex(value: string, modulo: number): number {
   return hash % modulo
 }
 
+function shouldProxyAvatarHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase()
+  return AVATAR_PROXY_HOST_SUFFIXES.some(
+    (suffix) => normalized === suffix || normalized.endsWith(`.${suffix}`)
+  )
+}
+
+function toAvatarUrl(rawUrl: string | null | undefined): string {
+  if (!rawUrl) return ""
+
+  try {
+    const parsed = new URL(rawUrl)
+    if (!["http:", "https:"].includes(parsed.protocol)) return rawUrl
+    if (!shouldProxyAvatarHost(parsed.hostname)) return rawUrl
+    return `/api/avatar?u=${encodeURIComponent(parsed.toString())}`
+  } catch (_err) {
+    return rawUrl
+  }
+}
+
 function mapThread(apiThread: ApiThread): SlackThread {
   const authorColor = AUTHOR_COLORS[hashIndex(apiThread.author.name, AUTHOR_COLORS.length)]
   const channelColor =
@@ -157,7 +179,7 @@ function mapThread(apiThread: ApiThread): SlackThread {
       name: apiThread.author.name,
       initials: apiThread.author.initials,
       color: authorColor,
-      avatarUrl: apiThread.author.avatarUrl ?? "",
+      avatarUrl: toAvatarUrl(apiThread.author.avatarUrl),
     },
     channel: apiThread.channel,
     channelColor,
@@ -270,7 +292,7 @@ export async function fetchThreadMessages(
       name: message.author.name,
       initials: message.author.initials,
       color: AUTHOR_COLORS[hashIndex(message.author.name, AUTHOR_COLORS.length)],
-      avatarUrl: message.author.avatarUrl ?? "",
+      avatarUrl: toAvatarUrl(message.author.avatarUrl),
     },
     message: message.message,
     messageHtml: message.messageHtml,
@@ -313,7 +335,7 @@ export async function fetchThreadDetail(
         name: message.author.name,
         initials: message.author.initials,
         color: AUTHOR_COLORS[hashIndex(message.author.name, AUTHOR_COLORS.length)],
-        avatarUrl: message.author.avatarUrl ?? "",
+        avatarUrl: toAvatarUrl(message.author.avatarUrl),
       },
       message: message.message,
       messageHtml: message.messageHtml,

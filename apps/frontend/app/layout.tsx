@@ -9,11 +9,22 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'Archivist',
   description: 'Save and browse your Slack workspace messages, files, and top threads. Discover the best conversations by week, month, or all time.',
-  generator: 'v0.app',
   icons: {
-    icon: '/favicon.svg',
-    shortcut: '/favicon.svg',
-    apple: '/apple-icon.png',
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
+  openGraph: {
+    type: 'website',
+    title: 'Archivist',
+    description: 'Save and browse your Slack workspace messages, files, and top threads.',
+    images: ['/icon.svg'],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Archivist',
+    description: 'Save and browse your Slack workspace messages, files, and top threads.',
+    images: ['/icon.svg'],
   },
 }
 
