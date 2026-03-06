@@ -17,6 +17,7 @@ La documentation backend détaillée reste dans `apps/backend/README.md`.
 - [API et sécurité](#api-et-sécurité)
 - [CI/CD et release](#cicd-et-release)
 - [Maintenance et debug](#maintenance-et-debug)
+- [Licence](#licence)
 
 ## Vue d'ensemble
 
@@ -297,3 +298,11 @@ cargo run --manifest-path apps/backend/Cargo.toml --bin validate_rollups -- --st
 ---
 
 Si vous cherchez les détails d'implémentation backend (architecture interne, endpoints SSR historiques, SQLX, tests), voir `apps/backend/README.md`.
+
+## Licence
+
+Ce projet est en double licence:
+
+- Open source: `AGPL-3.0-or-later` (voir `LICENSE`)
+- Commercial: autorisation commerciale écrite requise hors conformité AGPL
+  (voir `LICENSE-COMMERCIAL.md`)
