@@ -1,5 +1,6 @@
 "use client"
 
+import { track } from "@vercel/analytics"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Archive,
@@ -33,6 +34,12 @@ const SEARCH_DEBOUNCE_MS = 250
 const TABS: DashboardTab[] = ["recent", "week", "month", "top"]
 const TAB_TRANSITION_DURATION_MS = 1000
 const LANDING_FADE_DURATION_MS = 1000
+const FIRST_TAB_VISIT_EVENT: Record<DashboardTab, string> = {
+  recent: "dashboard_recent_first_view",
+  week: "dashboard_week_first_view",
+  month: "dashboard_month_first_view",
+  top: "dashboard_top_first_view",
+}
 const EMPTY_DASHBOARD: DashboardData = {
   tab: "recent",
   workspaceUrl: null,
@@ -199,6 +206,8 @@ export default function ArchivistDashboard() {
   const tabSwitchTimeoutRef = useRef<number | null>(null)
   const threadListRef = useRef<HTMLElement | null>(null)
   const landingOverlayTimeoutRef = useRef<number | null>(null)
+  const hasTrackedAppLaunchRef = useRef(false)
+  const trackedTabVisitsRef = useRef<Set<DashboardTab>>(new Set())
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -321,6 +330,22 @@ export default function ArchivistDashboard() {
     if (!ready) return
     document.title = `Archivist ${tabDocumentLabel(activeTab)}`
   }, [ready, activeTab])
+
+  useEffect(() => {
+    if (!ready || !isDashboardVisible || hasTrackedAppLaunchRef.current) return
+
+    track("app_launched", { initialTab: activeTab })
+    hasTrackedAppLaunchRef.current = true
+    trackedTabVisitsRef.current.add(activeTab)
+  }, [ready, isDashboardVisible, activeTab])
+
+  useEffect(() => {
+    if (!ready || !isDashboardVisible || !hasTrackedAppLaunchRef.current) return
+    if (trackedTabVisitsRef.current.has(activeTab)) return
+
+    trackedTabVisitsRef.current.add(activeTab)
+    track(FIRST_TAB_VISIT_EVENT[activeTab], { tab: activeTab })
+  }, [ready, isDashboardVisible, activeTab])
 
   const fetchTabData = useCallback(async (tab: DashboardTab, withLoader: boolean) => {
     if (inFlightTabs.current.has(tab)) return
