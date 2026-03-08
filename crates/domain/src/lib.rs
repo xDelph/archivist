@@ -76,6 +76,27 @@ pub struct Reaction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct File {
+    pub id: String,
+    pub team_id: String,
+    pub channel_id: String,
+    pub message_ts: String,
+    pub name: String,
+    pub mimetype: Option<String>,
+    pub permalink: Option<String>,
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedFile {
+    pub id: String,
+    pub name: String,
+    pub mimetype: Option<String>,
+    pub permalink: Option<String>,
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Thread {
     pub channel_id: String,
     pub root_ts: String,
@@ -103,6 +124,7 @@ pub enum EventPayload {
         text: Option<String>,
         ts: String,
         thread_ts: Option<String>,
+        files: Vec<SharedFile>,
     },
     ReactionAdded {
         user_id: String,
@@ -131,8 +153,8 @@ impl ProcessEventJob {
 #[cfg(test)]
 mod tests {
     use super::{
-        Channel, ChannelKind, EventPayload, Message, ProcessEventJob, Reaction, Thread, User,
-        WorkspaceMode,
+        Channel, ChannelKind, EventPayload, File, Message, ProcessEventJob, Reaction, SharedFile,
+        Thread, User, WorkspaceMode,
     };
 
     #[test]
@@ -165,6 +187,7 @@ mod tests {
                 text: Some("hello".to_owned()),
                 ts: "1700000000.000001".to_owned(),
                 thread_ts: None,
+                files: vec![],
             },
         };
 
@@ -202,8 +225,26 @@ mod tests {
             user_id: user.id,
             name: "thumbsup".to_owned(),
         };
+        let file = File {
+            id: "F123".to_owned(),
+            team_id: "T123".to_owned(),
+            channel_id: "C123".to_owned(),
+            message_ts: "1700000000.000001".to_owned(),
+            name: "brief.pdf".to_owned(),
+            mimetype: Some("application/pdf".to_owned()),
+            permalink: Some("https://files.example.com/brief.pdf".to_owned()),
+            size: Some(42),
+        };
+        let shared_file = SharedFile {
+            id: file.id.clone(),
+            name: file.name.clone(),
+            mimetype: file.mimetype.clone(),
+            permalink: file.permalink.clone(),
+            size: file.size,
+        };
 
         assert_eq!(message.text, "hello");
         assert_eq!(reaction.name, "thumbsup");
+        assert_eq!(shared_file.name, "brief.pdf");
     }
 }

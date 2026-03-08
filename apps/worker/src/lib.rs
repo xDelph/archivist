@@ -69,6 +69,7 @@ struct HealthResponse {
     tracked_events: usize,
     tracked_messages: usize,
     tracked_reactions: usize,
+    tracked_files: usize,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -122,6 +123,7 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         tracked_events: repository_health.tracked_events,
         tracked_messages: repository_health.tracked_messages,
         tracked_reactions: repository_health.tracked_reactions,
+        tracked_files: repository_health.tracked_files,
     })
 }
 
@@ -292,6 +294,7 @@ mod tests {
                 text: Some("hello".to_owned()),
                 ts: "1700000000.000001".to_owned(),
                 thread_ts: None,
+                files: vec![],
             },
         };
         let body = serde_json::to_vec(&payload).expect("payload");
@@ -346,6 +349,7 @@ mod tests {
         assert_eq!(health_payload["queue_signature_verification"], false);
         assert_eq!(health_payload["tracked_events"], 1);
         assert_eq!(health_payload["tracked_messages"], 1);
+        assert_eq!(health_payload["tracked_files"], 0);
     }
 
     #[tokio::test]
@@ -411,5 +415,79 @@ mod tests {
         assert_eq!(health_payload["tracked_events"], 1);
         assert_eq!(health_payload["tracked_messages"], 0);
         assert_eq!(health_payload["tracked_reactions"], 1);
+        assert_eq!(health_payload["tracked_files"], 0);
+    }
+
+    #[tokio::test]
+    async fn file_share_messages_are_counted_in_health() {
+        let tempdir = tempdir().expect("tempdir");
+        let log_path = tempdir.path().join("events.jsonl");
+        let store = JsonlEventStore::open(&log_path).await.expect("store");
+        let router = build_router(
+            store,
+            WorkerConfig {
+                host: "127.0.0.1".to_owned(),
+                port: 4002,
+                event_log_path: log_path.display().to_string(),
+                worker_base_url: "http://127.0.0.1:4002".to_owned(),
+                current_signing_key: None,
+                next_signing_key: None,
+            },
+        )
+        .expect("router");
+        let payload = ProcessEventJob {
+            event_id: "evt_file".to_owned(),
+            team_id: "team_1".to_owned(),
+            event_time: 1,
+            received_at: 2,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U123".to_owned()),
+                text: Some("uploaded brief".to_owned()),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: None,
+                files: vec![domain::SharedFile {
+                    id: "F123".to_owned(),
+                    name: "brief.pdf".to_owned(),
+                    mimetype: Some("application/pdf".to_owned()),
+                    permalink: Some("https://files.example.com/brief.pdf".to_owned()),
+                    size: Some(42),
+                }],
+            },
+        };
+        let body = serde_json::to_vec(&payload).expect("payload");
+
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/jobs/process_event")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let health = router
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .expect("health request"),
+            )
+            .await
+            .expect("health response");
+        let health_body = to_bytes(health.into_body(), usize::MAX)
+            .await
+            .expect("health body");
+        let health_payload: serde_json::Value =
+            serde_json::from_slice(&health_body).expect("health json");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(health_payload["tracked_events"], 1);
+        assert_eq!(health_payload["tracked_messages"], 1);
+        assert_eq!(health_payload["tracked_files"], 1);
     }
 }

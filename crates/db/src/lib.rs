@@ -1,4 +1,4 @@
-use domain::{EventPayload, Message, ProcessEventJob, Reaction};
+use domain::{EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -25,6 +25,7 @@ pub struct RepositoryHealth {
     pub tracked_events: usize,
     pub tracked_messages: usize,
     pub tracked_reactions: usize,
+    pub tracked_files: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,12 +53,14 @@ pub struct JsonlEventStore {
 }
 
 type MessageKey = (String, String);
+type FileKey = (String, String);
 type ReactionKey = (String, String, String, String, String);
 
 #[derive(Debug, Default)]
 struct StoreState {
     seen_events: HashSet<String>,
     messages: HashMap<MessageKey, Message>,
+    files: HashMap<FileKey, File>,
     reactions: HashSet<ReactionKey>,
 }
 
@@ -79,6 +82,7 @@ impl JsonlEventStore {
             tracked_events: state.seen_events.len(),
             tracked_messages: state.messages.len(),
             tracked_reactions: state.reactions.len(),
+            tracked_files: state.files.len(),
         }
     }
 
@@ -138,6 +142,19 @@ impl JsonlEventStore {
         });
         reactions
     }
+
+    pub async fn files(&self) -> Vec<File> {
+        let state = self.state.lock().await;
+        let mut files = state.files.values().cloned().collect::<Vec<_>>();
+        files.sort_by(|left, right| {
+            (&left.channel_id, &left.message_ts, &left.id).cmp(&(
+                &right.channel_id,
+                &right.message_ts,
+                &right.id,
+            ))
+        });
+        files
+    }
 }
 
 impl StoreState {
@@ -148,6 +165,7 @@ impl StoreState {
                 text,
                 ts,
                 thread_ts,
+                files,
             } => {
                 self.messages.insert(
                     (job.channel_id.clone(), ts.clone()),
@@ -160,6 +178,21 @@ impl StoreState {
                         text: text.clone().unwrap_or_default(),
                     },
                 );
+                for file in files {
+                    self.files.insert(
+                        (job.team_id.clone(), file.id.clone()),
+                        File {
+                            id: file.id.clone(),
+                            team_id: job.team_id.clone(),
+                            channel_id: job.channel_id.clone(),
+                            message_ts: ts.clone(),
+                            name: file.name.clone(),
+                            mimetype: file.mimetype.clone(),
+                            permalink: file.permalink.clone(),
+                            size: file.size,
+                        },
+                    );
+                }
             }
             EventPayload::ReactionAdded {
                 user_id,
@@ -233,6 +266,7 @@ mod tests {
                 text: Some("hello".to_owned()),
                 ts: "1700000000.000001".to_owned(),
                 thread_ts: None,
+                files: vec![],
             },
         }
     }
@@ -264,6 +298,7 @@ mod tests {
         assert_eq!(health.tracked_events, 1);
         assert_eq!(health.tracked_messages, 1);
         assert_eq!(health.tracked_reactions, 0);
+        assert_eq!(health.tracked_files, 0);
     }
 
     #[tokio::test]
@@ -288,6 +323,7 @@ mod tests {
                 text: Some("updated".to_owned()),
                 ts,
                 thread_ts,
+                files: vec![],
             },
             ..original
         };
@@ -337,5 +373,45 @@ mod tests {
         assert_eq!(reactions.len(), 1);
         assert_eq!(reactions[0].name, "thumbsup");
         assert_eq!(health.tracked_reactions, 1);
+    }
+
+    #[tokio::test]
+    async fn file_share_messages_track_attached_files() {
+        let tempdir = tempdir().expect("tempdir");
+        let path = tempdir.path().join("events.jsonl");
+        let store = JsonlEventStore::open(&path).await.expect("store");
+        let file_job = ProcessEventJob {
+            event_id: "evt_file".to_owned(),
+            team_id: "team_1".to_owned(),
+            event_time: 5,
+            received_at: 6,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U123".to_owned()),
+                text: Some("uploaded brief".to_owned()),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: None,
+                files: vec![domain::SharedFile {
+                    id: "F123".to_owned(),
+                    name: "brief.pdf".to_owned(),
+                    mimetype: Some("application/pdf".to_owned()),
+                    permalink: Some("https://files.example.com/brief.pdf".to_owned()),
+                    size: Some(42),
+                }],
+            },
+        };
+
+        store
+            .record_process_event(&file_job)
+            .await
+            .expect("insert file event");
+
+        let files = store.files().await;
+        let health = store.health().await;
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "brief.pdf");
+        assert_eq!(health.tracked_files, 1);
     }
 }

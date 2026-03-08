@@ -1,4 +1,4 @@
-use domain::{ChannelKind, EventPayload, ProcessEventJob};
+use domain::{ChannelKind, EventPayload, ProcessEventJob, SharedFile};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -92,9 +92,10 @@ impl EventCallback {
         match self.event {
             SlackEvent::Message(message) => {
                 let channel_kind = message.channel_kind();
-                if !channel_kind.is_public() || message.subtype.is_some() {
+                if !channel_kind.is_public() || !message.supported_subtype() {
                     return None;
                 }
+                let shared_files = message.shared_files();
 
                 Some(ProcessEventJob {
                     event_id: self.event_id,
@@ -108,6 +109,7 @@ impl EventCallback {
                         text: message.text,
                         ts: message.ts,
                         thread_ts: message.thread_ts,
+                        files: shared_files,
                     },
                 })
             }
@@ -154,6 +156,8 @@ pub struct MessageEvent {
     pub ts: String,
     pub thread_ts: Option<String>,
     pub subtype: Option<String>,
+    #[serde(default)]
+    pub files: Vec<SlackFile>,
 }
 
 impl MessageEvent {
@@ -162,6 +166,25 @@ impl MessageEvent {
             .as_deref()
             .map(ChannelKind::from_channel_type)
             .unwrap_or_else(|| ChannelKind::from_channel_id(&self.channel))
+    }
+
+    fn supported_subtype(&self) -> bool {
+        self.subtype
+            .as_deref()
+            .is_none_or(|subtype| subtype == "file_share")
+    }
+
+    fn shared_files(&self) -> Vec<SharedFile> {
+        self.files
+            .iter()
+            .map(|file| SharedFile {
+                id: file.id.clone(),
+                name: file.name.clone(),
+                mimetype: file.mimetype.clone(),
+                permalink: file.permalink.clone(),
+                size: file.size,
+            })
+            .collect()
     }
 }
 
@@ -184,6 +207,15 @@ pub struct ReactionItem {
     pub ts: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SlackFile {
+    pub id: String,
+    pub name: String,
+    pub mimetype: Option<String>,
+    pub permalink: Option<String>,
+    pub size: Option<u64>,
+}
+
 #[cfg(test)]
 fn compute_signature(signing_secret: &str, timestamp: i64, raw_body: &[u8]) -> String {
     let mut mac =
@@ -196,7 +228,7 @@ fn compute_signature(signing_secret: &str, timestamp: i64, raw_body: &[u8]) -> S
 #[cfg(test)]
 mod tests {
     use super::{EventCallback, SignatureError, compute_signature, verify_signature_at};
-    use domain::{ChannelKind, EventPayload};
+    use domain::{ChannelKind, EventPayload, SharedFile};
 
     #[test]
     fn valid_signatures_are_accepted() {
@@ -251,6 +283,58 @@ mod tests {
                 text: Some("hello".to_owned()),
                 ts: "1700000000.000001".to_owned(),
                 thread_ts: None,
+                files: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn public_file_share_messages_become_jobs_with_files() {
+        let callback: EventCallback = serde_json::from_str(
+            r#"{
+                "team_id": "T123",
+                "event_id": "Ev321",
+                "event_time": 1700000300,
+                "event": {
+                    "type": "message",
+                    "channel": "C123",
+                    "channel_type": "channel",
+                    "user": "U123",
+                    "text": "uploaded brief",
+                    "ts": "1700000000.000002",
+                    "thread_ts": null,
+                    "subtype": "file_share",
+                    "files": [
+                        {
+                            "id": "F123",
+                            "name": "brief.pdf",
+                            "mimetype": "application/pdf",
+                            "permalink": "https://files.example.com/brief.pdf",
+                            "size": 42
+                        }
+                    ]
+                }
+            }"#,
+        )
+        .expect("callback");
+
+        let job = callback.into_job(1_700_000_305).expect("job");
+
+        assert_eq!(job.channel_kind, ChannelKind::Public);
+        assert_eq!(
+            job.payload,
+            EventPayload::Message {
+                user_id: Some("U123".to_owned()),
+                text: Some("uploaded brief".to_owned()),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: None,
+                files: vec![SharedFile {
+                    id: "F123".to_owned(),
+                    name: "brief.pdf".to_owned(),
+                    mimetype: Some("application/pdf".to_owned()),
+                    permalink: Some("https://files.example.com/brief.pdf".to_owned()),
+                    size: Some(42),
+                }],
             }
         );
     }

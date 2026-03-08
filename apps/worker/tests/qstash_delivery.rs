@@ -135,6 +135,7 @@ fn sample_job() -> ProcessEventJob {
             text: Some("hello".to_owned()),
             ts: "1700000000.000001".to_owned(),
             thread_ts: None,
+            files: vec![],
         },
     }
 }
