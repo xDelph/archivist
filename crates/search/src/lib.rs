@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchBackend {
     PostgresTsvectorPlaceholder,
@@ -11,13 +13,65 @@ impl SearchBackend {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchSort {
+    Relevance,
+    Newest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SearchFilters {
+    pub channel_ids: Vec<String>,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchQuery {
+    pub text: String,
+    pub filters: SearchFilters,
+    pub sort: SearchSort,
+}
+
+impl SearchQuery {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: normalize_query_text(&text.into()),
+            filters: SearchFilters::default(),
+            sort: SearchSort::Relevance,
+        }
+    }
+}
+
 pub const fn search_documents_table() -> &'static str {
     "search_documents"
 }
 
+pub fn normalize_query_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub const fn ranked_search_query() -> &'static str {
+    r#"
+SELECT team_id,
+       channel_id,
+       message_ts,
+       title,
+       body
+FROM search_documents
+WHERE document @@ websearch_to_tsquery('english', $1)
+ORDER BY ts_rank(document, websearch_to_tsquery('english', $1)) DESC,
+         message_ts DESC
+"#
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{SearchBackend, search_documents_table};
+    use super::{
+        SearchBackend, SearchQuery, SearchSort, normalize_query_text, ranked_search_query,
+        search_documents_table,
+    };
 
     #[test]
     fn placeholder_backend_is_named() {
@@ -26,5 +80,31 @@ mod tests {
             "postgres_tsvector_placeholder"
         );
         assert_eq!(search_documents_table(), "search_documents");
+    }
+
+    #[test]
+    fn query_text_is_normalized() {
+        assert_eq!(
+            normalize_query_text("  release    notes   search "),
+            "release notes search"
+        );
+    }
+
+    #[test]
+    fn search_query_defaults_to_relevance() {
+        let query = SearchQuery::new("hello world");
+
+        assert_eq!(query.text, "hello world");
+        assert_eq!(query.sort, SearchSort::Relevance);
+        assert!(query.filters.channel_ids.is_empty());
+    }
+
+    #[test]
+    fn ranked_search_sql_targets_search_documents() {
+        let sql = ranked_search_query();
+
+        assert!(sql.contains("FROM search_documents"));
+        assert!(sql.contains("ts_rank"));
+        assert!(sql.contains("websearch_to_tsquery"));
     }
 }
