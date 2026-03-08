@@ -1,4 +1,4 @@
-use domain::{EventPayload, File, Message, ProcessEventJob, Reaction};
+use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -26,6 +26,7 @@ pub struct RepositoryHealth {
     pub tracked_messages: usize,
     pub tracked_reactions: usize,
     pub tracked_files: usize,
+    pub tracked_channels: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +62,7 @@ struct StoreState {
     seen_events: HashSet<String>,
     messages: HashMap<MessageKey, Message>,
     files: HashMap<FileKey, File>,
+    channels: HashMap<(String, String), Channel>,
     reactions: HashSet<ReactionKey>,
 }
 
@@ -83,6 +85,7 @@ impl JsonlEventStore {
             tracked_messages: state.messages.len(),
             tracked_reactions: state.reactions.len(),
             tracked_files: state.files.len(),
+            tracked_channels: state.channels.len(),
         }
     }
 
@@ -155,6 +158,13 @@ impl JsonlEventStore {
         });
         files
     }
+
+    pub async fn channels(&self) -> Vec<Channel> {
+        let state = self.state.lock().await;
+        let mut channels = state.channels.values().cloned().collect::<Vec<_>>();
+        channels.sort_by(|left, right| (&left.team_id, &left.id).cmp(&(&right.team_id, &right.id)));
+        channels
+    }
 }
 
 impl StoreState {
@@ -206,6 +216,26 @@ impl StoreState {
                     user_id.clone(),
                     reaction.clone(),
                 ));
+            }
+            EventPayload::ChannelUpdated { name, is_archived } => {
+                let key = (job.team_id.clone(), job.channel_id.clone());
+                let existing = self.channels.remove(&key);
+                let mut channel = existing.unwrap_or(Channel {
+                    team_id: job.team_id.clone(),
+                    id: job.channel_id.clone(),
+                    kind: job.channel_kind,
+                    name: None,
+                    is_archived: false,
+                });
+
+                if let Some(name) = name {
+                    channel.name = Some(name.clone());
+                }
+                if let Some(is_archived) = is_archived {
+                    channel.is_archived = *is_archived;
+                }
+
+                self.channels.insert(key, channel);
             }
         }
     }
@@ -299,6 +329,7 @@ mod tests {
         assert_eq!(health.tracked_messages, 1);
         assert_eq!(health.tracked_reactions, 0);
         assert_eq!(health.tracked_files, 0);
+        assert_eq!(health.tracked_channels, 0);
     }
 
     #[tokio::test]
@@ -413,5 +444,51 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].name, "brief.pdf");
         assert_eq!(health.tracked_files, 1);
+    }
+
+    #[tokio::test]
+    async fn channel_update_jobs_preserve_latest_name_and_archive_state() {
+        let tempdir = tempdir().expect("tempdir");
+        let path = tempdir.path().join("events.jsonl");
+        let store = JsonlEventStore::open(&path).await.expect("store");
+        let rename_job = ProcessEventJob {
+            event_id: "evt_channel_rename".to_owned(),
+            team_id: "team_1".to_owned(),
+            event_time: 7,
+            received_at: 8,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::ChannelUpdated {
+                name: Some("announcements".to_owned()),
+                is_archived: None,
+            },
+        };
+        let archive_job = ProcessEventJob {
+            event_id: "evt_channel_archive".to_owned(),
+            event_time: 9,
+            received_at: 10,
+            payload: EventPayload::ChannelUpdated {
+                name: None,
+                is_archived: Some(true),
+            },
+            ..rename_job.clone()
+        };
+
+        store
+            .record_process_event(&rename_job)
+            .await
+            .expect("insert rename");
+        store
+            .record_process_event(&archive_job)
+            .await
+            .expect("insert archive");
+
+        let channels = store.channels().await;
+        let health = store.health().await;
+
+        assert_eq!(channels.len(), 1);
+        assert_eq!(channels[0].name.as_deref(), Some("announcements"));
+        assert!(channels[0].is_archived);
+        assert_eq!(health.tracked_channels, 1);
     }
 }

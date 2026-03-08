@@ -96,6 +96,74 @@ async fn slack_event_flows_from_ingest_to_worker() {
 }
 
 #[tokio::test]
+async fn channel_rename_flows_from_ingest_to_worker() {
+    let tempdir = tempdir().expect("tempdir");
+    let event_log_path = tempdir.path().join("process-events.jsonl");
+    let worker_store = JsonlEventStore::open(&event_log_path)
+        .await
+        .expect("worker store");
+    let worker_router = build_worker_router(
+        worker_store,
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: event_log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("worker router");
+    let (worker_base_url, worker_handle) = spawn_app(worker_router).await;
+
+    let ingest_router = build_ingest_router(IngestConfig {
+        host: "127.0.0.1".to_owned(),
+        port: 4001,
+        worker_base_url: worker_base_url.clone(),
+        qstash_base_url: None,
+        qstash_token: None,
+        signing_secret: None,
+    })
+    .expect("ingest router");
+    let (ingest_base_url, ingest_handle) = spawn_app(ingest_router).await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{ingest_base_url}/api/slack/events"))
+        .json(&json!({
+            "type": "event_callback",
+            "team_id": "T123",
+            "event_id": "EvChannel123",
+            "event_time": 1700000600,
+            "event": {
+                "type": "channel_rename",
+                "channel": {
+                    "id": "C123",
+                    "name": "announcements"
+                }
+            }
+        }))
+        .send()
+        .await
+        .expect("ingest response");
+    let response_payload: serde_json::Value = response.json().await.expect("response payload");
+    let reopened_store = JsonlEventStore::open(&event_log_path)
+        .await
+        .expect("reopened store");
+    let channels = reopened_store.channels().await;
+
+    ingest_handle.abort();
+    worker_handle.abort();
+
+    assert_eq!(response_payload["ok"], true);
+    assert_eq!(response_payload["enqueued"], true);
+    assert_eq!(channels.len(), 1);
+    assert_eq!(channels[0].id, "C123");
+    assert_eq!(channels[0].name.as_deref(), Some("announcements"));
+    assert!(!channels[0].is_archived);
+}
+
+#[tokio::test]
 async fn slack_event_flows_from_ingest_to_worker_through_qstash_mock() {
     let tempdir = tempdir().expect("tempdir");
     let event_log_path = tempdir.path().join("process-events.jsonl");

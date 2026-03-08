@@ -104,8 +104,11 @@ pub struct Thread {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Channel {
+    pub team_id: String,
     pub id: String,
     pub kind: ChannelKind,
+    pub name: Option<String>,
+    pub is_archived: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +133,10 @@ pub enum EventPayload {
         user_id: String,
         reaction: String,
         item_ts: String,
+    },
+    ChannelUpdated {
+        name: Option<String>,
+        is_archived: Option<bool>,
     },
 }
 
@@ -197,8 +204,11 @@ mod tests {
     #[test]
     fn core_entities_are_constructible_for_single_workspace_scope() {
         let channel = Channel {
+            team_id: "T123".to_owned(),
             id: "C123".to_owned(),
             kind: ChannelKind::Public,
+            name: Some("general".to_owned()),
+            is_archived: false,
         };
         let user = User {
             team_id: "T123".to_owned(),
@@ -245,6 +255,7 @@ mod tests {
 
         assert_eq!(message.text, "hello");
         assert_eq!(reaction.name, "thumbsup");
+        assert_eq!(channel.name.as_deref(), Some("general"));
         assert_eq!(shared_file.name, "brief.pdf");
     }
 }
