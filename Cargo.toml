@@ -18,6 +18,7 @@ license = "MIT"
 
 [workspace.dependencies]
 axum = { version = "0.8", features = ["json", "macros"] }
+base64 = "0.22"
 hex = "0.4"
 hmac = "0.12"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

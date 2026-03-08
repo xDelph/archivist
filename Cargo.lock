@@ -612,15 +612,19 @@ name = "ingest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "db",
  "queue",
+ "reqwest",
  "serde",
  "serde_json",
  "slack",
+ "tempfile",
  "tokio",
  "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "worker",
 ]
 
 [[package]]
@@ -841,9 +845,16 @@ dependencies = [
 name = "queue"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "base64",
  "domain",
+ "hmac",
  "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -1974,10 +1985,14 @@ name = "worker"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "db",
  "domain",
+ "hmac",
+ "queue",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
  "tower",

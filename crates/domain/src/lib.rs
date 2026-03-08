@@ -57,6 +57,45 @@ impl ChannelKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Message {
+    pub team_id: String,
+    pub channel_id: String,
+    pub ts: String,
+    pub thread_ts: Option<String>,
+    pub user_id: Option<String>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reaction {
+    pub team_id: String,
+    pub channel_id: String,
+    pub message_ts: String,
+    pub user_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Thread {
+    pub channel_id: String,
+    pub root_ts: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Channel {
+    pub id: String,
+    pub kind: ChannelKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct User {
+    pub team_id: String,
+    pub id: String,
+    pub display_name: Option<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum EventPayload {
     Message {
@@ -91,7 +130,10 @@ impl ProcessEventJob {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChannelKind, EventPayload, ProcessEventJob, WorkspaceMode};
+    use super::{
+        Channel, ChannelKind, EventPayload, Message, ProcessEventJob, Reaction, Thread, User,
+        WorkspaceMode,
+    };
 
     #[test]
     fn workspace_mode_is_single_workspace() {
@@ -127,5 +169,41 @@ mod tests {
         };
 
         assert!(job.targets_public_channel());
+    }
+
+    #[test]
+    fn core_entities_are_constructible_for_single_workspace_scope() {
+        let channel = Channel {
+            id: "C123".to_owned(),
+            kind: ChannelKind::Public,
+        };
+        let user = User {
+            team_id: "T123".to_owned(),
+            id: "U123".to_owned(),
+            display_name: Some("Thomas".to_owned()),
+            is_active: true,
+        };
+        let thread = Thread {
+            channel_id: channel.id.clone(),
+            root_ts: "1700000000.000001".to_owned(),
+        };
+        let message = Message {
+            team_id: user.team_id.clone(),
+            channel_id: channel.id.clone(),
+            ts: thread.root_ts.clone(),
+            thread_ts: Some(thread.root_ts.clone()),
+            user_id: Some(user.id.clone()),
+            text: "hello".to_owned(),
+        };
+        let reaction = Reaction {
+            team_id: user.team_id,
+            channel_id: channel.id,
+            message_ts: thread.root_ts,
+            user_id: user.id,
+            name: "thumbsup".to_owned(),
+        };
+
+        assert_eq!(message.text, "hello");
+        assert_eq!(reaction.name, "thumbsup");
     }
 }

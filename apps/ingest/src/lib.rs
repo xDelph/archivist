@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use queue::{DirectQueue, QueueError};
+use queue::{ProcessEventQueue, QueueError};
 use serde::Serialize;
 use slack::{SLACK_SIGNATURE_HEADER, SLACK_TIMESTAMP_HEADER, SlackEnvelope, verify_signature};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,6 +21,8 @@ pub struct IngestConfig {
     pub host: String,
     pub port: u16,
     pub worker_base_url: String,
+    pub qstash_base_url: Option<String>,
+    pub qstash_token: Option<String>,
     pub signing_secret: Option<String>,
 }
 
@@ -32,6 +34,8 @@ impl IngestConfig {
             port: read_port("ARCHIVIST_INGEST_PORT", DEFAULT_PORT),
             worker_base_url: std::env::var("ARCHIVIST_WORKER_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_WORKER_BASE_URL.to_owned()),
+            qstash_base_url: std::env::var("UPSTASH_QSTASH_URL").ok(),
+            qstash_token: std::env::var("UPSTASH_QSTASH_TOKEN").ok(),
             signing_secret: std::env::var("SLACK_SIGNING_SECRET").ok(),
         }
     }
@@ -43,7 +47,7 @@ impl IngestConfig {
 
 #[derive(Clone)]
 struct AppState {
-    queue: DirectQueue,
+    queue: ProcessEventQueue,
     signing_secret: Option<String>,
 }
 
@@ -52,6 +56,7 @@ struct HealthResponse {
     service: &'static str,
     version: &'static str,
     queue_endpoint: String,
+    queue_mode: &'static str,
     signature_verification: bool,
 }
 
@@ -68,7 +73,11 @@ struct ErrorResponse {
 }
 
 pub fn build_router(config: IngestConfig) -> Result<Router, QueueError> {
-    let queue = DirectQueue::new(&config.worker_base_url)?;
+    let queue = ProcessEventQueue::new(
+        &config.worker_base_url,
+        config.qstash_base_url.as_deref(),
+        config.qstash_token.as_deref(),
+    )?;
 
     Ok(Router::new()
         .route("/health", get(health))
@@ -85,6 +94,7 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         service: "ingest",
         version: env!("CARGO_PKG_VERSION"),
         queue_endpoint: state.queue.endpoint().to_owned(),
+        queue_mode: state.queue.mode().as_str(),
         signature_verification: state.signing_secret.is_some(),
     })
 }
@@ -219,9 +229,10 @@ fn current_unix_timestamp() -> i64 {
 mod tests {
     use super::{IngestConfig, build_router};
     use axum::{
-        body::Body,
+        body::{Body, to_bytes},
         http::{Request, StatusCode},
     };
+    use serde_json::Value;
     use tower::util::ServiceExt;
 
     #[test]
@@ -229,6 +240,8 @@ mod tests {
         let config = IngestConfig::from_env();
         assert_eq!(config.bind_address(), "127.0.0.1:4001");
         assert_eq!(config.worker_base_url, "http://127.0.0.1:4002");
+        assert_eq!(config.qstash_base_url, None);
+        assert_eq!(config.qstash_token, None);
     }
 
     #[tokio::test]
@@ -249,5 +262,63 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn health_reports_direct_queue_mode_by_default() {
+        let router = build_router(IngestConfig::from_env()).expect("router");
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let payload: Value = serde_json::from_slice(&body).expect("json");
+
+        assert_eq!(payload["queue_mode"], "direct");
+        assert_eq!(
+            payload["queue_endpoint"],
+            "http://127.0.0.1:4002/jobs/process_event"
+        );
+    }
+
+    #[tokio::test]
+    async fn health_reports_qstash_queue_mode_when_token_is_configured() {
+        let router = build_router(IngestConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4001,
+            worker_base_url: "https://worker.archivist.dev".to_owned(),
+            qstash_base_url: Some("qstash.upstash.io".to_owned()),
+            qstash_token: Some("secret".to_owned()),
+            signing_secret: None,
+        })
+        .expect("router");
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let payload: Value = serde_json::from_slice(&body).expect("json");
+
+        assert_eq!(payload["queue_mode"], "qstash");
+        assert_eq!(
+            payload["queue_endpoint"],
+            "https://worker.archivist.dev/jobs/process_event"
+        );
     }
 }

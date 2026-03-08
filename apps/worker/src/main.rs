@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = WorkerConfig::from_env();
     let listener = TcpListener::bind(config.bind_address()).await?;
     let store = JsonlEventStore::open(&config.event_log_path).await?;
-    let router = build_router(store, config.event_log_path);
+    let router = build_router(store, config)?;
 
     tracing::info!("worker listening on {}", listener.local_addr()?);
     axum::serve(listener, router).await?;

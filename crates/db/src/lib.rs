@@ -1,6 +1,6 @@
-use domain::ProcessEventJob;
+use domain::{EventPayload, Message, ProcessEventJob, Reaction};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -23,6 +23,8 @@ impl RepositoryMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepositoryHealth {
     pub tracked_events: usize,
+    pub tracked_messages: usize,
+    pub tracked_reactions: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,23 +48,37 @@ pub enum StoreError {
 #[derive(Debug, Clone)]
 pub struct JsonlEventStore {
     path: Arc<PathBuf>,
-    seen_events: Arc<Mutex<HashSet<String>>>,
+    state: Arc<Mutex<StoreState>>,
+}
+
+type MessageKey = (String, String);
+type ReactionKey = (String, String, String, String, String);
+
+#[derive(Debug, Default)]
+struct StoreState {
+    seen_events: HashSet<String>,
+    messages: HashMap<MessageKey, Message>,
+    reactions: HashSet<ReactionKey>,
 }
 
 impl JsonlEventStore {
     pub async fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let path = path.as_ref().to_path_buf();
-        let seen_events = load_known_events(&path).await?;
+        let state = load_state(&path).await?;
 
         Ok(Self {
             path: Arc::new(path),
-            seen_events: Arc::new(Mutex::new(seen_events)),
+            state: Arc::new(Mutex::new(state)),
         })
     }
 
     pub async fn health(&self) -> RepositoryHealth {
+        let state = self.state.lock().await;
+
         RepositoryHealth {
-            tracked_events: self.seen_events.lock().await.len(),
+            tracked_events: state.seen_events.len(),
+            tracked_messages: state.messages.len(),
+            tracked_reactions: state.reactions.len(),
         }
     }
 
@@ -70,32 +86,113 @@ impl JsonlEventStore {
         &self,
         job: &ProcessEventJob,
     ) -> Result<StoreOutcome, StoreError> {
-        let mut seen_events = self.seen_events.lock().await;
-        if !seen_events.insert(job.event_id.clone()) {
+        let mut state = self.state.lock().await;
+        if state.seen_events.contains(&job.event_id) {
             return Ok(StoreOutcome::Duplicate);
         }
 
-        drop(seen_events);
         append_job(&self.path, job).await?;
+        state.seen_events.insert(job.event_id.clone());
+        state.apply_job(job);
 
         Ok(StoreOutcome::Inserted)
     }
+
+    pub async fn messages(&self) -> Vec<Message> {
+        let state = self.state.lock().await;
+        let mut messages = state.messages.values().cloned().collect::<Vec<_>>();
+        messages.sort_by(|left, right| {
+            (&left.channel_id, &left.ts).cmp(&(&right.channel_id, &right.ts))
+        });
+        messages
+    }
+
+    pub async fn reactions(&self) -> Vec<Reaction> {
+        let state = self.state.lock().await;
+        let mut reactions = state
+            .reactions
+            .iter()
+            .map(
+                |(team_id, channel_id, message_ts, user_id, reaction_name)| Reaction {
+                    team_id: team_id.clone(),
+                    channel_id: channel_id.clone(),
+                    message_ts: message_ts.clone(),
+                    user_id: user_id.clone(),
+                    name: reaction_name.clone(),
+                },
+            )
+            .collect::<Vec<_>>();
+        reactions.sort_by(|left, right| {
+            (
+                &left.channel_id,
+                &left.message_ts,
+                &left.user_id,
+                &left.name,
+            )
+                .cmp(&(
+                    &right.channel_id,
+                    &right.message_ts,
+                    &right.user_id,
+                    &right.name,
+                ))
+        });
+        reactions
+    }
 }
 
-async fn load_known_events(path: &Path) -> Result<HashSet<String>, StoreError> {
+impl StoreState {
+    fn apply_job(&mut self, job: &ProcessEventJob) {
+        match &job.payload {
+            EventPayload::Message {
+                user_id,
+                text,
+                ts,
+                thread_ts,
+            } => {
+                self.messages.insert(
+                    (job.channel_id.clone(), ts.clone()),
+                    Message {
+                        team_id: job.team_id.clone(),
+                        channel_id: job.channel_id.clone(),
+                        ts: ts.clone(),
+                        thread_ts: thread_ts.clone(),
+                        user_id: user_id.clone(),
+                        text: text.clone().unwrap_or_default(),
+                    },
+                );
+            }
+            EventPayload::ReactionAdded {
+                user_id,
+                reaction,
+                item_ts,
+            } => {
+                self.reactions.insert((
+                    job.team_id.clone(),
+                    job.channel_id.clone(),
+                    item_ts.clone(),
+                    user_id.clone(),
+                    reaction.clone(),
+                ));
+            }
+        }
+    }
+}
+
+async fn load_state(path: &Path) -> Result<StoreState, StoreError> {
     if !fs::try_exists(path).await.map_err(StoreError::Read)? {
-        return Ok(HashSet::new());
+        return Ok(StoreState::default());
     }
 
     let contents = fs::read_to_string(path).await.map_err(StoreError::Read)?;
-    let mut seen_events = HashSet::new();
+    let mut state = StoreState::default();
 
     for line in contents.lines().filter(|line| !line.trim().is_empty()) {
         let job: ProcessEventJob = serde_json::from_str(line)?;
-        seen_events.insert(job.event_id);
+        state.seen_events.insert(job.event_id.clone());
+        state.apply_job(&job);
     }
 
-    Ok(seen_events)
+    Ok(state)
 }
 
 async fn append_job(path: &Path, job: &ProcessEventJob) -> Result<(), StoreError> {
@@ -162,6 +259,83 @@ mod tests {
         );
 
         let reopened = JsonlEventStore::open(&path).await.expect("reopened");
-        assert_eq!(reopened.health().await.tracked_events, 1);
+        let health = reopened.health().await;
+
+        assert_eq!(health.tracked_events, 1);
+        assert_eq!(health.tracked_messages, 1);
+        assert_eq!(health.tracked_reactions, 0);
+    }
+
+    #[tokio::test]
+    async fn message_jobs_upsert_by_channel_and_timestamp() {
+        let tempdir = tempdir().expect("tempdir");
+        let path = tempdir.path().join("events.jsonl");
+        let store = JsonlEventStore::open(&path).await.expect("store");
+        let original = sample_job("evt_1");
+        let EventPayload::Message {
+            user_id,
+            ts,
+            thread_ts,
+            ..
+        } = original.payload.clone()
+        else {
+            unreachable!("sample job is a message");
+        };
+        let updated = ProcessEventJob {
+            event_id: "evt_2".to_owned(),
+            payload: EventPayload::Message {
+                user_id,
+                text: Some("updated".to_owned()),
+                ts,
+                thread_ts,
+            },
+            ..original
+        };
+
+        store
+            .record_process_event(&sample_job("evt_1"))
+            .await
+            .expect("insert original");
+        store
+            .record_process_event(&updated)
+            .await
+            .expect("insert updated");
+
+        let messages = store.messages().await;
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].text, "updated");
+    }
+
+    #[tokio::test]
+    async fn reaction_jobs_are_tracked_separately() {
+        let tempdir = tempdir().expect("tempdir");
+        let path = tempdir.path().join("events.jsonl");
+        let store = JsonlEventStore::open(&path).await.expect("store");
+        let reaction_job = ProcessEventJob {
+            event_id: "evt_reaction".to_owned(),
+            team_id: "team_1".to_owned(),
+            event_time: 3,
+            received_at: 4,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::ReactionAdded {
+                user_id: "U123".to_owned(),
+                reaction: "thumbsup".to_owned(),
+                item_ts: "1700000000.000001".to_owned(),
+            },
+        };
+
+        store
+            .record_process_event(&reaction_job)
+            .await
+            .expect("insert reaction");
+
+        let reactions = store.reactions().await;
+        let health = store.health().await;
+
+        assert_eq!(reactions.len(), 1);
+        assert_eq!(reactions[0].name, "thumbsup");
+        assert_eq!(health.tracked_reactions, 1);
     }
 }

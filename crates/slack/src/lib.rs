@@ -254,4 +254,60 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn public_reactions_become_jobs() {
+        let callback: EventCallback = serde_json::from_str(
+            r#"{
+                "team_id": "T123",
+                "event_id": "Ev456",
+                "event_time": 1700000100,
+                "event": {
+                    "type": "reaction_added",
+                    "reaction": "thumbsup",
+                    "user": "U123",
+                    "item": {
+                        "channel": "C123",
+                        "ts": "1700000000.000001"
+                    }
+                }
+            }"#,
+        )
+        .expect("callback");
+
+        let job = callback.into_job(1_700_000_105).expect("job");
+
+        assert_eq!(job.channel_kind, ChannelKind::Public);
+        assert_eq!(
+            job.payload,
+            EventPayload::ReactionAdded {
+                user_id: "U123".to_owned(),
+                reaction: "thumbsup".to_owned(),
+                item_ts: "1700000000.000001".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn non_public_messages_are_ignored() {
+        let callback: EventCallback = serde_json::from_str(
+            r#"{
+                "team_id": "T123",
+                "event_id": "Ev789",
+                "event_time": 1700000200,
+                "event": {
+                    "type": "message",
+                    "channel": "D123",
+                    "user": "U123",
+                    "text": "private",
+                    "ts": "1700000000.000001",
+                    "thread_ts": null,
+                    "subtype": null
+                }
+            }"#,
+        )
+        .expect("callback");
+
+        assert!(callback.into_job(1_700_000_205).is_none());
+    }
 }
