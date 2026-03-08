@@ -1,0 +1,11 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": [
+        "$TURBO_ROOT$/target/debug/worker",
+        "$TURBO_ROOT$/target/debug/worker.d"
+      ]
+    }
+  }
+}

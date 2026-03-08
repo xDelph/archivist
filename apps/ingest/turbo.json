@@ -1,0 +1,11 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": [
+        "$TURBO_ROOT$/target/debug/ingest",
+        "$TURBO_ROOT$/target/debug/ingest.d"
+      ]
+    }
+  }
+}
