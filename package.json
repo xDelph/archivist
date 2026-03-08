@@ -14,11 +14,7 @@
     "typecheck": "turbo run typecheck",
     "check": "turbo run check",
     "fmt": "turbo run fmt",
-    "dev:backend": "cargo run --manifest-path apps/backend/Cargo.toml --bin record",
-    "dev:frontend": "cd apps/frontend && bun run dev --port 3001",
-    "check:backend:dev": "bash scripts/dev/check-backend.sh",
-    "release:preflight": "bash scripts/release/preflight-check.sh",
-    "release:smoke": "bash scripts/release/smoke-test.sh"
+    "dev:frontend": "bun run --filter @archivist/frontend dev"
   },
   "devDependencies": {
     "turbo": "^2.5.8"

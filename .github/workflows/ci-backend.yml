@@ -1,24 +1,30 @@
-name: CI Backend Rust
+name: CI Rust Workspace
 
 on:
   pull_request:
     paths:
-      - "apps/backend/**"
+      - "apps/api/**"
+      - "apps/ingest/**"
+      - "apps/worker/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - ".cargo/config.toml"
       - ".github/workflows/ci-backend.yml"
   push:
     branches:
       - develop
-      - feat/monorepo
     paths:
-      - "apps/backend/**"
+      - "apps/api/**"
+      - "apps/ingest/**"
+      - "apps/worker/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - ".cargo/config.toml"
       - ".github/workflows/ci-backend.yml"
 
 jobs:
   backend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/backend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,16 +37,16 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/backend
+          workspaces: . -> target
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Build
-        run: cargo check
+        run: cargo check --workspace
 
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings

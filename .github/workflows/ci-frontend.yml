@@ -1,10 +1,9 @@
-name: CI Frontend v0
+name: CI Frontend
 
 on:
   pull_request:
     paths:
       - "apps/frontend/**"
-      - "packages/**"
       - "bun.lock"
       - "package.json"
       - "turbo.json"
@@ -12,10 +11,8 @@ on:
   push:
     branches:
       - develop
-      - feat/monorepo
     paths:
       - "apps/frontend/**"
-      - "packages/**"
       - "bun.lock"
       - "package.json"
       - "turbo.json"
@@ -40,6 +37,15 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Check formatting
+        run: bun run --filter @archivist/frontend fmt
+
+      - name: Lint frontend
+        run: bun run --filter @archivist/frontend lint
+
+      - name: Test frontend
+        run: bun run --filter @archivist/frontend test
 
       - name: Typecheck frontend
         run: bun run --filter @archivist/frontend typecheck

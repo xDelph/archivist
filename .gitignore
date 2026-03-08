@@ -11,6 +11,9 @@ target/
 
 node_modules/
 apps/*/node_modules/
-apps/frontend/.next/
+apps/frontend/dist/
+apps/frontend/.vite/
 .bun/
 .env*.local
+coverage/
+*.tsbuildinfo

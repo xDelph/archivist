@@ -1,0 +1,28 @@
+use db::JsonlEventStore;
+use tokio::net::TcpListener;
+use worker::{WorkerConfig, build_router};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_tracing("worker");
+
+    let config = WorkerConfig::from_env();
+    let listener = TcpListener::bind(config.bind_address()).await?;
+    let store = JsonlEventStore::open(&config.event_log_path).await?;
+    let router = build_router(store, config.event_log_path);
+
+    tracing::info!("worker listening on {}", listener.local_addr()?);
+    axum::serve(listener, router).await?;
+
+    Ok(())
+}
+
+fn init_tracing(service_name: &str) {
+    let env_filter = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| format!("{service_name}=debug,tower_http=info"));
+
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_target(false)
+        .try_init();
+}

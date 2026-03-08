@@ -1,0 +1,12 @@
+[package]
+name = "queue"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+domain = { path = "../domain" }
+reqwest.workspace = true
+thiserror.workspace = true

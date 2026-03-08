@@ -1,2 +1,0 @@
-ALTER TABLE thread_rollups
-ADD COLUMN IF NOT EXISTS search_text TEXT NOT NULL DEFAULT '';

@@ -1,0 +1,13 @@
+{
+  "name": "@archivist/ingest",
+  "private": true,
+  "scripts": {
+    "dev": "cargo run --manifest-path ../../Cargo.toml -p ingest",
+    "build": "cargo build --manifest-path ../../Cargo.toml -p ingest",
+    "lint": "cargo clippy --manifest-path ../../Cargo.toml -p ingest --all-targets -- -D warnings",
+    "test": "cargo test --manifest-path ../../Cargo.toml -p ingest",
+    "check": "cargo check --manifest-path ../../Cargo.toml -p ingest",
+    "fmt": "cargo fmt --manifest-path ../../Cargo.toml -p ingest --check",
+    "typecheck": "cargo check --manifest-path ../../Cargo.toml -p ingest"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@archivist/api",
+  "private": true,
+  "scripts": {
+    "dev": "cargo run --manifest-path ../../Cargo.toml -p api",
+    "build": "cargo build --manifest-path ../../Cargo.toml -p api",
+    "lint": "cargo clippy --manifest-path ../../Cargo.toml -p api --all-targets -- -D warnings",
+    "test": "cargo test --manifest-path ../../Cargo.toml -p api",
+    "check": "cargo check --manifest-path ../../Cargo.toml -p api",
+    "fmt": "cargo fmt --manifest-path ../../Cargo.toml -p api --check",
+    "typecheck": "cargo check --manifest-path ../../Cargo.toml -p api"
+  }
+}
