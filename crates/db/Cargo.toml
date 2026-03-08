@@ -9,6 +9,7 @@ workspace = true
 [dependencies]
 domain = { path = "../domain" }
 serde_json.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
