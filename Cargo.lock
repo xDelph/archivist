@@ -612,11 +612,14 @@ name = "ingest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "db",
+ "hmac",
  "queue",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "slack",
  "tempfile",
  "tokio",
