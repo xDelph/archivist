@@ -1,3 +1,4 @@
+mod auth;
 mod threads;
 
 use axum::{Json, Router, extract::State, routing::get};
@@ -17,6 +18,10 @@ pub struct ApiConfig {
     pub host: String,
     pub port: u16,
     pub event_log_path: String,
+    pub slack_client_id: Option<String>,
+    pub slack_client_secret: Option<String>,
+    pub slack_redirect_uri: Option<String>,
+    pub slack_workspace_id: Option<String>,
 }
 
 impl ApiConfig {
@@ -26,6 +31,10 @@ impl ApiConfig {
             port: read_port("ARCHIVIST_API_PORT", DEFAULT_PORT),
             event_log_path: std::env::var("ARCHIVIST_EVENT_LOG_PATH")
                 .unwrap_or_else(|_| DEFAULT_EVENT_LOG_PATH.to_owned()),
+            slack_client_id: std::env::var("SLACK_CLIENT_ID").ok(),
+            slack_client_secret: std::env::var("SLACK_CLIENT_SECRET").ok(),
+            slack_redirect_uri: std::env::var("SLACK_REDIRECT_URI").ok(),
+            slack_workspace_id: std::env::var("SLACK_WORKSPACE_ID").ok(),
         }
     }
 
@@ -37,6 +46,7 @@ impl ApiConfig {
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) store: JsonlEventStore,
+    pub(crate) slack_auth: auth::SlackAuthConfig,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -92,9 +102,13 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
 
     Ok(Router::new()
         .route("/health", get(health))
+        .route("/api/auth/slack/start", get(auth::slack_start))
         .route("/api/channels", get(channels))
         .route("/api/threads/{id}", get(threads::thread_detail))
-        .with_state(AppState { store })
+        .with_state(AppState {
+            store,
+            slack_auth: auth::SlackAuthConfig::from_config(&config),
+        })
         .layer(TraceLayer::new_for_http()))
 }
 
@@ -239,6 +253,10 @@ mod tests {
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 4000);
         assert_eq!(config.event_log_path, "logs/process-events.jsonl");
+        assert_eq!(config.slack_client_id, None);
+        assert_eq!(config.slack_client_secret, None);
+        assert_eq!(config.slack_redirect_uri, None);
+        assert_eq!(config.slack_workspace_id, None);
         assert_eq!(config.bind_address(), "127.0.0.1:4000");
     }
 
@@ -250,6 +268,10 @@ mod tests {
             host: "127.0.0.1".to_owned(),
             port: 4000,
             event_log_path: path.display().to_string(),
+            slack_client_id: None,
+            slack_client_secret: None,
+            slack_redirect_uri: None,
+            slack_workspace_id: None,
         })
         .await
         .expect("router")
@@ -358,6 +380,10 @@ mod tests {
             host: "127.0.0.1".to_owned(),
             port: 4000,
             event_log_path: path.display().to_string(),
+            slack_client_id: None,
+            slack_client_secret: None,
+            slack_redirect_uri: None,
+            slack_workspace_id: None,
         })
         .await
         .expect("router")

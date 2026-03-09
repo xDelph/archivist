@@ -282,6 +282,10 @@ mod tests {
             host: "127.0.0.1".to_owned(),
             port: 4000,
             event_log_path: path.display().to_string(),
+            slack_client_id: None,
+            slack_client_secret: None,
+            slack_redirect_uri: None,
+            slack_workspace_id: None,
         })
         .await
         .expect("router")
@@ -317,6 +321,10 @@ mod tests {
             host: "127.0.0.1".to_owned(),
             port: 4000,
             event_log_path: path.display().to_string(),
+            slack_client_id: None,
+            slack_client_secret: None,
+            slack_redirect_uri: None,
+            slack_workspace_id: None,
         })
         .await
         .expect("router")
