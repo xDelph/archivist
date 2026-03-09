@@ -381,4 +381,5 @@ fn parse_ts_seconds(value: &str) -> Option<i64> {
 }
 
 #[cfg(test)]
+#[path = "thread_list_tests.rs"]
 mod tests;

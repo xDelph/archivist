@@ -17,7 +17,9 @@ use tempfile::{TempDir, tempdir};
 use tokio::{net::TcpListener, task::JoinHandle};
 use tower::util::ServiceExt;
 
+#[path = "auth_callback_tests.rs"]
 mod callback;
+#[path = "auth_session_tests.rs"]
 mod session;
 
 #[test]

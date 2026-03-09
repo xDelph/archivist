@@ -213,4 +213,5 @@ fn current_unix_timestamp() -> i64 {
 }
 
 #[cfg(test)]
+#[path = "catch_up_tests.rs"]
 mod tests;

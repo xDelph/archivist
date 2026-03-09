@@ -202,4 +202,5 @@ fn saved_store_error(
 }
 
 #[cfg(test)]
+#[path = "saved_tests.rs"]
 mod tests;

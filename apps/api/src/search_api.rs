@@ -307,4 +307,5 @@ fn parse_ts_seconds(value: &str) -> Option<i64> {
 }
 
 #[cfg(test)]
+#[path = "search_api_tests.rs"]
 mod tests;

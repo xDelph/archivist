@@ -306,4 +306,5 @@ fn read_port(key: &str, fallback: u16) -> u16 {
 }
 
 #[cfg(test)]
+#[path = "lib_tests.rs"]
 mod tests;

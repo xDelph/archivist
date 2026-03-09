@@ -484,4 +484,5 @@ pub(crate) enum CallbackError {
 }
 
 #[cfg(test)]
+#[path = "auth_tests.rs"]
 mod tests;

@@ -317,4 +317,5 @@ async fn append_job(path: &Path, job: &ProcessEventJob) -> Result<(), StoreError
 }
 
 #[cfg(test)]
+#[path = "store_tests.rs"]
 mod tests;
