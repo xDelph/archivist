@@ -88,6 +88,11 @@ async fn slack_start_redirects_to_slack_oidc() {
         slack_workspace_id: Some("T123".to_owned()),
         slack_token_url: None,
         session_secret: None,
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
     })
     .await
     .expect("router")
@@ -127,6 +132,11 @@ async fn slack_start_rejects_missing_config() {
         slack_workspace_id: None,
         slack_token_url: None,
         session_secret: None,
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
     })
     .await
     .expect("router")
@@ -156,6 +166,11 @@ async fn slack_callback_rejects_missing_code() {
         slack_workspace_id: Some("T123".to_owned()),
         slack_token_url: None,
         session_secret: None,
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
     })
     .await
     .expect("router")
@@ -198,6 +213,56 @@ async fn slack_callback_exchanges_code_and_validates_identity() {
     assert_eq!(identity.slack_user_id, "U123");
     assert_eq!(identity.team_id, "T123");
     assert_eq!(identity.display_name.as_deref(), Some("Thomas"));
+}
+
+#[tokio::test]
+async fn slack_callback_persists_identity_to_the_local_store() {
+    let tempdir = tempdir().expect("tempdir");
+    let event_log_path = tempdir.path().join("events.jsonl");
+    let auth_store_path = tempdir.path().join("auth-identities.json");
+    let token_server = spawn_token_server(sample_id_token(
+        "client_123",
+        "T123",
+        "U123",
+        current_unix_timestamp() + 60,
+    ))
+    .await;
+    let response = build_router(ApiConfig {
+        host: "127.0.0.1".to_owned(),
+        port: 4000,
+        event_log_path: event_log_path.display().to_string(),
+        slack_client_id: Some("client_123".to_owned()),
+        slack_client_secret: Some("secret".to_owned()),
+        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        slack_workspace_id: Some("T123".to_owned()),
+        slack_token_url: Some(format!("{}/token", token_server.0)),
+        session_secret: Some("session_secret".to_owned()),
+        auth_store_path: auth_store_path.display().to_string(),
+    })
+    .await
+    .expect("router")
+    .oneshot(
+        Request::builder()
+            .uri("/api/auth/slack/callback?code=code_123")
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    token_server.1.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let store = crate::auth_store::LocalAuthStore::open(&auth_store_path)
+        .await
+        .expect("reopened auth store");
+    let identities = store.identities().await;
+
+    assert_eq!(identities.len(), 1);
+    assert_eq!(identities[0].slack_user_id, "U123");
+    assert_eq!(identities[0].team_id, "T123");
+    assert_eq!(identities[0].display_name.as_deref(), Some("Thomas"));
 }
 
 #[tokio::test]
@@ -251,6 +316,11 @@ async fn me_returns_the_current_user_from_a_valid_session_cookie() {
         slack_workspace_id: Some("T123".to_owned()),
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
     })
     .await
     .expect("router")
@@ -281,6 +351,14 @@ async fn me_rejects_missing_sessions() {
             token_url: None,
         },
         session_secret: Some("session_secret".to_owned()),
+        auth_store: crate::auth_store::LocalAuthStore::open(
+            tempdir()
+                .expect("tempdir")
+                .path()
+                .join("auth-identities.json"),
+        )
+        .await
+        .expect("auth store"),
     };
 
     let result = me(State(state), axum::http::HeaderMap::new()).await;
@@ -313,6 +391,11 @@ async fn me_rejects_expired_sessions() {
         slack_workspace_id: Some("T123".to_owned()),
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
     })
     .await
     .expect("router")
@@ -343,6 +426,11 @@ async fn logout_clears_the_session_cookie() {
         slack_workspace_id: Some("T123".to_owned()),
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
     })
     .await
     .expect("router")

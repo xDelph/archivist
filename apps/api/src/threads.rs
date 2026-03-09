@@ -288,6 +288,11 @@ mod tests {
             slack_workspace_id: None,
             slack_token_url: None,
             session_secret: None,
+            auth_store_path: tempdir
+                .path()
+                .join("auth-identities.json")
+                .display()
+                .to_string(),
         })
         .await
         .expect("router")
@@ -329,6 +334,11 @@ mod tests {
             slack_workspace_id: None,
             slack_token_url: None,
             session_secret: None,
+            auth_store_path: tempdir
+                .path()
+                .join("auth-identities.json")
+                .display()
+                .to_string(),
         })
         .await
         .expect("router")

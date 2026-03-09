@@ -54,12 +54,12 @@ pub(crate) struct SlackCallbackQuery {
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct SlackIdentityResponse {
-    ok: bool,
-    slack_user_id: String,
-    team_id: String,
-    email: Option<String>,
-    display_name: Option<String>,
-    avatar_url: Option<String>,
+    pub(crate) ok: bool,
+    pub(crate) slack_user_id: String,
+    pub(crate) team_id: String,
+    pub(crate) email: Option<String>,
+    pub(crate) display_name: Option<String>,
+    pub(crate) avatar_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -151,6 +151,18 @@ pub(crate) async fn slack_callback(
     let identity = exchange_code_for_identity(&state.slack_auth, code)
         .await
         .map_err(callback_error_response)?;
+    state
+        .auth_store
+        .upsert_identity(&identity)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "identity_store_failed",
+                }),
+            )
+        })?;
 
     Ok(Json(identity))
 }

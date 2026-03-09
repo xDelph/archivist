@@ -1,4 +1,5 @@
 mod auth;
+mod auth_store;
 mod threads;
 
 use axum::{Json, Router, extract::State, routing::get};
@@ -12,6 +13,7 @@ use tower_http::trace::TraceLayer;
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 4000;
 const DEFAULT_EVENT_LOG_PATH: &str = "logs/process-events.jsonl";
+const DEFAULT_AUTH_STORE_PATH: &str = "logs/auth-identities.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiConfig {
@@ -24,6 +26,7 @@ pub struct ApiConfig {
     pub slack_workspace_id: Option<String>,
     pub slack_token_url: Option<String>,
     pub session_secret: Option<String>,
+    pub auth_store_path: String,
 }
 
 impl ApiConfig {
@@ -39,6 +42,8 @@ impl ApiConfig {
             slack_workspace_id: std::env::var("SLACK_WORKSPACE_ID").ok(),
             slack_token_url: std::env::var("SLACK_OIDC_TOKEN_URL").ok(),
             session_secret: std::env::var("ARCHIVIST_SESSION_SECRET").ok(),
+            auth_store_path: std::env::var("ARCHIVIST_AUTH_STORE_PATH")
+                .unwrap_or_else(|_| DEFAULT_AUTH_STORE_PATH.to_owned()),
         }
     }
 
@@ -52,6 +57,7 @@ pub(crate) struct AppState {
     pub(crate) store: JsonlEventStore,
     pub(crate) slack_auth: auth::SlackAuthConfig,
     pub(crate) session_secret: Option<String>,
+    pub(crate) auth_store: auth_store::LocalAuthStore,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -104,6 +110,9 @@ impl Default for ChannelSummaryBuilder {
 
 pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let store = JsonlEventStore::open(&config.event_log_path).await?;
+    let auth_store = auth_store::LocalAuthStore::open(&config.auth_store_path)
+        .await
+        .map_err(auth_store_error_to_store_error)?;
 
     Ok(Router::new()
         .route("/health", get(health))
@@ -117,8 +126,18 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
             store,
             slack_auth: auth::SlackAuthConfig::from_config(&config),
             session_secret: config.session_secret.clone(),
+            auth_store,
         })
         .layer(TraceLayer::new_for_http()))
+}
+
+fn auth_store_error_to_store_error(error: auth_store::AuthStoreError) -> StoreError {
+    match error {
+        auth_store::AuthStoreError::Read(error)
+        | auth_store::AuthStoreError::CreateDirectory(error)
+        | auth_store::AuthStoreError::Write(error) => StoreError::Read(error),
+        auth_store::AuthStoreError::Parse(error) => StoreError::Parse(error),
+    }
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -268,6 +287,7 @@ mod tests {
         assert_eq!(config.slack_workspace_id, None);
         assert_eq!(config.slack_token_url, None);
         assert_eq!(config.session_secret, None);
+        assert_eq!(config.auth_store_path, "logs/auth-identities.json");
         assert_eq!(config.bind_address(), "127.0.0.1:4000");
     }
 
@@ -285,6 +305,11 @@ mod tests {
             slack_workspace_id: None,
             slack_token_url: None,
             session_secret: None,
+            auth_store_path: tempdir
+                .path()
+                .join("auth-identities.json")
+                .display()
+                .to_string(),
         })
         .await
         .expect("router")
@@ -399,6 +424,11 @@ mod tests {
             slack_workspace_id: None,
             slack_token_url: None,
             session_secret: None,
+            auth_store_path: tempdir
+                .path()
+                .join("auth-identities.json")
+                .display()
+                .to_string(),
         })
         .await
         .expect("router")
