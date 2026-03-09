@@ -1,7 +1,9 @@
+mod memory;
 mod sqlx_models;
 mod sqlx_queries;
 mod store;
 
+pub use memory::InMemoryEventStore;
 pub use sqlx_models::{
     AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SearchDocumentRow, UserRow,
 };
