@@ -7,9 +7,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = ApiConfig::from_env();
     let listener = TcpListener::bind(config.bind_address()).await?;
+    let app = build_router(config).await?;
 
     tracing::info!("api listening on {}", listener.local_addr()?);
-    axum::serve(listener, build_router()).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
