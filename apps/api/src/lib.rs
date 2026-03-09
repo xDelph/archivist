@@ -1,3 +1,5 @@
+mod analytics;
+mod analytics_store;
 mod auth;
 mod auth_store;
 mod catch_up;
@@ -23,6 +25,7 @@ const DEFAULT_EVENT_LOG_PATH: &str = "logs/process-events.jsonl";
 const DEFAULT_AUTH_STORE_PATH: &str = "logs/auth-identities.json";
 const DEFAULT_SYNCED_USERS_PATH: &str = "logs/synced-users.json";
 const DEFAULT_SAVED_ITEMS_PATH: &str = "logs/saved-items.json";
+const DEFAULT_ANALYTICS_PATH: &str = "logs/analytics-events.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiConfig {
@@ -72,6 +75,7 @@ pub(crate) struct AppState {
     pub(crate) auth_store: auth_store::LocalAuthStore,
     pub(crate) user_store: user_store::LocalUserStore,
     pub(crate) saved_store: saved_store::LocalSavedItemStore,
+    pub(crate) analytics_store: analytics_store::LocalAnalyticsStore,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -94,6 +98,9 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let saved_store = saved_store::LocalSavedItemStore::open(saved_items_path(&config))
         .await
         .map_err(saved_store_error_to_store_error)?;
+    let analytics_store = analytics_store::LocalAnalyticsStore::open(analytics_path(&config))
+        .await
+        .map_err(analytics_store_error_to_store_error)?;
     let state = AppState {
         store,
         slack_auth: auth::SlackAuthConfig::from_config(&config),
@@ -101,6 +108,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         auth_store,
         user_store,
         saved_store,
+        analytics_store,
     };
     let protected_api = Router::new()
         .route("/api/catch-up", get(catch_up::catch_up))
@@ -116,6 +124,11 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         .route("/api/search", get(search_api::search))
         .route("/api/threads", get(thread_list::thread_list))
         .route("/api/threads/{id}", get(threads::thread_detail))
+        .route(
+            "/api/analytics/events",
+            axum::routing::post(analytics::record_event),
+        )
+        .route("/api/analytics/metrics", get(analytics::metrics))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_session,
@@ -148,6 +161,15 @@ fn user_store_error_to_store_error(error: user_store::UserStoreError) -> StoreEr
         #[cfg(test)]
         user_store::UserStoreError::CreateDirectory(error)
         | user_store::UserStoreError::Write(error) => StoreError::Read(error),
+    }
+}
+
+fn analytics_store_error_to_store_error(error: analytics_store::AnalyticsStoreError) -> StoreError {
+    match error {
+        analytics_store::AnalyticsStoreError::Read(error)
+        | analytics_store::AnalyticsStoreError::CreateDirectory(error)
+        | analytics_store::AnalyticsStoreError::Write(error) => StoreError::Read(error),
+        analytics_store::AnalyticsStoreError::Parse(error) => StoreError::Parse(error),
     }
 }
 
@@ -184,6 +206,16 @@ fn saved_items_path(config: &ApiConfig) -> String {
             .display()
             .to_string()
             .if_empty(DEFAULT_SAVED_ITEMS_PATH)
+    })
+}
+
+fn analytics_path(config: &ApiConfig) -> String {
+    std::env::var("ARCHIVIST_ANALYTICS_PATH").unwrap_or_else(|_| {
+        Path::new(&config.auth_store_path)
+            .with_file_name("analytics-events.json")
+            .display()
+            .to_string()
+            .if_empty(DEFAULT_ANALYTICS_PATH)
     })
 }
 

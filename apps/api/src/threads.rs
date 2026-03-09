@@ -1,4 +1,4 @@
-use crate::{AppState, auth::SessionClaims};
+use crate::{AppState, analytics::record_analytics, auth::SessionClaims};
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -91,6 +91,13 @@ pub(crate) async fn thread_detail(
             error: "thread_not_found",
         }),
     ))?;
+
+    record_analytics(
+        &state,
+        "thread_view",
+        Some(&claims.slack_user_id),
+        serde_json::json!({ "thread_id": &id }),
+    );
 
     Ok(Json(response))
 }

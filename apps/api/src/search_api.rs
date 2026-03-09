@@ -1,4 +1,4 @@
-use crate::{AppState, auth::SessionClaims};
+use crate::{AppState, analytics::record_analytics, auth::SessionClaims};
 use axum::{
     Extension, Json,
     extract::{Query, State},
@@ -114,6 +114,13 @@ pub(crate) async fn search(
         .collect::<Vec<_>>();
     let next_cursor =
         (cursor + page.len() < items.len()).then(|| (cursor + page.len()).to_string());
+
+    record_analytics(
+        &state,
+        "search_query",
+        Some(&claims.slack_user_id),
+        serde_json::json!({ "query": &search_query.text, "result_count": items.len() }),
+    );
 
     Ok(Json(SearchResponse {
         query: search_query.text,

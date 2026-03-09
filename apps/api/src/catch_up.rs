@@ -1,4 +1,4 @@
-use crate::{AppState, auth::SessionClaims};
+use crate::{AppState, analytics::record_analytics, auth::SessionClaims};
 use axum::{
     Extension, Json,
     extract::{Query, State},
@@ -109,6 +109,13 @@ pub(crate) async fn catch_up(
             .collect(),
         window,
         current_unix_timestamp(),
+    );
+
+    record_analytics(
+        &state,
+        "catch_up_view",
+        Some(&claims.slack_user_id),
+        serde_json::json!({ "window": window.as_str() }),
     );
 
     Ok(Json(CatchUpResponse {
