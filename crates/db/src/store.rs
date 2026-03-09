@@ -1,6 +1,7 @@
 use crate::{
-    SearchDocumentRow,
+    SearchDocumentRow, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+    thread_summary_index::{ThreadSummaryMap, rebuild_thread_summaries},
 };
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::{
@@ -69,6 +70,7 @@ struct StoreState {
     channels: HashMap<(String, String), Channel>,
     reactions: HashSet<ReactionKey>,
     search_documents: SearchDocumentMap,
+    thread_summaries: ThreadSummaryMap,
 }
 
 impl JsonlEventStore {
@@ -106,6 +108,12 @@ impl JsonlEventStore {
         append_job(&self.path, job).await?;
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(job);
+        rebuild_thread_summaries(
+            &mut state.thread_summaries,
+            &state.messages,
+            &state.reactions,
+            &state.files,
+        );
 
         Ok(StoreOutcome::Inserted)
     }
@@ -178,6 +186,15 @@ impl JsonlEventStore {
             (&left.channel_id, &left.message_ts).cmp(&(&right.channel_id, &right.message_ts))
         });
         search_documents
+    }
+
+    pub async fn thread_summaries(&self) -> Vec<ThreadSummaryRow> {
+        let state = self.state.lock().await;
+        let mut thread_summaries = state.thread_summaries.values().cloned().collect::<Vec<_>>();
+        thread_summaries.sort_by(|left, right| {
+            (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
+        });
+        thread_summaries
     }
 }
 
@@ -275,6 +292,12 @@ async fn load_state(path: &Path) -> Result<StoreState, StoreError> {
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(&job);
     }
+    rebuild_thread_summaries(
+        &mut state.thread_summaries,
+        &state.messages,
+        &state.reactions,
+        &state.files,
+    );
 
     Ok(state)
 }

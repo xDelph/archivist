@@ -1,6 +1,7 @@
 use crate::{
-    RepositoryHealth, SearchDocumentRow, StoreOutcome,
+    RepositoryHealth, SearchDocumentRow, StoreOutcome, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+    thread_summary_index::{ThreadSummaryMap, rebuild_thread_summaries},
 };
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::collections::{HashMap, HashSet};
@@ -24,6 +25,7 @@ struct InMemoryState {
     channels: HashMap<(String, String), Channel>,
     reactions: HashSet<ReactionKey>,
     search_documents: SearchDocumentMap,
+    thread_summaries: ThreadSummaryMap,
 }
 
 impl InMemoryEventStore {
@@ -51,6 +53,12 @@ impl InMemoryEventStore {
 
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(job);
+        rebuild_thread_summaries(
+            &mut state.thread_summaries,
+            &state.messages,
+            &state.reactions,
+            &state.files,
+        );
 
         StoreOutcome::Inserted
     }
@@ -123,6 +131,15 @@ impl InMemoryEventStore {
             (&left.channel_id, &left.message_ts).cmp(&(&right.channel_id, &right.message_ts))
         });
         search_documents
+    }
+
+    pub async fn thread_summaries(&self) -> Vec<ThreadSummaryRow> {
+        let state = self.state.lock().await;
+        let mut thread_summaries = state.thread_summaries.values().cloned().collect::<Vec<_>>();
+        thread_summaries.sort_by(|left, right| {
+            (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
+        });
+        thread_summaries
     }
 }
 
@@ -348,5 +365,75 @@ mod tests {
         assert!(search_documents
             .iter()
             .all(|document| document.title.as_deref() == Some("root summary")));
+    }
+
+    #[tokio::test]
+    async fn in_memory_store_refreshes_thread_summaries_for_threads() {
+        let store = InMemoryEventStore::new();
+        let reply = ProcessEventJob {
+            event_id: "evt_reply".to_owned(),
+            team_id: "T123".to_owned(),
+            event_time: 5,
+            received_at: 6,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U456".to_owned()),
+                text: Some("reply details".to_owned()),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: Some("1700000000.000001".to_owned()),
+                files: vec![SharedFile {
+                    id: "F123".to_owned(),
+                    name: "brief.pdf".to_owned(),
+                    mimetype: Some("application/pdf".to_owned()),
+                    permalink: None,
+                    size: Some(42),
+                }],
+            },
+        };
+        let root = ProcessEventJob {
+            event_id: "evt_root".to_owned(),
+            team_id: "T123".to_owned(),
+            event_time: 7,
+            received_at: 8,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U123".to_owned()),
+                text: Some("root summary".to_owned()),
+                ts: "1700000000.000001".to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        };
+        let reaction = ProcessEventJob {
+            event_id: "evt_reaction".to_owned(),
+            team_id: "T123".to_owned(),
+            event_time: 9,
+            received_at: 10,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::ReactionAdded {
+                user_id: "U789".to_owned(),
+                reaction: "eyes".to_owned(),
+                item_ts: "1700000000.000002".to_owned(),
+            },
+        };
+
+        assert_eq!(store.record_process_event(&reply).await, StoreOutcome::Inserted);
+        assert_eq!(store.record_process_event(&root).await, StoreOutcome::Inserted);
+        assert_eq!(
+            store.record_process_event(&reaction).await,
+            StoreOutcome::Inserted
+        );
+
+        let thread_summaries = store.thread_summaries().await;
+
+        assert_eq!(thread_summaries.len(), 1);
+        assert_eq!(thread_summaries[0].title, "root summary");
+        assert_eq!(thread_summaries[0].reply_count, 1);
+        assert_eq!(thread_summaries[0].participant_count, 3);
+        assert_eq!(thread_summaries[0].reaction_count, 1);
+        assert_eq!(thread_summaries[0].file_count, 1);
     }
 }

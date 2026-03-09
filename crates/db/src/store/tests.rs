@@ -269,3 +269,86 @@ async fn message_jobs_refresh_search_documents_for_full_threads() {
         .iter()
         .all(|document| document.title.as_deref() == Some("root summary")));
 }
+
+#[tokio::test]
+async fn message_jobs_refresh_thread_summaries_for_full_threads() {
+    let tempdir = tempdir().expect("tempdir");
+    let path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&path).await.expect("store");
+    let reply_job = ProcessEventJob {
+        event_id: "evt_reply".to_owned(),
+        team_id: "team_1".to_owned(),
+        event_time: 11,
+        received_at: 12,
+        channel_id: "C123".to_owned(),
+        channel_kind: ChannelKind::Public,
+        payload: EventPayload::Message {
+            user_id: Some("U456".to_owned()),
+            text: Some("reply details".to_owned()),
+            ts: "1700000000.000002".to_owned(),
+            thread_ts: Some("1700000000.000001".to_owned()),
+            files: vec![SharedFile {
+                id: "F123".to_owned(),
+                name: "brief.pdf".to_owned(),
+                mimetype: Some("application/pdf".to_owned()),
+                permalink: None,
+                size: Some(42),
+            }],
+        },
+    };
+    let root_job = ProcessEventJob {
+        event_id: "evt_root".to_owned(),
+        team_id: "team_1".to_owned(),
+        event_time: 13,
+        received_at: 14,
+        channel_id: "C123".to_owned(),
+        channel_kind: ChannelKind::Public,
+        payload: EventPayload::Message {
+            user_id: Some("U123".to_owned()),
+            text: Some("root summary".to_owned()),
+            ts: "1700000000.000001".to_owned(),
+            thread_ts: None,
+            files: vec![],
+        },
+    };
+    let reaction_job = ProcessEventJob {
+        event_id: "evt_reaction".to_owned(),
+        team_id: "team_1".to_owned(),
+        event_time: 15,
+        received_at: 16,
+        channel_id: "C123".to_owned(),
+        channel_kind: ChannelKind::Public,
+        payload: EventPayload::ReactionAdded {
+            user_id: "U789".to_owned(),
+            reaction: "eyes".to_owned(),
+            item_ts: "1700000000.000002".to_owned(),
+        },
+    };
+
+    store
+        .record_process_event(&reply_job)
+        .await
+        .expect("insert reply");
+    store
+        .record_process_event(&root_job)
+        .await
+        .expect("insert root");
+    store
+        .record_process_event(&reaction_job)
+        .await
+        .expect("insert reaction");
+
+    let thread_summaries = store.thread_summaries().await;
+    assert_eq!(thread_summaries.len(), 1);
+    assert_eq!(thread_summaries[0].title, "root summary");
+    assert_eq!(thread_summaries[0].reply_count, 1);
+    assert_eq!(thread_summaries[0].participant_count, 3);
+    assert_eq!(thread_summaries[0].reaction_count, 1);
+    assert_eq!(thread_summaries[0].file_count, 1);
+    assert_eq!(thread_summaries[0].last_activity_ts, "1700000000.000002");
+
+    let reopened = JsonlEventStore::open(&path).await.expect("reopened");
+    let reopened_summaries = reopened.thread_summaries().await;
+    assert_eq!(reopened_summaries.len(), 1);
+    assert_eq!(reopened_summaries[0].title, "root summary");
+}

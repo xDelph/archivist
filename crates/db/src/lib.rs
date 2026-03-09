@@ -1,5 +1,6 @@
 mod memory;
 mod search_index;
+mod thread_summary_index;
 mod sqlx_models;
 mod sqlx_queries;
 mod sqlx_schema;
