@@ -45,6 +45,26 @@ ON thread_summaries (team_id, channel_id, last_activity_ts DESC);
 "#
 }
 
+pub const fn create_saved_items_table_query() -> &'static str {
+    r#"
+CREATE TABLE IF NOT EXISTS saved_items (
+    team_id TEXT NOT NULL,
+    slack_user_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    root_ts TEXT NOT NULL,
+    title TEXT NOT NULL,
+    preview TEXT NOT NULL,
+    last_activity_ts TEXT NOT NULL,
+    saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (team_id, slack_user_id, thread_id)
+);
+
+CREATE INDEX IF NOT EXISTS saved_items_user_saved_at_idx
+ON saved_items (team_id, slack_user_id, saved_at DESC);
+"#
+}
+
 pub const fn backfill_search_documents_query() -> &'static str {
     r#"
 WITH root_messages AS (
@@ -73,8 +93,8 @@ SET title = EXCLUDED.title,
 #[cfg(test)]
 mod tests {
     use super::{
-        backfill_search_documents_query, create_search_documents_table_query,
-        create_thread_summaries_table_query,
+        backfill_search_documents_query, create_saved_items_table_query,
+        create_search_documents_table_query, create_thread_summaries_table_query,
     };
 
     #[test]
@@ -109,5 +129,16 @@ mod tests {
         assert!(schema.contains("last_activity_ts TEXT NOT NULL"));
         assert!(schema.contains("thread_summaries_last_activity_idx"));
         assert!(schema.contains("thread_summaries_channel_activity_idx"));
+    }
+
+    #[test]
+    fn saved_items_schema_tracks_saved_threads_per_user() {
+        let schema = create_saved_items_table_query();
+
+        assert!(schema.contains("CREATE TABLE IF NOT EXISTS saved_items"));
+        assert!(schema.contains("slack_user_id TEXT NOT NULL"));
+        assert!(schema.contains("thread_id TEXT NOT NULL"));
+        assert!(schema.contains("saved_at TIMESTAMPTZ NOT NULL DEFAULT now()"));
+        assert!(schema.contains("saved_items_user_saved_at_idx"));
     }
 }

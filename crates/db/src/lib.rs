@@ -8,16 +8,17 @@ mod store;
 
 pub use memory::InMemoryEventStore;
 pub use sqlx_models::{
-    AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SearchDocumentRow,
-    ThreadSummaryRow, UserRow,
+    AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SavedItemRow,
+    SearchDocumentRow, ThreadSummaryRow, UserRow,
 };
 pub use sqlx_queries::{
-    initial_catch_up_query, insert_analytics_event_query, upsert_channel_query,
-    upsert_file_query, upsert_message_query, upsert_reaction_query,
-    upsert_search_document_query, upsert_thread_summary_query, upsert_user_query,
+    delete_saved_item_query, initial_catch_up_query, insert_analytics_event_query,
+    upsert_channel_query, upsert_file_query, upsert_message_query,
+    upsert_reaction_query, upsert_saved_item_query, upsert_search_document_query,
+    upsert_thread_summary_query, upsert_user_query,
 };
 pub use sqlx_schema::{
-    backfill_search_documents_query, create_search_documents_table_query,
-    create_thread_summaries_table_query,
+    backfill_search_documents_query, create_saved_items_table_query,
+    create_search_documents_table_query, create_thread_summaries_table_query,
 };
 pub use store::{JsonlEventStore, RepositoryHealth, RepositoryMode, StoreError, StoreOutcome};

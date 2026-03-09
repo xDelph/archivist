@@ -2,6 +2,8 @@ mod auth;
 mod auth_store;
 mod catch_up;
 mod channels;
+mod saved;
+mod saved_store;
 mod search_api;
 mod thread_list;
 mod threads;
@@ -12,6 +14,7 @@ use db::{JsonlEventStore, RepositoryMode, StoreError};
 use domain::WorkspaceMode;
 use search::SearchBackend;
 use serde::Serialize;
+use std::path::Path;
 use tower_http::trace::TraceLayer;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
@@ -19,6 +22,7 @@ const DEFAULT_PORT: u16 = 4000;
 const DEFAULT_EVENT_LOG_PATH: &str = "logs/process-events.jsonl";
 const DEFAULT_AUTH_STORE_PATH: &str = "logs/auth-identities.json";
 const DEFAULT_SYNCED_USERS_PATH: &str = "logs/synced-users.json";
+const DEFAULT_SAVED_ITEMS_PATH: &str = "logs/saved-items.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiConfig {
@@ -67,6 +71,7 @@ pub(crate) struct AppState {
     pub(crate) session_secret: Option<String>,
     pub(crate) auth_store: auth_store::LocalAuthStore,
     pub(crate) user_store: user_store::LocalUserStore,
+    pub(crate) saved_store: saved_store::LocalSavedItemStore,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -86,16 +91,28 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let user_store = user_store::LocalUserStore::open(&config.synced_users_path)
         .await
         .map_err(user_store_error_to_store_error)?;
+    let saved_store = saved_store::LocalSavedItemStore::open(saved_items_path(&config))
+        .await
+        .map_err(saved_store_error_to_store_error)?;
     let state = AppState {
         store,
         slack_auth: auth::SlackAuthConfig::from_config(&config),
         session_secret: config.session_secret.clone(),
         auth_store,
         user_store,
+        saved_store,
     };
     let protected_api = Router::new()
         .route("/api/catch-up", get(catch_up::catch_up))
         .route("/api/channels", get(channels::channels))
+        .route(
+            "/api/saved",
+            get(saved::list_saved_items).post(saved::save_item),
+        )
+        .route(
+            "/api/saved/{id}",
+            axum::routing::delete(saved::delete_saved_item),
+        )
         .route("/api/search", get(search_api::search))
         .route("/api/threads", get(thread_list::thread_list))
         .route("/api/threads/{id}", get(threads::thread_detail))
@@ -134,6 +151,15 @@ fn user_store_error_to_store_error(error: user_store::UserStoreError) -> StoreEr
     }
 }
 
+fn saved_store_error_to_store_error(error: saved_store::SavedItemStoreError) -> StoreError {
+    match error {
+        saved_store::SavedItemStoreError::Read(error)
+        | saved_store::SavedItemStoreError::CreateDirectory(error)
+        | saved_store::SavedItemStoreError::Write(error) => StoreError::Read(error),
+        saved_store::SavedItemStoreError::Parse(error) => StoreError::Parse(error),
+    }
+}
+
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         service: "api",
@@ -149,6 +175,30 @@ fn read_port(key: &str, fallback: u16) -> u16 {
         .ok()
         .and_then(|raw| raw.parse().ok())
         .unwrap_or(fallback)
+}
+
+fn saved_items_path(config: &ApiConfig) -> String {
+    std::env::var("ARCHIVIST_SAVED_ITEMS_PATH").unwrap_or_else(|_| {
+        Path::new(&config.auth_store_path)
+            .with_file_name("saved-items.json")
+            .display()
+            .to_string()
+            .if_empty(DEFAULT_SAVED_ITEMS_PATH)
+    })
+}
+
+trait DefaultIfEmpty {
+    fn if_empty(self, fallback: &str) -> String;
+}
+
+impl DefaultIfEmpty for String {
+    fn if_empty(self, fallback: &str) -> String {
+        if self.is_empty() {
+            fallback.to_owned()
+        } else {
+            self
+        }
+    }
 }
 
 #[cfg(test)]

@@ -67,6 +67,11 @@ async fn me_rejects_missing_sessions() {
         )
         .await
         .expect("user store"),
+        saved_store: crate::saved_store::LocalSavedItemStore::open(
+            tempdir.path().join("saved-items.json"),
+        )
+        .await
+        .expect("saved store"),
     };
 
     let result = me(State(state), axum::http::HeaderMap::new()).await;

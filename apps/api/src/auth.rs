@@ -1,7 +1,8 @@
 mod session;
 
+pub(crate) use self::session::SessionClaims;
 #[cfg(test)]
-pub(crate) use self::session::{SessionClaims, build_session_token};
+pub(crate) use self::session::build_session_token;
 
 use self::session::{
     SESSION_COOKIE_NAME, SessionError, session_claims, session_cookie, session_cookie_header,

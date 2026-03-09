@@ -89,6 +89,36 @@ SET title = EXCLUDED.title,
 "#
 }
 
+pub const fn upsert_saved_item_query() -> &'static str {
+    r#"
+INSERT INTO saved_items (
+    team_id,
+    slack_user_id,
+    thread_id,
+    channel_id,
+    root_ts,
+    title,
+    preview,
+    last_activity_ts
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (team_id, slack_user_id, thread_id) DO UPDATE
+SET title = EXCLUDED.title,
+    preview = EXCLUDED.preview,
+    last_activity_ts = EXCLUDED.last_activity_ts,
+    saved_at = now()
+"#
+}
+
+pub const fn delete_saved_item_query() -> &'static str {
+    r#"
+DELETE FROM saved_items
+WHERE team_id = $1
+  AND slack_user_id = $2
+  AND thread_id = $3
+"#
+}
+
 pub const fn initial_catch_up_query() -> &'static str {
     r#"
 SELECT
@@ -127,9 +157,10 @@ VALUES ($1, $2, $3)
 #[cfg(test)]
 mod tests {
     use super::{
-        initial_catch_up_query, insert_analytics_event_query, upsert_channel_query,
-        upsert_file_query, upsert_message_query, upsert_reaction_query,
-        upsert_search_document_query, upsert_thread_summary_query, upsert_user_query,
+        delete_saved_item_query, initial_catch_up_query, insert_analytics_event_query,
+        upsert_channel_query, upsert_file_query, upsert_message_query,
+        upsert_reaction_query, upsert_saved_item_query, upsert_search_document_query,
+        upsert_thread_summary_query, upsert_user_query,
     };
 
     #[test]
@@ -141,6 +172,8 @@ mod tests {
         assert!(upsert_user_query().contains("INSERT INTO users"));
         assert!(upsert_search_document_query().contains("INSERT INTO search_documents"));
         assert!(upsert_thread_summary_query().contains("INSERT INTO thread_summaries"));
+        assert!(upsert_saved_item_query().contains("INSERT INTO saved_items"));
+        assert!(delete_saved_item_query().contains("DELETE FROM saved_items"));
         assert!(initial_catch_up_query().contains("FROM thread_summaries"));
         assert!(initial_catch_up_query().contains("LEFT JOIN channels"));
         assert!(insert_analytics_event_query().contains("INSERT INTO analytics_events"));

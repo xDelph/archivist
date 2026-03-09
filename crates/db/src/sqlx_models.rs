@@ -79,11 +79,24 @@ pub struct AnalyticsEventRow {
     pub payload_json: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct SavedItemRow {
+    pub team_id: String,
+    pub slack_user_id: String,
+    pub thread_id: String,
+    pub channel_id: String,
+    pub root_ts: String,
+    pub title: String,
+    pub preview: String,
+    pub last_activity_ts: String,
+    pub saved_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SearchDocumentRow,
-        ThreadSummaryRow, UserRow,
+        AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SavedItemRow,
+        SearchDocumentRow, ThreadSummaryRow, UserRow,
     };
 
     #[test]
@@ -139,6 +152,17 @@ mod tests {
             subject_id: Some("thread_1".to_owned()),
             payload_json: "{}".to_owned(),
         };
+        let saved_item = SavedItemRow {
+            team_id: "T123".to_owned(),
+            slack_user_id: "U123".to_owned(),
+            thread_id: "C123:1700000000.000001".to_owned(),
+            channel_id: "C123".to_owned(),
+            root_ts: message.ts.clone(),
+            title: "General".to_owned(),
+            preview: "hello".to_owned(),
+            last_activity_ts: "1700000000.000002".to_owned(),
+            saved_at: "2026-03-09T12:00:00Z".to_owned(),
+        };
         let thread_summary = ThreadSummaryRow {
             team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
@@ -157,6 +181,7 @@ mod tests {
         assert_eq!(channel.name.as_deref(), Some("general"));
         assert!(user.is_active);
         assert_eq!(search_document.body, "hello");
+        assert_eq!(saved_item.thread_id, "C123:1700000000.000001");
         assert_eq!(thread_summary.participant_count, 2);
         assert_eq!(analytics_event.event_name, "thread_viewed");
     }
