@@ -34,7 +34,7 @@ export function ThreadCard({
 	return (
 		<article
 			className={cn(
-				"rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4 transition hover:border-[var(--accent-soft)]/40 hover:bg-slate-950/50",
+				"group rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4 transition-colors hover:border-(--color-border-accent) hover:bg-(--color-bg-surface)/80",
 				className,
 			)}
 		>
@@ -44,39 +44,47 @@ export function ThreadCard({
 					params={{ threadId }}
 					className="min-w-0 flex-1"
 				>
-					<div className="flex items-start justify-between gap-4">
-						<div>
-							<p className="text-[0.65rem] uppercase tracking-[0.24em] text-slate-400">
-								{channelName || "Public channel"}
+					<div className="flex items-start justify-between gap-3">
+						<div className="min-w-0">
+							<p className="text-[0.6rem] font-medium uppercase tracking-[0.24em] text-(--color-text-muted)">
+								# {channelName || "public-channel"}
 							</p>
-							<h3 className="mt-2 text-base font-semibold text-white">
+							<h3 className="mt-1.5 line-clamp-2 text-[0.94rem] font-semibold leading-snug text-(--color-text-primary)">
 								{title}
 							</h3>
 						</div>
-						<p className="text-xs text-slate-400">
+						<time className="shrink-0 text-xs tabular-nums text-(--color-text-muted)">
 							{formatSlackTimestamp(lastActivityTs)}
-						</p>
+						</time>
 					</div>
-					<p className="mt-3 text-sm leading-6 text-slate-300">{preview}</p>
-					<div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
-						<StatChip
-							icon={<MessageSquare className="size-3.5" />}
-							label={formatStatLabel(replyCount, "reply", "replies")}
-						/>
-						<StatChip
-							icon={<Users className="size-3.5" />}
-							label={formatStatLabel(participantCount, "person", "people")}
-						/>
-						<StatChip
-							icon={<Sparkles className="size-3.5" />}
-							label={formatStatLabel(reactionCount, "reaction", "reactions")}
-						/>
-						{fileCount ? (
+					<p className="mt-2.5 line-clamp-2 text-sm leading-relaxed text-(--color-text-secondary)">
+						{preview}
+					</p>
+					<div className="mt-3 flex flex-wrap gap-1.5 text-xs text-(--color-text-secondary)">
+						{replyCount > 0 && (
+							<StatChip
+								icon={<MessageSquare className="size-3.5" />}
+								label={formatStatLabel(replyCount, "reply", "replies")}
+							/>
+						)}
+						{participantCount > 0 && (
+							<StatChip
+								icon={<Users className="size-3.5" />}
+								label={formatStatLabel(participantCount, "person", "people")}
+							/>
+						)}
+						{reactionCount > 0 && (
+							<StatChip
+								icon={<Sparkles className="size-3.5" />}
+								label={formatStatLabel(reactionCount, "reaction", "reactions")}
+							/>
+						)}
+						{fileCount > 0 && (
 							<StatChip
 								icon={<Paperclip className="size-3.5" />}
 								label={formatStatLabel(fileCount, "file", "files")}
 							/>
-						) : null}
+						)}
 					</div>
 				</Link>
 				{action ? <div className="shrink-0">{action}</div> : null}
@@ -87,7 +95,7 @@ export function ThreadCard({
 
 function StatChip({ icon, label }: { icon: ReactNode; label: string }) {
 	return (
-		<span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
+		<span className="inline-flex items-center gap-1.5 rounded-(--radius-pill) border border-(--color-border-subtle) bg-(--color-bg-surface)/50 px-2.5 py-0.5">
 			{icon}
 			{label}
 		</span>

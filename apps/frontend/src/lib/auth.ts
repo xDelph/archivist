@@ -1,13 +1,11 @@
-import { fetchCurrentUser, isApiErrorWithStatus } from "@/lib/api";
-import { queryOptions } from "@tanstack/react-query";
+import { isApiErrorWithStatus } from "@/lib/api";
+import { authQueries } from "@/lib/queries";
 
+/**
+ * @deprecated Use `authQueries.me()` from `@/lib/queries` directly.
+ */
 export function currentUserQueryOptions() {
-	return queryOptions({
-		queryKey: ["auth", "me"],
-		queryFn: fetchCurrentUser,
-		staleTime: 60_000,
-		retry: false,
-	});
+	return authQueries.me();
 }
 
 export function isUnauthorizedError(error: unknown) {

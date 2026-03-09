@@ -2,16 +2,14 @@ import { EmptyState } from "@/components/empty-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
-import { deleteSavedThread, fetchSavedItems } from "@/lib/api";
+import { deleteSavedThread } from "@/lib/api";
+import { savedQueries } from "@/lib/queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkX } from "lucide-react";
+import { Bookmark, BookmarkX } from "lucide-react";
 
 export function SavedPage() {
 	const queryClient = useQueryClient();
-	const savedQuery = useQuery({
-		queryKey: ["saved"],
-		queryFn: fetchSavedItems,
-	});
+	const savedQuery = useQuery(savedQueries.list());
 	const deleteMutation = useMutation({
 		mutationFn: deleteSavedThread,
 		onSuccess: async () => {
@@ -28,10 +26,10 @@ export function SavedPage() {
 			>
 				{savedQuery.isPending ? (
 					<div className="space-y-3">
-						{["saved-skeleton-1", "saved-skeleton-2"].map((key) => (
+						{["skel-a", "skel-b"].map((id) => (
 							<div
-								key={key}
-								className="h-36 animate-pulse rounded-[1.5rem] border border-white/8 bg-white/[0.04]"
+								key={id}
+								className="h-32 animate-pulse rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-surface)/40"
 							/>
 						))}
 					</div>
@@ -56,7 +54,7 @@ export function SavedPage() {
 								action={
 									<Button
 										type="button"
-										variant="secondary"
+										variant="ghost"
 										size="sm"
 										onClick={() => deleteMutation.mutate(item.thread_id)}
 										disabled={
@@ -64,7 +62,7 @@ export function SavedPage() {
 											deleteMutation.variables === item.thread_id
 										}
 									>
-										<BookmarkX className="mr-2 size-4" />
+										<BookmarkX className="size-4" />
 										Unsave
 									</Button>
 								}
@@ -75,6 +73,7 @@ export function SavedPage() {
 					<EmptyState
 						title="Save your first thread"
 						description="Open a thread and use the save control. It will appear here immediately for quick revisit."
+						icon={<Bookmark className="size-5" />}
 					/>
 				)}
 			</SectionCard>

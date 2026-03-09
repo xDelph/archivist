@@ -1,5 +1,6 @@
-import { currentUserQueryOptions } from "@/lib/auth";
+import { InstallBanner } from "@/components/install-banner";
 import { initials } from "@/lib/format";
+import { authQueries } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
@@ -14,65 +15,85 @@ const navItems = [
 ] as const;
 
 export function AppShell() {
-	const location = useRouterState({
+	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
-	const userQuery = useQuery(currentUserQueryOptions());
+	const userQuery = useQuery(authQueries.me());
 	const user = userQuery.data?.user;
 
 	return (
-		<div className="relative min-h-screen pb-24">
-			<div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 pb-10 pt-5 sm:px-6">
-				<header className="sticky top-0 z-20 -mx-2 mb-6 border-b border-white/10 bg-[rgba(7,17,26,0.82)] px-2 py-4 backdrop-blur sm:mx-0 sm:rounded-[1.5rem] sm:border sm:bg-[rgba(7,17,26,0.72)]">
+		<div className="relative min-h-dvh pb-[5.5rem]">
+			<div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 pb-6 pt-5 sm:px-6">
+				<header className="sticky top-0 z-20 -mx-4 mb-6 border-b border-(--color-border-subtle) bg-(--color-bg-deep)/85 px-4 py-4 backdrop-blur-lg sm:-mx-0 sm:rounded-(--radius-section) sm:border sm:bg-(--color-bg-base)/75 sm:px-6">
 					<div className="flex items-center justify-between gap-4">
-						<div>
-							<p className="text-[0.65rem] uppercase tracking-[0.32em] text-[var(--accent-soft)]">
+						<Link to="/" className="group">
+							<p className="text-[0.62rem] font-medium uppercase tracking-[0.36em] text-(--color-accent-soft)">
 								Archivist
 							</p>
-							<h1 className="mt-2 text-2xl font-semibold text-white">
+							<h1 className="mt-1.5 text-xl font-semibold text-(--color-text-primary) sm:text-2xl">
 								Public-channel catch-up
 							</h1>
-						</div>
-						<div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.05] px-3 py-2">
-							<div className="flex size-10 items-center justify-center rounded-full bg-[var(--accent-soft)]/18 text-sm font-semibold text-[var(--accent-soft)]">
-								{initials(user?.display_name ?? user?.email)}
-							</div>
-							<div className="hidden text-right sm:block">
-								<p className="text-sm font-medium text-white">
-									{user?.display_name || "Signed-in member"}
-								</p>
-								<p className="text-xs text-slate-400">
-									{user?.email || user?.slack_user_id || "Slack workspace"}
-								</p>
-							</div>
-						</div>
+						</Link>
+						<Link
+							to="/account"
+							className="flex items-center gap-3 rounded-(--radius-pill) border border-(--color-border-subtle) bg-(--color-bg-surface) px-3 py-2 transition-colors hover:border-(--color-border-accent)"
+						>
+							{user?.avatar_url ? (
+								<img
+									src={user.avatar_url}
+									alt=""
+									className="size-9 rounded-full object-cover"
+								/>
+							) : (
+								<span className="flex size-9 items-center justify-center rounded-full bg-(--color-accent-soft)/15 text-sm font-semibold text-(--color-accent-soft)">
+									{initials(user?.display_name ?? user?.email)}
+								</span>
+							)}
+							<span className="hidden text-right sm:block">
+								<span className="block text-sm font-medium text-(--color-text-primary)">
+									{user?.display_name || "Member"}
+								</span>
+								<span className="block text-xs text-(--color-text-muted)">
+									{user?.email || user?.slack_user_id || "Slack"}
+								</span>
+							</span>
+						</Link>
 					</div>
 				</header>
-				<div className="flex-1">
+
+				<InstallBanner />
+				<main className="flex-1">
 					<Outlet />
-				</div>
+				</main>
 			</div>
-			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[rgba(5,11,18,0.94)] px-2 py-3 backdrop-blur">
-				<div className="mx-auto grid max-w-xl grid-cols-5 gap-2">
+
+			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-(--color-border-subtle) bg-(--color-bg-deep)/92 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg">
+				<div className="mx-auto grid max-w-md grid-cols-5 gap-1 py-2">
 					{navItems.map((item) => {
 						const Icon = item.icon;
 						const isActive =
 							item.to === "/"
-								? location === item.to
-								: location === item.to || location.startsWith(`${item.to}/`);
+								? pathname === item.to
+								: pathname === item.to || pathname.startsWith(`${item.to}/`);
 
 						return (
 							<Link
 								key={item.to}
 								to={item.to}
 								className={cn(
-									"flex flex-col items-center gap-1 rounded-[1.25rem] px-2 py-2 text-[0.65rem] uppercase tracking-[0.2em] text-slate-400 transition",
+									"flex flex-col items-center gap-1 rounded-(--radius-card) px-1 py-2 text-[0.6rem] font-medium uppercase tracking-[0.18em] transition-colors",
 									isActive
-										? "bg-[var(--accent-soft)]/14 text-[var(--accent-soft)]"
-										: "hover:bg-white/[0.04] hover:text-white",
+										? "bg-(--color-accent-soft)/12 text-(--color-accent-soft)"
+										: "text-(--color-text-muted) hover:bg-(--color-bg-surface) hover:text-(--color-text-secondary)",
 								)}
 							>
-								<Icon className="size-4.5" />
+								<Icon
+									className={cn(
+										"size-5",
+										isActive &&
+											"drop-shadow-[0_0_6px_var(--color-accent-soft)]",
+									)}
+								/>
 								<span>{item.label}</span>
 							</Link>
 						);

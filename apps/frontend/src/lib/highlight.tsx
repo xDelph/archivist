@@ -21,7 +21,7 @@ export function highlightMatches(text: string, query: string): ReactNode {
 			return (
 				<mark
 					key={key}
-					className="rounded bg-[var(--accent-soft)]/20 px-1 text-[var(--accent-soft)]"
+					className="rounded bg-(--color-accent-soft)/20 px-0.5 text-(--color-accent-soft)"
 				>
 					{part}
 				</mark>

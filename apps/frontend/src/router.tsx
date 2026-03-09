@@ -1,5 +1,11 @@
 import { AppShell } from "@/components/app-shell";
-import { currentUserQueryOptions, isUnauthorizedError } from "@/lib/auth";
+import { isApiErrorWithStatus } from "@/lib/api";
+import {
+	authQueries,
+	catchUpQueries,
+	savedQueries,
+	searchSearchSchema,
+} from "@/lib/queries";
 import { AccountPage } from "@/routes/account-page";
 import { HomePage } from "@/routes/home-page";
 import { SavedPage } from "@/routes/saved-page";
@@ -15,6 +21,7 @@ import {
 	createRouter,
 	redirect,
 } from "@tanstack/react-router";
+import { z } from "zod";
 
 interface RouterContext {
 	queryClient: QueryClient;
@@ -35,28 +42,38 @@ const appRoute = createRoute({
 	id: "app",
 	beforeLoad: async ({ context }) => {
 		try {
-			await context.queryClient.ensureQueryData(currentUserQueryOptions());
+			await context.queryClient.ensureQueryData(authQueries.me());
 		} catch (error) {
-			if (isUnauthorizedError(error)) {
+			if (isApiErrorWithStatus(error, 401)) {
 				throw redirect({ to: "/sign-in" });
 			}
-
 			throw error;
 		}
 	},
 	component: AppShell,
 });
 
+const homeSearchSchema = z.object({
+	channel: z.string().optional().catch(undefined),
+});
+
 const indexRoute = createRoute({
 	getParentRoute: () => appRoute,
 	path: "/",
 	component: HomePage,
+	validateSearch: homeSearchSchema,
+	loaderDeps: ({ search }) => ({ channel: search.channel }),
+	loader: ({ context }) => {
+		void context.queryClient.ensureQueryData(catchUpQueries.window("24h"));
+		void context.queryClient.ensureQueryData(catchUpQueries.window("7d"));
+	},
 });
 
 const searchRoute = createRoute({
 	getParentRoute: () => appRoute,
 	path: "/search",
 	component: SearchPage,
+	validateSearch: searchSearchSchema,
 });
 
 const topicsRoute = createRoute({
@@ -69,6 +86,9 @@ const savedRoute = createRoute({
 	getParentRoute: () => appRoute,
 	path: "/saved",
 	component: SavedPage,
+	loader: ({ context }) => {
+		void context.queryClient.ensureQueryData(savedQueries.list());
+	},
 });
 
 const accountRoute = createRoute({
@@ -98,6 +118,7 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
 	routeTree,
 	defaultPreload: "intent",
+	defaultPreloadStaleTime: 0,
 	context: {
 		queryClient: undefined as never,
 	},

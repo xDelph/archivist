@@ -2,56 +2,47 @@ import { EmptyState } from "@/components/empty-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
-import {
-	type CatchUpChannel,
-	type CatchUpThread,
-	fetchCatchUp,
-} from "@/lib/api";
+import type { CatchUpChannel } from "@/lib/api";
 import { formatCompactNumber } from "@/lib/format";
+import { catchUpQueries } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { Flame, RefreshCcw, TrendingUp } from "lucide-react";
-import { useState } from "react";
-
-type ChannelFilter = "all" | string;
+import { useSearch } from "@tanstack/react-router";
+import { Flame, Hash, RefreshCcw, TrendingUp } from "lucide-react";
 
 export function HomePage() {
-	const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
-	const dayQuery = useQuery({
-		queryKey: ["catch-up", "24h"],
-		queryFn: () => fetchCatchUp("24h"),
-	});
-	const weekQuery = useQuery({
-		queryKey: ["catch-up", "7d"],
-		queryFn: () => fetchCatchUp("7d"),
-	});
+	const { channel: channelFilter } = useSearch({ from: "/app/" });
+	const dayQuery = useQuery(catchUpQueries.window("24h"));
+	const weekQuery = useQuery(catchUpQueries.window("7d"));
 
 	const availableChannels = weekQuery.data?.channels ?? [];
+	const activeFilter = channelFilter ?? "all";
 	const filteredDayChannels = filterChannels(
 		dayQuery.data?.channels ?? [],
-		channelFilter,
+		activeFilter,
 	);
-	const filteredWeekChannels = filterChannels(availableChannels, channelFilter);
+	const filteredWeekChannels = filterChannels(availableChannels, activeFilter);
 	const trendingThreads = pickTrendingThreads(filteredWeekChannels);
 	const highlights = pickChannelHighlights(filteredWeekChannels);
 
 	return (
 		<div className="space-y-5">
-			<section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,33,52,0.95),rgba(11,18,32,0.88))] p-5 shadow-[0_24px_80px_rgba(5,12,24,0.35)] sm:p-6">
+			<section className="overflow-hidden rounded-(--radius-section) border border-(--color-border-subtle) bg-[linear-gradient(135deg,var(--color-bg-surface),var(--color-bg-base))] p-5 shadow-[0_16px_48px_oklch(0.05_0.02_220/0.4)] sm:p-6">
 				<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 					<div>
-						<p className="text-[0.68rem] uppercase tracking-[0.32em] text-[var(--accent-soft)]">
+						<p className="text-[0.62rem] font-medium uppercase tracking-[0.32em] text-(--color-accent-soft)">
 							Home / Catch up
 						</p>
-						<h2 className="mt-3 max-w-2xl text-3xl font-semibold text-white sm:text-4xl">
+						<h2 className="mt-3 max-w-2xl text-2xl font-semibold text-(--color-text-primary) sm:text-3xl">
 							Start with what moved this week, not with the entire Slack
 							firehose.
 						</h2>
-						<p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+						<p className="mt-3 max-w-2xl text-sm leading-relaxed text-(--color-text-secondary)">
 							Archivist groups recent public-channel threads into a catch-up
 							feed so you can see the conversations that actually shifted.
 						</p>
 					</div>
-					<div className="flex gap-3">
+					<div className="flex shrink-0 gap-3">
 						<Button
 							variant="secondary"
 							onClick={() => {
@@ -59,23 +50,23 @@ export function HomePage() {
 								void weekQuery.refetch();
 							}}
 						>
-							<RefreshCcw className="mr-2 size-4" />
+							<RefreshCcw className="size-4" />
 							Refresh
 						</Button>
 					</div>
 				</div>
 				<div className="mt-5 flex flex-wrap gap-2">
 					<ChannelPill
-						isActive={channelFilter === "all"}
+						isActive={activeFilter === "all"}
 						label="All channels"
-						onClick={() => setChannelFilter("all")}
+						href="/?channel="
 					/>
 					{availableChannels.map((channel) => (
 						<ChannelPill
 							key={channel.id}
-							isActive={channelFilter === channel.id}
+							isActive={activeFilter === channel.id}
 							label={channel.name || channel.id}
-							onClick={() => setChannelFilter(channel.id)}
+							href={`/?channel=${channel.id}`}
 						/>
 					))}
 				</div>
@@ -117,7 +108,7 @@ export function HomePage() {
 						eyebrow="Trending"
 						title="Threads with momentum"
 						description="A simple blend of replies, participants, reactions, and files from the weekly window."
-						actions={<Flame className="size-5 text-[var(--accent-soft)]" />}
+						actions={<Flame className="size-5 text-(--color-accent-soft)" />}
 					>
 						{trendingThreads.length ? (
 							<div className="space-y-3">
@@ -140,6 +131,7 @@ export function HomePage() {
 							<EmptyState
 								title="Trending needs more history"
 								description="This card fills in automatically as the worker accumulates public-channel thread summaries."
+								icon={<Flame className="size-5" />}
 							/>
 						)}
 					</SectionCard>
@@ -149,39 +141,20 @@ export function HomePage() {
 						title="Where people are gathering"
 						description="Channels ranked by recent thread volume in the selected window."
 						actions={
-							<TrendingUp className="size-5 text-[var(--accent-soft)]" />
+							<TrendingUp className="size-5 text-(--color-accent-soft)" />
 						}
 					>
 						{highlights.length ? (
 							<div className="space-y-3">
 								{highlights.map((channel) => (
-									<article
-										key={channel.id}
-										className="rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4"
-									>
-										<div className="flex items-start justify-between gap-4">
-											<div>
-												<p className="text-[0.65rem] uppercase tracking-[0.22em] text-slate-400">
-													{channel.kind}
-												</p>
-												<h3 className="mt-2 text-lg font-semibold text-white">
-													{channel.name}
-												</h3>
-											</div>
-											<span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-slate-300">
-												{formatCompactNumber(channel.threadCount)} threads
-											</span>
-										</div>
-										<p className="mt-3 text-sm leading-6 text-slate-300">
-											{channel.highlight}
-										</p>
-									</article>
+									<HighlightCard key={channel.id} channel={channel} />
 								))}
 							</div>
 						) : (
 							<EmptyState
 								title="No channel highlights yet"
 								description="As soon as the catch-up feed sees more thread summaries, this panel will call out the liveliest channels."
+								icon={<Hash className="size-5" />}
 							/>
 						)}
 					</SectionCard>
@@ -251,10 +224,10 @@ function CatchUpSection({
 function LoadingGrid() {
 	return (
 		<div className="space-y-3">
-			{["day-skeleton-1", "day-skeleton-2", "day-skeleton-3"].map((key) => (
+			{["skel-a", "skel-b", "skel-c"].map((id) => (
 				<div
-					key={key}
-					className="h-36 animate-pulse rounded-[1.5rem] border border-white/8 bg-white/[0.04]"
+					key={id}
+					className="h-32 animate-pulse rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-surface)/40"
 				/>
 			))}
 		</div>
@@ -264,32 +237,62 @@ function LoadingGrid() {
 function ChannelPill({
 	label,
 	isActive,
-	onClick,
+	href,
 }: {
 	label: string;
 	isActive: boolean;
-	onClick: () => void;
+	href: string;
 }) {
 	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={
+		<a
+			href={href}
+			className={cn(
+				"rounded-(--radius-pill) border px-4 py-2 text-xs font-medium transition-colors",
 				isActive
-					? "rounded-full border border-[var(--accent-soft)]/40 bg-[var(--accent-soft)]/14 px-4 py-2 text-xs uppercase tracking-[0.22em] text-[var(--accent-soft)]"
-					: "rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.22em] text-slate-300 transition hover:border-white/20 hover:text-white"
-			}
+					? "border-(--color-border-accent) bg-(--color-accent-soft)/12 text-(--color-accent-soft)"
+					: "border-(--color-border-subtle) bg-(--color-bg-surface)/50 text-(--color-text-secondary) hover:border-(--color-border-default) hover:text-(--color-text-primary)",
+			)}
 		>
 			{label}
-		</button>
+		</a>
 	);
 }
 
-function filterChannels(channels: CatchUpChannel[], filter: ChannelFilter) {
+interface ChannelHighlight {
+	id: string;
+	name: string;
+	kind: string;
+	threadCount: number;
+	highlight: string;
+}
+
+function HighlightCard({ channel }: { channel: ChannelHighlight }) {
+	return (
+		<article className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4">
+			<div className="flex items-start justify-between gap-4">
+				<div>
+					<p className="text-[0.6rem] font-medium uppercase tracking-[0.22em] text-(--color-text-muted)">
+						{channel.kind}
+					</p>
+					<h3 className="mt-1.5 text-base font-semibold text-(--color-text-primary)">
+						# {channel.name}
+					</h3>
+				</div>
+				<span className="rounded-(--radius-pill) border border-(--color-border-subtle) bg-(--color-bg-surface) px-3 py-1 text-xs tabular-nums text-(--color-text-secondary)">
+					{formatCompactNumber(channel.threadCount)} threads
+				</span>
+			</div>
+			<p className="mt-2.5 text-sm leading-relaxed text-(--color-text-secondary)">
+				{channel.highlight}
+			</p>
+		</article>
+	);
+}
+
+function filterChannels(channels: CatchUpChannel[], filter: string) {
 	if (filter === "all") {
 		return channels;
 	}
-
 	return channels.filter((channel) => channel.id === filter);
 }
 
