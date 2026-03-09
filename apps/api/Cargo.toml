@@ -11,10 +11,12 @@ axum.workspace = true
 base64.workspace = true
 db = { path = "../../crates/db" }
 domain = { path = "../../crates/domain" }
+hmac.workspace = true
 reqwest.workspace = true
 search = { path = "../../crates/search" }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tracing.workspace = true

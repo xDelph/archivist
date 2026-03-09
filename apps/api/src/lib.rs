@@ -23,6 +23,7 @@ pub struct ApiConfig {
     pub slack_redirect_uri: Option<String>,
     pub slack_workspace_id: Option<String>,
     pub slack_token_url: Option<String>,
+    pub session_secret: Option<String>,
 }
 
 impl ApiConfig {
@@ -37,6 +38,7 @@ impl ApiConfig {
             slack_redirect_uri: std::env::var("SLACK_REDIRECT_URI").ok(),
             slack_workspace_id: std::env::var("SLACK_WORKSPACE_ID").ok(),
             slack_token_url: std::env::var("SLACK_OIDC_TOKEN_URL").ok(),
+            session_secret: std::env::var("ARCHIVIST_SESSION_SECRET").ok(),
         }
     }
 
@@ -49,6 +51,7 @@ impl ApiConfig {
 pub(crate) struct AppState {
     pub(crate) store: JsonlEventStore,
     pub(crate) slack_auth: auth::SlackAuthConfig,
+    pub(crate) session_secret: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -106,11 +109,13 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         .route("/health", get(health))
         .route("/api/auth/slack/start", get(auth::slack_start))
         .route("/api/auth/slack/callback", get(auth::slack_callback))
+        .route("/api/auth/me", get(auth::me))
         .route("/api/channels", get(channels))
         .route("/api/threads/{id}", get(threads::thread_detail))
         .with_state(AppState {
             store,
             slack_auth: auth::SlackAuthConfig::from_config(&config),
+            session_secret: config.session_secret.clone(),
         })
         .layer(TraceLayer::new_for_http()))
 }
@@ -261,6 +266,7 @@ mod tests {
         assert_eq!(config.slack_redirect_uri, None);
         assert_eq!(config.slack_workspace_id, None);
         assert_eq!(config.slack_token_url, None);
+        assert_eq!(config.session_secret, None);
         assert_eq!(config.bind_address(), "127.0.0.1:4000");
     }
 
@@ -277,6 +283,7 @@ mod tests {
             slack_redirect_uri: None,
             slack_workspace_id: None,
             slack_token_url: None,
+            session_secret: None,
         })
         .await
         .expect("router")
@@ -390,6 +397,7 @@ mod tests {
             slack_redirect_uri: None,
             slack_workspace_id: None,
             slack_token_url: None,
+            session_secret: None,
         })
         .await
         .expect("router")

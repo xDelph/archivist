@@ -2,17 +2,20 @@ use crate::{ApiConfig, AppState};
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header::COOKIE},
     response::{IntoResponse, Redirect, Response},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SLACK_AUTHORIZE_URL: &str = "https://slack.com/openid/connect/authorize";
 const SLACK_TOKEN_URL: &str = "https://slack.com/api/openid.connect.token";
 const SLACK_OIDC_SCOPE: &str = "openid profile email";
 const SLACK_ISSUER: &str = "https://slack.com";
+const SESSION_COOKIE_NAME: &str = "archivist_session";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SlackAuthConfig {
@@ -56,6 +59,21 @@ pub(crate) struct SlackIdentityResponse {
     avatar_url: Option<String>,
 }
 
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct MeResponse {
+    ok: bool,
+    user: SessionUserResponse,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct SessionUserResponse {
+    slack_user_id: String,
+    team_id: String,
+    email: Option<String>,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct SlackTokenExchangeResponse {
     ok: bool,
@@ -74,6 +92,16 @@ struct SlackIdentityClaims {
     email: Option<String>,
     name: Option<String>,
     picture: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct SessionClaims {
+    pub(crate) slack_user_id: String,
+    pub(crate) team_id: String,
+    pub(crate) email: Option<String>,
+    pub(crate) display_name: Option<String>,
+    pub(crate) avatar_url: Option<String>,
+    pub(crate) exp: i64,
 }
 
 pub(crate) async fn slack_start(
@@ -117,6 +145,37 @@ pub(crate) async fn slack_callback(
         .map_err(callback_error_response)?;
 
     Ok(Json(identity))
+}
+
+pub(crate) async fn me(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<MeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let session_token = session_cookie(&headers).ok_or((
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            error: "missing_session",
+        }),
+    ))?;
+    let session_secret = state.session_secret.as_deref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(ErrorResponse {
+            error: "missing_session_config",
+        }),
+    ))?;
+    let claims =
+        validate_session_token(session_secret, session_token).map_err(me_error_response)?;
+
+    Ok(Json(MeResponse {
+        ok: true,
+        user: SessionUserResponse {
+            slack_user_id: claims.slack_user_id,
+            team_id: claims.team_id,
+            email: claims.email,
+            display_name: claims.display_name,
+            avatar_url: claims.avatar_url,
+        },
+    }))
 }
 
 pub(crate) fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {
@@ -294,12 +353,70 @@ pub(crate) fn current_unix_timestamp() -> i64 {
         .as_secs() as i64
 }
 
+fn validate_session_token(
+    session_secret: &str,
+    token: &str,
+) -> Result<SessionClaims, SessionError> {
+    let (payload_b64, signature) = token.split_once('.').ok_or(SessionError::InvalidSession)?;
+    let expected_signature = session_signature(session_secret, payload_b64)?;
+    if signature != expected_signature {
+        return Err(SessionError::InvalidSession);
+    }
+
+    let decoded = URL_SAFE_NO_PAD
+        .decode(payload_b64.as_bytes())
+        .map_err(|_| SessionError::InvalidSession)?;
+    let claims: SessionClaims =
+        serde_json::from_slice(&decoded).map_err(|_| SessionError::InvalidSession)?;
+    if claims.exp <= current_unix_timestamp() {
+        return Err(SessionError::ExpiredSession);
+    }
+
+    Ok(claims)
+}
+
+fn session_signature(session_secret: &str, payload_b64: &str) -> Result<String, SessionError> {
+    type HmacSha256 = Hmac<Sha256>;
+
+    let mut mac = HmacSha256::new_from_slice(session_secret.as_bytes())
+        .map_err(|_| SessionError::InvalidSession)?;
+    mac.update(payload_b64.as_bytes());
+    Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
+}
+
+fn session_cookie(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let (name, value) = cookie.trim().split_once('=')?;
+                (name == SESSION_COOKIE_NAME).then_some(value)
+            })
+        })
+}
+
+fn me_error_response(error: SessionError) -> (StatusCode, Json<ErrorResponse>) {
+    let error = match error {
+        SessionError::ExpiredSession => "expired_session",
+        SessionError::InvalidSession => "invalid_session",
+    };
+
+    (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error }))
+}
+
 #[derive(Debug)]
 pub(crate) enum CallbackError {
     MissingConfig,
     TokenExchangeFailed,
     InvalidIdentityToken,
     WorkspaceMismatch,
+}
+
+#[derive(Debug)]
+pub(crate) enum SessionError {
+    InvalidSession,
+    ExpiredSession,
 }
 
 #[cfg(test)]
