@@ -66,6 +66,9 @@ SELECT team_id,
        ts_rank(document, websearch_to_tsquery('english', $1)) AS score
 FROM search_documents
 WHERE document @@ websearch_to_tsquery('english', $1)
+  AND (coalesce(array_length($2::text[], 1), 0) = 0 OR channel_id = ANY($2))
+  AND ($3::text IS NULL OR split_part(message_ts, '.', 1)::bigint >= split_part($3, '.', 1)::bigint)
+  AND ($4::text IS NULL OR split_part(message_ts, '.', 1)::bigint <= split_part($4, '.', 1)::bigint)
 ORDER BY score DESC,
          message_ts DESC
 "#
@@ -115,6 +118,9 @@ mod tests {
         );
         assert!(sql.contains("AS score"));
         assert!(sql.contains("websearch_to_tsquery"));
+        assert!(sql.contains("channel_id = ANY($2)"));
+        assert!(sql.contains("split_part(message_ts, '.', 1)::bigint >= split_part($3, '.', 1)::bigint"));
+        assert!(sql.contains("split_part(message_ts, '.', 1)::bigint <= split_part($4, '.', 1)::bigint"));
         assert!(sql.contains("ORDER BY score DESC"));
     }
 }
