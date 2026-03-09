@@ -1,0 +1,44 @@
+name: Cron Backfill
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  publish-backfill:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.UPSTASH_QSTASH_TOKEN != '' && secrets.ARCHIVIST_WORKER_BASE_URL != '' && secrets.ARCHIVIST_BACKFILL_TEAM_ID != '' && secrets.ARCHIVIST_BACKFILL_CHANNEL_IDS != '' }}
+    env:
+      QSTASH_URL: ${{ secrets.UPSTASH_QSTASH_URL }}
+      QSTASH_TOKEN: ${{ secrets.UPSTASH_QSTASH_TOKEN }}
+      WORKER_BASE_URL: ${{ secrets.ARCHIVIST_WORKER_BASE_URL }}
+      BACKFILL_TEAM_ID: ${{ secrets.ARCHIVIST_BACKFILL_TEAM_ID }}
+      BACKFILL_CHANNEL_IDS: ${{ secrets.ARCHIVIST_BACKFILL_CHANNEL_IDS }}
+    steps:
+      - name: Publish backfill jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          publish_base="${QSTASH_URL:-https://qstash.upstash.io}"
+          publish_base="${publish_base%/}"
+          endpoint="${WORKER_BASE_URL%/}/jobs/backfill_channel"
+
+          IFS=',' read -r -a channels <<< "$BACKFILL_CHANNEL_IDS"
+
+          for raw_channel in "${channels[@]}"; do
+            channel_id="$(echo "$raw_channel" | xargs)"
+            if [ -z "$channel_id" ]; then
+              continue
+            fi
+
+            payload="$(printf '{"team_id":"%s","channel_id":"%s"}' "$BACKFILL_TEAM_ID" "$channel_id")"
+
+            curl --fail --silent --show-error \
+              --request POST \
+              --header "Authorization: Bearer ${QSTASH_TOKEN}" \
+              --header "Content-Type: application/json" \
+              --data "$payload" \
+              "${publish_base}/v2/publish/${endpoint}"
+          done
