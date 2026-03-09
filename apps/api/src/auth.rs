@@ -1,7 +1,7 @@
 mod session;
 
 #[cfg(test)]
-pub(crate) use self::session::SessionClaims;
+pub(crate) use self::session::{SessionClaims, build_session_token};
 
 use self::session::{
     SESSION_COOKIE_NAME, SessionError, session_claims, session_cookie, session_cookie_header,
@@ -10,8 +10,9 @@ use self::session::{
 use crate::{ApiConfig, AppState};
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Query, Request, State},
     http::{HeaderMap, StatusCode, header::SET_COOKIE},
+    middleware::Next,
     response::{IntoResponse, Redirect, Response},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -226,6 +227,30 @@ pub(crate) async fn me(
             avatar_url: claims.avatar_url,
         },
     }))
+}
+
+pub(crate) async fn require_session(
+    State(state): State<AppState>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let session_token = session_cookie(request.headers()).ok_or((
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            error: "missing_session",
+        }),
+    ))?;
+    let session_secret = state.session_secret.as_deref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(ErrorResponse {
+            error: "missing_session_config",
+        }),
+    ))?;
+    let claims =
+        validate_session_token(session_secret, session_token).map_err(me_error_response)?;
+    request.extensions_mut().insert(claims);
+
+    Ok(next.run(request).await)
 }
 
 pub(crate) async fn logout() -> Response {

@@ -8,7 +8,7 @@ use sha2::Sha256;
 pub(crate) const SESSION_COOKIE_NAME: &str = "archivist_session";
 const SESSION_TTL_SECONDS: i64 = 60 * 60 * 24 * 7;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SessionClaims {
     pub(crate) slack_user_id: String,
     pub(crate) team_id: String,

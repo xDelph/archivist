@@ -171,7 +171,11 @@ fn build_thread_detail(
 #[cfg(test)]
 mod tests {
     use super::{build_thread_detail, parse_thread_id};
-    use crate::{ApiConfig, build_router};
+    use crate::{
+        ApiConfig,
+        auth::{SessionClaims, build_session_token, current_unix_timestamp},
+        build_router,
+    };
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode},
@@ -277,6 +281,18 @@ mod tests {
             })
             .await
             .expect("reaction insert");
+        let session_token = build_session_token(
+            "session_secret",
+            &SessionClaims {
+                slack_user_id: "U123".to_owned(),
+                team_id: "T123".to_owned(),
+                email: None,
+                display_name: Some("Thomas".to_owned()),
+                avatar_url: None,
+                exp: current_unix_timestamp() + 60,
+            },
+        )
+        .expect("session token");
 
         let response = build_router(ApiConfig {
             host: "127.0.0.1".to_owned(),
@@ -287,7 +303,7 @@ mod tests {
             slack_redirect_uri: None,
             slack_workspace_id: None,
             slack_token_url: None,
-            session_secret: None,
+            session_secret: Some("session_secret".to_owned()),
             auth_store_path: tempdir
                 .path()
                 .join("auth-identities.json")
@@ -304,6 +320,7 @@ mod tests {
         .oneshot(
             Request::builder()
                 .uri("/api/threads/C123:1700000000.000001")
+                .header("cookie", format!("archivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -325,7 +342,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn thread_detail_route_rejects_invalid_ids() {
+    async fn thread_detail_route_requires_authenticated_session() {
         let tempdir = tempdir().expect("tempdir");
         let path = tempdir.path().join("events.jsonl");
 
@@ -338,7 +355,7 @@ mod tests {
             slack_redirect_uri: None,
             slack_workspace_id: None,
             slack_token_url: None,
-            session_secret: None,
+            session_secret: Some("session_secret".to_owned()),
             auth_store_path: tempdir
                 .path()
                 .join("auth-identities.json")
@@ -355,6 +372,59 @@ mod tests {
         .oneshot(
             Request::builder()
                 .uri("/api/threads/not-a-thread-id")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn thread_detail_route_rejects_invalid_ids() {
+        let tempdir = tempdir().expect("tempdir");
+        let path = tempdir.path().join("events.jsonl");
+        let session_token = build_session_token(
+            "session_secret",
+            &SessionClaims {
+                slack_user_id: "U123".to_owned(),
+                team_id: "T123".to_owned(),
+                email: None,
+                display_name: Some("Thomas".to_owned()),
+                avatar_url: None,
+                exp: current_unix_timestamp() + 60,
+            },
+        )
+        .expect("session token");
+
+        let response = build_router(ApiConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4000,
+            event_log_path: path.display().to_string(),
+            slack_client_id: None,
+            slack_client_secret: None,
+            slack_redirect_uri: None,
+            slack_workspace_id: None,
+            slack_token_url: None,
+            session_secret: Some("session_secret".to_owned()),
+            auth_store_path: tempdir
+                .path()
+                .join("auth-identities.json")
+                .display()
+                .to_string(),
+            synced_users_path: tempdir
+                .path()
+                .join("synced-users.json")
+                .display()
+                .to_string(),
+        })
+        .await
+        .expect("router")
+        .oneshot(
+            Request::builder()
+                .uri("/api/threads/not-a-thread-id")
+                .header("cookie", format!("archivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
