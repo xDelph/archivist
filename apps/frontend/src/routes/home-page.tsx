@@ -3,7 +3,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { fetchApiHealth } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, DatabaseZap, Radar, Workflow } from "lucide-react";
+import { Boxes, DatabaseZap, Radar, ScrollText, Workflow } from "lucide-react";
 
 const services = [
 	{
@@ -31,16 +31,23 @@ const services = [
 
 const sharedCrates = [
 	"domain: channel scope and process-event job types",
-	"db: local JSONL event store for offline development",
-	"slack: signature verification and envelope parsing",
-	"queue: direct worker publishing helper",
-	"search: placeholder boundary for search_documents work",
+	"db: JSONL and in-memory stores for offline tests and worker replays",
+	"slack: signature verification and public-channel event parsing",
+	"queue: direct delivery plus signed QStash publishing helpers",
+	"search: normalized query/filter placeholder for ranked search work",
+];
+
+const workingVertical = [
+	"Slack event ingestion acknowledges public-channel callbacks and ignores unsupported envelopes.",
+	"Signed QStash-style delivery is covered end-to-end with a local mock and worker verification.",
+	"Worker persistence now stores messages, reactions, file shares, and channel rename/archive state.",
+	"Slack slash command endpoints exist as safe stubs for /ask-archivist, /recap, and /save-thread.",
 ];
 
 const nextSlices = [
-	"Port SQLx models and repositories into crates/db",
-	"Replace the direct HTTP queue helper with QStash publishing",
-	"Expand worker jobs beyond process_event and heartbeat",
+	"Slack auth and session handling in the API layer",
+	"Worker backfill jobs for channel history and file archival",
+	"Real thread and search surfaces in the frontend instead of a workspace shell",
 ];
 
 export function HomePage() {
@@ -67,15 +74,15 @@ export function HomePage() {
 					<div className="grid gap-10 lg:grid-cols-[1.35fr_0.95fr] lg:items-end">
 						<div>
 							<p className="text-xs uppercase tracking-[0.34em] text-[var(--accent-soft)]">
-								Milestone 0 Workspace
+								Milestone 0 Vertical
 							</p>
 							<h1 className="mt-5 max-w-2xl text-4xl font-bold tracking-tight text-white sm:text-6xl">
-								Clean v2 workspace for the new Archivist architecture.
+								The clean v2 workspace is up. The first Slack vertical is live.
 							</h1>
 							<p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-								The legacy app now lives in backup, and the new monorepo starts
-								from a clean Rust services + Vite frontend baseline aligned with
-								TASKS.md.
+								The legacy app is parked in backup. The new monorepo now has a
+								real ingest to worker flow, offline persistence helpers, and a
+								frontend shell that tracks what is actually shipping next.
 							</p>
 							<div className="mt-8 flex flex-wrap gap-3">
 								<a
@@ -107,9 +114,9 @@ export function HomePage() {
 								{statusText}
 							</p>
 							<p className="mt-3 text-sm leading-6 text-slate-300">
-								The frontend probes the new API health endpoint directly. Once
-								the services are up, this card becomes the simplest end-to-end
-								smoke signal in the workspace.
+								The frontend probes the API health endpoint directly. It is
+								still a shell, but it now mirrors the actual backend milestone
+								instead of the bootstrap state.
 							</p>
 						</div>
 					</div>
@@ -151,16 +158,61 @@ export function HomePage() {
 				<section className="grid gap-5 lg:grid-cols-2">
 					<RoadmapCard
 						eyebrow="Shared crates"
-						title="A thin, useful foundation"
-						description="The crates are small on purpose, but they already carry real shape: payload normalization, deduplication, signature checks, and queue boundaries."
+						title="Small crates, real behavior"
+						description="The shared layer is still lean, but it already carries the core contracts for event normalization, deduplication, queue delivery, and placeholder search boundaries."
 						items={sharedCrates}
 					/>
 					<RoadmapCard
+						eyebrow="Vertical status"
+						title="What works right now"
+						description="The first delivery path is not theoretical anymore. These slices are covered in the current workspace and test suite."
+						items={workingVertical}
+					/>
+				</section>
+
+				<section className="grid gap-5 lg:grid-cols-2">
+					<RoadmapCard
 						eyebrow="Next development slice"
-						title="Move from mock vertical to real infra"
-						description="This shell now supports the next phase without dragging the legacy runtime around. The remaining work is concrete and incremental."
+						title="What moves the product forward"
+						description="The remaining work has shifted from workspace bootstrapping to actual product capability: identity, backfills, and the first reader surfaces."
 						items={nextSlices}
 					/>
+					<article className="rounded-[2rem] border border-white/10 bg-white/6 p-6 shadow-[0_20px_50px_rgba(3,7,18,0.35)] backdrop-blur">
+						<div className="flex items-center gap-3">
+							<ScrollText className="size-5 text-[var(--accent-soft)]" />
+							<h2 className="text-xl font-semibold text-white">
+								Current operating model
+							</h2>
+						</div>
+						<p className="mt-4 text-sm leading-6 text-slate-300">
+							Development is running as short vertical slices. Legacy code can
+							be referenced from backup, but the active workspace stays clean,
+							small, and validated after each task.
+						</p>
+						<ul className="mt-6 space-y-3 text-sm text-slate-200">
+							<li className="flex items-start gap-3">
+								<span className="mt-1 size-2 rounded-full bg-[var(--accent-soft)]" />
+								<span>
+									Rust apps finish every slice with format, lint, test, build,
+									and check.
+								</span>
+							</li>
+							<li className="flex items-start gap-3">
+								<span className="mt-1 size-2 rounded-full bg-[var(--accent-soft)]" />
+								<span>
+									Backend logic is exercised offline first through JSONL and
+									in-memory stores.
+								</span>
+							</li>
+							<li className="flex items-start gap-3">
+								<span className="mt-1 size-2 rounded-full bg-[var(--accent-soft)]" />
+								<span>
+									Frontend work follows the new services instead of preserving
+									old app structure.
+								</span>
+							</li>
+						</ul>
+					</article>
 				</section>
 
 				<section className="rounded-[2rem] border border-white/10 bg-white/6 p-6 backdrop-blur">
