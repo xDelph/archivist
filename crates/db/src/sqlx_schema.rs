@@ -21,6 +21,30 @@ ON search_documents (team_id, channel_id, message_ts DESC);
 "#
 }
 
+pub const fn create_thread_summaries_table_query() -> &'static str {
+    r#"
+CREATE TABLE IF NOT EXISTS thread_summaries (
+    team_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    root_ts TEXT NOT NULL,
+    title TEXT NOT NULL,
+    preview TEXT NOT NULL,
+    reply_count BIGINT NOT NULL,
+    participant_count BIGINT NOT NULL,
+    reaction_count BIGINT NOT NULL,
+    file_count BIGINT NOT NULL,
+    last_activity_ts TEXT NOT NULL,
+    PRIMARY KEY (team_id, channel_id, root_ts)
+);
+
+CREATE INDEX IF NOT EXISTS thread_summaries_last_activity_idx
+ON thread_summaries (team_id, last_activity_ts DESC);
+
+CREATE INDEX IF NOT EXISTS thread_summaries_channel_activity_idx
+ON thread_summaries (team_id, channel_id, last_activity_ts DESC);
+"#
+}
+
 pub const fn backfill_search_documents_query() -> &'static str {
     r#"
 WITH root_messages AS (
@@ -48,7 +72,10 @@ SET title = EXCLUDED.title,
 
 #[cfg(test)]
 mod tests {
-    use super::{backfill_search_documents_query, create_search_documents_table_query};
+    use super::{
+        backfill_search_documents_query, create_search_documents_table_query,
+        create_thread_summaries_table_query,
+    };
 
     #[test]
     fn search_document_schema_creates_tsvector_indexes() {
@@ -70,5 +97,17 @@ mod tests {
         assert!(query.contains("FROM messages"));
         assert!(query.contains("COALESCE(root_messages.root_text, messages.text) AS title"));
         assert!(query.contains("ON CONFLICT (team_id, channel_id, message_ts) DO UPDATE"));
+    }
+
+    #[test]
+    fn thread_summary_schema_creates_activity_indexes() {
+        let schema = create_thread_summaries_table_query();
+
+        assert!(schema.contains("CREATE TABLE IF NOT EXISTS thread_summaries"));
+        assert!(schema.contains("reply_count BIGINT NOT NULL"));
+        assert!(schema.contains("participant_count BIGINT NOT NULL"));
+        assert!(schema.contains("last_activity_ts TEXT NOT NULL"));
+        assert!(schema.contains("thread_summaries_last_activity_idx"));
+        assert!(schema.contains("thread_summaries_channel_activity_idx"));
     }
 }

@@ -59,6 +59,20 @@ pub struct SearchDocumentRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct ThreadSummaryRow {
+    pub team_id: String,
+    pub channel_id: String,
+    pub root_ts: String,
+    pub title: String,
+    pub preview: String,
+    pub reply_count: i64,
+    pub participant_count: i64,
+    pub reaction_count: i64,
+    pub file_count: i64,
+    pub last_activity_ts: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
 pub struct AnalyticsEventRow {
     pub event_name: String,
     pub subject_id: Option<String>,
@@ -68,7 +82,8 @@ pub struct AnalyticsEventRow {
 #[cfg(test)]
 mod tests {
     use super::{
-        AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SearchDocumentRow, UserRow,
+        AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SearchDocumentRow,
+        ThreadSummaryRow, UserRow,
     };
 
     #[test]
@@ -124,12 +139,25 @@ mod tests {
             subject_id: Some("thread_1".to_owned()),
             payload_json: "{}".to_owned(),
         };
+        let thread_summary = ThreadSummaryRow {
+            team_id: "T123".to_owned(),
+            channel_id: "C123".to_owned(),
+            root_ts: message.ts.clone(),
+            title: "General".to_owned(),
+            preview: "hello".to_owned(),
+            reply_count: 1,
+            participant_count: 2,
+            reaction_count: 1,
+            file_count: 1,
+            last_activity_ts: "1700000000.000002".to_owned(),
+        };
 
         assert_eq!(reaction.name, "thumbsup");
         assert_eq!(file.name, "brief.pdf");
         assert_eq!(channel.name.as_deref(), Some("general"));
         assert!(user.is_active);
         assert_eq!(search_document.body, "hello");
+        assert_eq!(thread_summary.participant_count, 2);
         assert_eq!(analytics_event.event_name, "thread_viewed");
     }
 }

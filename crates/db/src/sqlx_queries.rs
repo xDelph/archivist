@@ -63,6 +63,32 @@ SET title = EXCLUDED.title,
 "#
 }
 
+pub const fn upsert_thread_summary_query() -> &'static str {
+    r#"
+INSERT INTO thread_summaries (
+    team_id,
+    channel_id,
+    root_ts,
+    title,
+    preview,
+    reply_count,
+    participant_count,
+    reaction_count,
+    file_count,
+    last_activity_ts
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (team_id, channel_id, root_ts) DO UPDATE
+SET title = EXCLUDED.title,
+    preview = EXCLUDED.preview,
+    reply_count = EXCLUDED.reply_count,
+    participant_count = EXCLUDED.participant_count,
+    reaction_count = EXCLUDED.reaction_count,
+    file_count = EXCLUDED.file_count,
+    last_activity_ts = EXCLUDED.last_activity_ts
+"#
+}
+
 pub const fn insert_analytics_event_query() -> &'static str {
     r#"
 INSERT INTO analytics_events (event_name, subject_id, payload_json)
@@ -75,7 +101,7 @@ mod tests {
     use super::{
         insert_analytics_event_query, upsert_channel_query, upsert_file_query,
         upsert_message_query, upsert_reaction_query, upsert_search_document_query,
-        upsert_user_query,
+        upsert_thread_summary_query, upsert_user_query,
     };
 
     #[test]
@@ -86,6 +112,7 @@ mod tests {
         assert!(upsert_channel_query().contains("INSERT INTO channels"));
         assert!(upsert_user_query().contains("INSERT INTO users"));
         assert!(upsert_search_document_query().contains("INSERT INTO search_documents"));
+        assert!(upsert_thread_summary_query().contains("INSERT INTO thread_summaries"));
         assert!(insert_analytics_event_query().contains("INSERT INTO analytics_events"));
     }
 }
