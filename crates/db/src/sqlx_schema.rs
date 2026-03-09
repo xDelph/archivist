@@ -21,9 +21,34 @@ ON search_documents (team_id, channel_id, message_ts DESC);
 "#
 }
 
+pub const fn backfill_search_documents_query() -> &'static str {
+    r#"
+WITH root_messages AS (
+    SELECT team_id, channel_id, ts AS root_ts, text AS root_text
+    FROM messages
+    WHERE thread_ts IS NULL
+)
+INSERT INTO search_documents (team_id, channel_id, message_ts, title, body)
+SELECT
+    messages.team_id,
+    messages.channel_id,
+    messages.ts AS message_ts,
+    COALESCE(root_messages.root_text, messages.text) AS title,
+    messages.text AS body
+FROM messages
+LEFT JOIN root_messages
+    ON root_messages.team_id = messages.team_id
+   AND root_messages.channel_id = messages.channel_id
+   AND root_messages.root_ts = COALESCE(messages.thread_ts, messages.ts)
+ON CONFLICT (team_id, channel_id, message_ts) DO UPDATE
+SET title = EXCLUDED.title,
+    body = EXCLUDED.body
+"#
+}
+
 #[cfg(test)]
 mod tests {
-    use super::create_search_documents_table_query;
+    use super::{backfill_search_documents_query, create_search_documents_table_query};
 
     #[test]
     fn search_document_schema_creates_tsvector_indexes() {
@@ -34,5 +59,16 @@ mod tests {
         assert!(schema.contains("to_tsvector('english'"));
         assert!(schema.contains("USING GIN (document)"));
         assert!(schema.contains("search_documents_channel_ts_idx"));
+    }
+
+    #[test]
+    fn search_document_backfill_rebuilds_from_messages_and_roots() {
+        let query = backfill_search_documents_query();
+
+        assert!(query.contains("WITH root_messages AS"));
+        assert!(query.contains("INSERT INTO search_documents"));
+        assert!(query.contains("FROM messages"));
+        assert!(query.contains("COALESCE(root_messages.root_text, messages.text) AS title"));
+        assert!(query.contains("ON CONFLICT (team_id, channel_id, message_ts) DO UPDATE"));
     }
 }
