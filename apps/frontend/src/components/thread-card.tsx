@@ -15,6 +15,7 @@ interface ThreadCardProps {
 	reactionCount: number;
 	fileCount?: number;
 	className?: string;
+	action?: ReactNode;
 }
 
 export function ThreadCard({
@@ -28,49 +29,59 @@ export function ThreadCard({
 	reactionCount,
 	fileCount = 0,
 	className,
+	action,
 }: ThreadCardProps) {
 	return (
-		<Link
-			to="/threads/$threadId"
-			params={{ threadId }}
+		<article
 			className={cn(
-				"block rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4 transition hover:border-[var(--accent-soft)]/40 hover:bg-slate-950/50",
+				"rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4 transition hover:border-[var(--accent-soft)]/40 hover:bg-slate-950/50",
 				className,
 			)}
 		>
-			<div className="flex items-start justify-between gap-4">
-				<div>
-					<p className="text-[0.65rem] uppercase tracking-[0.24em] text-slate-400">
-						{channelName || "Public channel"}
-					</p>
-					<h3 className="mt-2 text-base font-semibold text-white">{title}</h3>
-				</div>
-				<p className="text-xs text-slate-400">
-					{formatSlackTimestamp(lastActivityTs)}
-				</p>
+			<div className="flex items-start gap-3">
+				<Link
+					to="/threads/$threadId"
+					params={{ threadId }}
+					className="min-w-0 flex-1"
+				>
+					<div className="flex items-start justify-between gap-4">
+						<div>
+							<p className="text-[0.65rem] uppercase tracking-[0.24em] text-slate-400">
+								{channelName || "Public channel"}
+							</p>
+							<h3 className="mt-2 text-base font-semibold text-white">
+								{title}
+							</h3>
+						</div>
+						<p className="text-xs text-slate-400">
+							{formatSlackTimestamp(lastActivityTs)}
+						</p>
+					</div>
+					<p className="mt-3 text-sm leading-6 text-slate-300">{preview}</p>
+					<div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
+						<StatChip
+							icon={<MessageSquare className="size-3.5" />}
+							label={formatStatLabel(replyCount, "reply", "replies")}
+						/>
+						<StatChip
+							icon={<Users className="size-3.5" />}
+							label={formatStatLabel(participantCount, "person", "people")}
+						/>
+						<StatChip
+							icon={<Sparkles className="size-3.5" />}
+							label={formatStatLabel(reactionCount, "reaction", "reactions")}
+						/>
+						{fileCount ? (
+							<StatChip
+								icon={<Paperclip className="size-3.5" />}
+								label={formatStatLabel(fileCount, "file", "files")}
+							/>
+						) : null}
+					</div>
+				</Link>
+				{action ? <div className="shrink-0">{action}</div> : null}
 			</div>
-			<p className="mt-3 text-sm leading-6 text-slate-300">{preview}</p>
-			<div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300">
-				<StatChip
-					icon={<MessageSquare className="size-3.5" />}
-					label={formatStatLabel(replyCount, "reply", "replies")}
-				/>
-				<StatChip
-					icon={<Users className="size-3.5" />}
-					label={formatStatLabel(participantCount, "person", "people")}
-				/>
-				<StatChip
-					icon={<Sparkles className="size-3.5" />}
-					label={formatStatLabel(reactionCount, "reaction", "reactions")}
-				/>
-				{fileCount ? (
-					<StatChip
-						icon={<Paperclip className="size-3.5" />}
-						label={formatStatLabel(fileCount, "file", "files")}
-					/>
-				) : null}
-			</div>
-		</Link>
+		</article>
 	);
 }
 

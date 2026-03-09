@@ -1,11 +1,18 @@
 import { EmptyState } from "@/components/empty-state";
 import { SectionCard } from "@/components/section-card";
 import { Button } from "@/components/ui/button";
-import { fetchThreadDetail } from "@/lib/api";
+import {
+	deleteSavedThread,
+	fetchSavedItems,
+	fetchThreadDetail,
+	saveThread,
+} from "@/lib/api";
 import { formatSlackTimestamp, formatStatLabel } from "@/lib/format";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
+	Bookmark,
+	BookmarkCheck,
 	ChevronDown,
 	Link2,
 	MessageSquare,
@@ -18,10 +25,25 @@ const INITIAL_MESSAGE_COUNT = 4;
 
 export function ThreadPage() {
 	const { threadId } = useParams({ from: "/app/threads/$threadId" });
+	const queryClient = useQueryClient();
 	const [isExpanded, setIsExpanded] = useState(false);
 	const threadQuery = useQuery({
 		queryKey: ["thread", threadId],
 		queryFn: () => fetchThreadDetail(threadId),
+	});
+	const savedQuery = useQuery({
+		queryKey: ["saved"],
+		queryFn: fetchSavedItems,
+	});
+	const savedItem = savedQuery.data?.items.find(
+		(item) => item.thread_id === threadId,
+	);
+	const saveMutation = useMutation({
+		mutationFn: () =>
+			savedItem ? deleteSavedThread(threadId) : saveThread(threadId),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: ["saved"] });
+		},
 	});
 
 	if (threadQuery.isPending) {
@@ -78,6 +100,27 @@ export function ThreadPage() {
 				eyebrow="Thread detail"
 				title={rootMessage?.text || "Untitled thread"}
 				description="A focused view of the conversation, with the highest-signal messages pulled to the top."
+				actions={
+					<Button
+						type="button"
+						variant={savedItem ? "default" : "secondary"}
+						onClick={() => saveMutation.mutate()}
+						disabled={saveMutation.isPending}
+					>
+						{savedItem ? (
+							<BookmarkCheck className="mr-2 size-4" />
+						) : (
+							<Bookmark className="mr-2 size-4" />
+						)}
+						{saveMutation.isPending
+							? savedItem
+								? "Removing"
+								: "Saving"
+							: savedItem
+								? "Saved"
+								: "Save thread"}
+					</Button>
+				}
 			>
 				<div className="flex flex-wrap gap-2 text-xs text-slate-300">
 					<MetaChip label={formatStatLabel(replyCount, "reply", "replies")} />

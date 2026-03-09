@@ -85,6 +85,22 @@ export interface ThreadReaction {
 	name: string;
 }
 
+export interface SavedItemsResponse {
+	items: SavedItem[];
+}
+
+export interface SavedItem {
+	id: string;
+	thread_id: string;
+	channel_id: string;
+	channel_name: string | null;
+	root_ts: string;
+	title: string;
+	preview: string;
+	last_activity_ts: string;
+	saved_at: string;
+}
+
 export interface ThreadFile {
 	id: string;
 	name: string;
@@ -185,6 +201,29 @@ export async function fetchSearchResults({
 export async function fetchThreadDetail(threadId: string) {
 	return apiRequest<ThreadDetailResponse>(
 		`/api/threads/${encodeURIComponent(threadId)}`,
+	);
+}
+
+export async function fetchSavedItems() {
+	return apiRequest<SavedItemsResponse>("/api/saved");
+}
+
+export async function saveThread(threadId: string) {
+	return apiRequest<{ ok: boolean; item: SavedItem }>("/api/saved", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ thread_id: threadId }),
+	});
+}
+
+export async function deleteSavedThread(threadId: string) {
+	return apiRequest<{ ok: boolean }>(
+		`/api/saved/${encodeURIComponent(threadId)}`,
+		{
+			method: "DELETE",
+		},
 	);
 }
 
