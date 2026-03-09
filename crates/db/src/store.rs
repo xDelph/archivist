@@ -1,7 +1,7 @@
 use crate::{
     SearchDocumentRow, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
-    thread_summary_index::{ThreadSummaryMap, rebuild_thread_summaries},
+    thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::{
@@ -58,7 +58,6 @@ pub struct JsonlEventStore {
     state: Arc<Mutex<StoreState>>,
 }
 
-type MessageKey = (String, String);
 type FileKey = (String, String);
 type ReactionKey = (String, String, String, String, String);
 
@@ -108,12 +107,7 @@ impl JsonlEventStore {
         append_job(&self.path, job).await?;
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(job);
-        rebuild_thread_summaries(
-            &mut state.thread_summaries,
-            &state.messages,
-            &state.reactions,
-            &state.files,
-        );
+        state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
 
         Ok(StoreOutcome::Inserted)
     }
@@ -195,6 +189,12 @@ impl JsonlEventStore {
             (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
         });
         thread_summaries
+    }
+
+    pub async fn refresh_thread_summaries(&self) -> usize {
+        let mut state = self.state.lock().await;
+        state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_summaries.len()
     }
 }
 
@@ -292,12 +292,7 @@ async fn load_state(path: &Path) -> Result<StoreState, StoreError> {
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(&job);
     }
-    rebuild_thread_summaries(
-        &mut state.thread_summaries,
-        &state.messages,
-        &state.reactions,
-        &state.files,
-    );
+    state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
 
     Ok(state)
 }

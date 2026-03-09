@@ -1,6 +1,7 @@
 mod archive;
 mod backfill;
 mod storage;
+mod summaries;
 
 use axum::{
     Json, Router,
@@ -13,7 +14,7 @@ use db::{JsonlEventStore, RepositoryMode, StoreError, StoreOutcome};
 use domain::ProcessEventJob;
 use queue::{
     QueueError, SignatureError, UPSTASH_SIGNATURE_HEADER, build_heartbeat_endpoint,
-    build_process_event_endpoint, verify_qstash_signature,
+    build_process_event_endpoint, build_refresh_thread_summaries_endpoint, verify_qstash_signature,
 };
 use serde::Serialize;
 use tower_http::trace::TraceLayer;
@@ -77,6 +78,7 @@ struct AppState {
     event_log_path: String,
     process_event_url: String,
     heartbeat_url: String,
+    refresh_thread_summaries_url: String,
     slack_api_base_url: String,
     slack_bot_token: Option<String>,
     r2_config: Option<storage::R2Config>,
@@ -117,11 +119,17 @@ struct HeartbeatResponse {
 pub fn build_router(store: JsonlEventStore, config: WorkerConfig) -> Result<Router, QueueError> {
     let process_event_url = build_process_event_endpoint(&config.worker_base_url)?;
     let heartbeat_url = build_heartbeat_endpoint(&config.worker_base_url)?;
+    let refresh_thread_summaries_url =
+        build_refresh_thread_summaries_endpoint(&config.worker_base_url)?;
 
     Ok(Router::new()
         .route("/health", get(health))
         .route("/jobs/process_event", post(process_event))
         .route("/jobs/heartbeat", post(heartbeat))
+        .route(
+            "/jobs/refresh_thread_summaries",
+            post(refresh_thread_summaries),
+        )
         .route("/jobs/backfill_channel", post(backfill::backfill_channel))
         .route("/jobs/archive_file", post(archive::archive_file))
         .with_state(AppState {
@@ -129,6 +137,7 @@ pub fn build_router(store: JsonlEventStore, config: WorkerConfig) -> Result<Rout
             event_log_path: config.event_log_path,
             process_event_url,
             heartbeat_url,
+            refresh_thread_summaries_url,
             slack_api_base_url: config.slack_api_base_url,
             slack_bot_token: config.slack_bot_token,
             r2_config: storage::R2Config::from_options(
@@ -208,6 +217,22 @@ async fn heartbeat(
         ok: true,
         job: "heartbeat",
     }))
+}
+
+async fn refresh_thread_summaries(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<summaries::RefreshThreadSummariesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    validate_qstash_delivery(
+        &headers,
+        &body,
+        &state.refresh_thread_summaries_url,
+        state.current_signing_key.as_deref(),
+        state.next_signing_key.as_deref(),
+    )?;
+
+    summaries::refresh_thread_summaries(State(state), body).await
 }
 
 fn store_failed(_: StoreError) -> (StatusCode, Json<ErrorResponse>) {

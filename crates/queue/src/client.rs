@@ -201,6 +201,12 @@ pub fn build_heartbeat_endpoint(worker_base_url: &str) -> Result<String, QueueEr
     build_worker_endpoint(worker_base_url, "/jobs/heartbeat")
 }
 
+pub fn build_refresh_thread_summaries_endpoint(
+    worker_base_url: &str,
+) -> Result<String, QueueError> {
+    build_worker_endpoint(worker_base_url, "/jobs/refresh_thread_summaries")
+}
+
 fn build_worker_endpoint(worker_base_url: &str, path: &str) -> Result<String, QueueError> {
     let trimmed = worker_base_url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
@@ -239,6 +245,7 @@ mod tests {
     use super::{
         DEFAULT_QSTASH_BASE_URL, ProcessEventQueue, QStashQueue, QueueError, QueueMode,
         build_heartbeat_endpoint, build_process_event_endpoint,
+        build_refresh_thread_summaries_endpoint,
     };
     use axum::{
         Router,
@@ -256,6 +263,11 @@ mod tests {
         assert_eq!(
             build_process_event_endpoint("http://127.0.0.1:4002/").expect("endpoint"),
             "http://127.0.0.1:4002/jobs/process_event"
+        );
+        assert_eq!(
+            build_refresh_thread_summaries_endpoint("http://127.0.0.1:4002/")
+                .expect("endpoint"),
+            "http://127.0.0.1:4002/jobs/refresh_thread_summaries"
         );
     }
 

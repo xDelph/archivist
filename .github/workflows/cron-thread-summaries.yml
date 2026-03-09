@@ -1,0 +1,31 @@
+name: Cron Thread Summaries
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  publish-thread-summaries-refresh:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.UPSTASH_QSTASH_TOKEN != '' && secrets.ARCHIVIST_WORKER_BASE_URL != '' }}
+    env:
+      QSTASH_URL: ${{ secrets.UPSTASH_QSTASH_URL }}
+      QSTASH_TOKEN: ${{ secrets.UPSTASH_QSTASH_TOKEN }}
+      WORKER_BASE_URL: ${{ secrets.ARCHIVIST_WORKER_BASE_URL }}
+    steps:
+      - name: Publish thread summary refresh job
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          publish_base="${QSTASH_URL:-https://qstash.upstash.io}"
+          publish_base="${publish_base%/}"
+          endpoint="${WORKER_BASE_URL%/}/jobs/refresh_thread_summaries"
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${QSTASH_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "${publish_base}/v2/publish/${endpoint}"

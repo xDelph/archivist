@@ -275,3 +275,66 @@ async fn file_share_messages_are_counted_in_health() {
     assert_eq!(health_payload["tracked_messages"], 1);
     assert_eq!(health_payload["tracked_files"], 1);
 }
+
+#[tokio::test]
+async fn refresh_thread_summaries_job_reports_refreshed_threads() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_root".to_owned(),
+            team_id: "team_1".to_owned(),
+            event_time: 1,
+            received_at: 2,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U123".to_owned()),
+                text: Some("root message".to_owned()),
+                ts: "1700000000.000001".to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("insert root");
+    let router = build_router(
+        store,
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url: "https://slack.com/api".to_owned(),
+            slack_bot_token: None,
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/refresh_thread_summaries")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["refreshed"], 1);
+}
