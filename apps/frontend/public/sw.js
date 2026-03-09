@@ -1,5 +1,6 @@
 const SHELL_CACHE = "archivist-shell-v1";
 const ASSET_CACHE = "archivist-assets-v1";
+const DATA_CACHE = "archivist-data-v1";
 const CORE_SHELL_URLS = [
   "/",
   "/manifest.webmanifest",
@@ -22,7 +23,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => ![SHELL_CACHE, ASSET_CACHE].includes(key))
+            .filter((key) => ![SHELL_CACHE, ASSET_CACHE, DATA_CACHE].includes(key))
             .map((key) => caches.delete(key)),
         ),
       )
@@ -46,6 +47,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (isCatchUpRequest(url.pathname) || isThreadRequest(url.pathname)) {
+    event.respondWith(cacheRecentData(request));
+    return;
+  }
+
   if (
     STATIC_DESTINATIONS.has(request.destination) ||
     url.pathname === "/manifest.webmanifest"
@@ -53,6 +59,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(staleWhileRevalidate(request, ASSET_CACHE));
   }
 });
+
+function isCatchUpRequest(pathname) {
+  return pathname === "/api/catch-up";
+}
+
+function isThreadRequest(pathname) {
+  return /^\/api\/threads\/[^/]+$/.test(pathname);
+}
 
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
@@ -81,4 +95,44 @@ async function staleWhileRevalidate(request, cacheName) {
     .catch(() => cached);
 
   return cached || network;
+}
+
+async function cacheRecentData(request) {
+  const cache = await caches.open(DATA_CACHE);
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      await cache.put(request, response.clone());
+      await trimDataCache(cache);
+    }
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    if (cached) {
+      return cached;
+    }
+
+    throw new Error("No cached data available");
+  }
+}
+
+async function trimDataCache(cache) {
+  const keys = await cache.keys();
+  const catchUpKeys = keys.filter((key) => isCatchUpRequest(new URL(key.url).pathname));
+  const threadKeys = keys.filter((key) => isThreadRequest(new URL(key.url).pathname));
+
+  await trimCacheEntries(cache, catchUpKeys, 6);
+  await trimCacheEntries(cache, threadKeys, 24);
+}
+
+async function trimCacheEntries(cache, keys, maxEntries) {
+  const excess = keys.length - maxEntries;
+  if (excess <= 0) {
+    return;
+  }
+
+  await Promise.all(
+    keys.slice(0, excess).map((key) => cache.delete(key)),
+  );
 }
