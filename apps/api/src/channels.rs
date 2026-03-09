@@ -1,5 +1,5 @@
-use crate::AppState;
-use axum::{Json, extract::State};
+use crate::{AppState, auth::SessionClaims};
+use axum::{Extension, Json, extract::State};
 use domain::{Channel, ChannelKind, File, Message, Reaction};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -43,13 +43,40 @@ impl Default for ChannelSummaryBuilder {
     }
 }
 
-pub(crate) async fn channels(State(state): State<AppState>) -> Json<Vec<ChannelSummaryResponse>> {
+pub(crate) async fn channels(
+    State(state): State<AppState>,
+    Extension(claims): Extension<SessionClaims>,
+) -> Json<Vec<ChannelSummaryResponse>> {
     Json(
         build_channel_summaries(
-            state.store.channels().await,
-            state.store.messages().await,
-            state.store.reactions().await,
-            state.store.files().await,
+            state
+                .store
+                .channels()
+                .await
+                .into_iter()
+                .filter(|channel| channel.team_id == claims.team_id)
+                .collect(),
+            state
+                .store
+                .messages()
+                .await
+                .into_iter()
+                .filter(|message| message.team_id == claims.team_id)
+                .collect(),
+            state
+                .store
+                .reactions()
+                .await
+                .into_iter()
+                .filter(|reaction| reaction.team_id == claims.team_id)
+                .collect(),
+            state
+                .store
+                .files()
+                .await
+                .into_iter()
+                .filter(|file| file.team_id == claims.team_id)
+                .collect(),
         )
         .into_iter()
         .map(|summary| ChannelSummaryResponse {

@@ -52,7 +52,8 @@ impl InMemoryEventStore {
 
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(job);
-        state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_summaries =
+            build_thread_summaries(&state.messages, &state.reactions, &state.files);
 
         StoreOutcome::Inserted
     }
@@ -148,7 +149,7 @@ impl InMemoryState {
                 files,
             } => {
                 self.messages.insert(
-                    (job.channel_id.clone(), ts.clone()),
+                    (job.team_id.clone(), job.channel_id.clone(), ts.clone()),
                     Message {
                         team_id: job.team_id.clone(),
                         channel_id: job.channel_id.clone(),

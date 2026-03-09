@@ -2,7 +2,7 @@ use crate::ThreadSummaryRow;
 use domain::{File, Message};
 use std::collections::{HashMap, HashSet};
 
-type MessageKey = (String, String);
+type MessageKey = (String, String, String);
 type ReactionKey = (String, String, String, String, String);
 type FileKey = (String, String);
 type ThreadSummaryKey = (String, String, String);
@@ -32,11 +32,29 @@ pub(crate) fn build_thread_summaries(
     let root_messages = messages
         .values()
         .filter(|message| message.thread_ts.is_none())
-        .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
+        .map(|message| {
+            (
+                (
+                    message.team_id.clone(),
+                    message.channel_id.clone(),
+                    message.ts.clone(),
+                ),
+                message,
+            )
+        })
         .collect::<HashMap<_, _>>();
     let message_lookup = messages
         .values()
-        .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
+        .map(|message| {
+            (
+                (
+                    message.team_id.clone(),
+                    message.channel_id.clone(),
+                    message.ts.clone(),
+                ),
+                message,
+            )
+        })
         .collect::<HashMap<_, _>>();
     let mut aggregates = HashMap::<ThreadSummaryKey, ThreadSummaryAggregate>::new();
 
@@ -45,7 +63,11 @@ pub(crate) fn build_thread_summaries(
             .thread_ts
             .clone()
             .unwrap_or_else(|| message.ts.clone());
-        let Some(root) = root_messages.get(&(message.channel_id.clone(), root_ts.clone())) else {
+        let Some(root) = root_messages.get(&(
+            message.team_id.clone(),
+            message.channel_id.clone(),
+            root_ts.clone(),
+        )) else {
             continue;
         };
         let entry = aggregates
@@ -77,23 +99,25 @@ pub(crate) fn build_thread_summaries(
         update_last_activity(entry, &message.ts);
     }
 
-    for (_, channel_id, message_ts, user_id, _) in reactions {
-        let Some(message) = message_lookup.get(&(channel_id.clone(), message_ts.clone())) else {
+    for (team_id, channel_id, message_ts, user_id, _) in reactions {
+        let Some(message) =
+            message_lookup.get(&(team_id.clone(), channel_id.clone(), message_ts.clone()))
+        else {
             continue;
         };
         let root_ts = message
             .thread_ts
             .clone()
             .unwrap_or_else(|| message.ts.clone());
-        let Some(root) = root_messages.get(&(message.channel_id.clone(), root_ts.clone())) else {
+        let Some(root) = root_messages.get(&(
+            message.team_id.clone(),
+            message.channel_id.clone(),
+            root_ts.clone(),
+        )) else {
             continue;
         };
         let entry = aggregates
-            .entry((
-                message.team_id.clone(),
-                message.channel_id.clone(),
-                root_ts,
-            ))
+            .entry((message.team_id.clone(), message.channel_id.clone(), root_ts))
             .or_insert_with(|| ThreadSummaryAggregate {
                 team_id: message.team_id.clone(),
                 channel_id: message.channel_id.clone(),
@@ -114,23 +138,26 @@ pub(crate) fn build_thread_summaries(
     }
 
     for file in files.values() {
-        let Some(message) = message_lookup.get(&(file.channel_id.clone(), file.message_ts.clone()))
-        else {
+        let Some(message) = message_lookup.get(&(
+            file.team_id.clone(),
+            file.channel_id.clone(),
+            file.message_ts.clone(),
+        )) else {
             continue;
         };
         let root_ts = message
             .thread_ts
             .clone()
             .unwrap_or_else(|| message.ts.clone());
-        let Some(root) = root_messages.get(&(message.channel_id.clone(), root_ts.clone())) else {
+        let Some(root) = root_messages.get(&(
+            message.team_id.clone(),
+            message.channel_id.clone(),
+            root_ts.clone(),
+        )) else {
             continue;
         };
         let entry = aggregates
-            .entry((
-                message.team_id.clone(),
-                message.channel_id.clone(),
-                root_ts,
-            ))
+            .entry((message.team_id.clone(), message.channel_id.clone(), root_ts))
             .or_insert_with(|| ThreadSummaryAggregate {
                 team_id: message.team_id.clone(),
                 channel_id: message.channel_id.clone(),
@@ -184,7 +211,8 @@ fn summarize_text(value: &str) -> String {
 }
 
 fn parse_ts_seconds(value: &str) -> i64 {
-    value.split('.')
+    value
+        .split('.')
         .next()
         .and_then(|value| value.parse().ok())
         .unwrap_or_default()

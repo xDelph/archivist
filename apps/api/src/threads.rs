@@ -1,6 +1,6 @@
-use crate::AppState;
+use crate::{AppState, auth::SessionClaims};
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
 };
@@ -50,6 +50,7 @@ pub(crate) struct ErrorResponse {
 pub(crate) async fn thread_detail(
     Path(id): Path<String>,
     State(state): State<AppState>,
+    Extension(claims): Extension<SessionClaims>,
 ) -> Result<Json<ThreadDetailResponse>, (StatusCode, Json<ErrorResponse>)> {
     let (channel_id, root_ts) = parse_thread_id(&id).ok_or((
         StatusCode::BAD_REQUEST,
@@ -62,9 +63,27 @@ pub(crate) async fn thread_detail(
         &id,
         channel_id,
         root_ts,
-        state.store.messages().await,
-        state.store.reactions().await,
-        state.store.files().await,
+        state
+            .store
+            .messages()
+            .await
+            .into_iter()
+            .filter(|message| message.team_id == claims.team_id)
+            .collect(),
+        state
+            .store
+            .reactions()
+            .await
+            .into_iter()
+            .filter(|reaction| reaction.team_id == claims.team_id)
+            .collect(),
+        state
+            .store
+            .files()
+            .await
+            .into_iter()
+            .filter(|file| file.team_id == claims.team_id)
+            .collect(),
     )
     .ok_or((
         StatusCode::NOT_FOUND,

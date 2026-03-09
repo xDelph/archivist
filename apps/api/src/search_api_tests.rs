@@ -8,7 +8,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use db::JsonlEventStore;
+use db::{JsonlEventStore, SearchDocumentRow};
 use domain::{ChannelKind, EventPayload, ProcessEventJob};
 use search::SearchSort;
 use tempfile::tempdir;
@@ -85,6 +85,29 @@ fn build_search_results_respects_filters_and_sorting() {
                 text: "release notes in another channel".to_owned(),
             },
         ],
+        vec![
+            SearchDocumentRow {
+                team_id: "T123".to_owned(),
+                channel_id: "C123".to_owned(),
+                message_ts: "1700000200.000001".to_owned(),
+                title: Some("release notes are ready".to_owned()),
+                body: "release notes are ready".to_owned(),
+            },
+            SearchDocumentRow {
+                team_id: "T123".to_owned(),
+                channel_id: "C123".to_owned(),
+                message_ts: "1700000300.000001".to_owned(),
+                title: Some("release notes are ready".to_owned()),
+                body: "release notes include search improvements".to_owned(),
+            },
+            SearchDocumentRow {
+                team_id: "T123".to_owned(),
+                channel_id: "C999".to_owned(),
+                message_ts: "1700000400.000001".to_owned(),
+                title: Some("release notes in another channel".to_owned()),
+                body: "release notes in another channel".to_owned(),
+            },
+        ],
         &query,
     );
 
@@ -144,6 +167,24 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
             .await
             .expect("message insert");
     }
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_4".to_owned(),
+            team_id: "T999".to_owned(),
+            event_time: now,
+            received_at: now,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U999".to_owned()),
+                text: Some("release notes for another workspace".to_owned()),
+                ts: format!("{}.000001", now - 10),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("other team message insert");
 
     let session_token = build_session_token(
         "session_secret",
@@ -202,6 +243,51 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
     assert_eq!(payload.query, "release notes");
     assert_eq!(payload.items.len(), 2);
     assert!(payload.items.iter().all(|item| item.channel_id == "C123"));
+    assert!(
+        payload
+            .items
+            .iter()
+            .all(|item| !item.snippet.contains("another workspace"))
+    );
+}
+
+#[tokio::test]
+async fn search_route_requires_authenticated_session() {
+    let tempdir = tempdir().expect("tempdir");
+
+    let response = build_router(ApiConfig {
+        host: "127.0.0.1".to_owned(),
+        port: 4000,
+        event_log_path: tempdir.path().join("events.jsonl").display().to_string(),
+        slack_client_id: None,
+        slack_client_secret: None,
+        slack_redirect_uri: None,
+        slack_workspace_id: None,
+        slack_token_url: None,
+        session_secret: Some("session_secret".to_owned()),
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
+        synced_users_path: tempdir
+            .path()
+            .join("synced-users.json")
+            .display()
+            .to_string(),
+    })
+    .await
+    .expect("router")
+    .oneshot(
+        Request::builder()
+            .uri("/api/search?q=release")
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

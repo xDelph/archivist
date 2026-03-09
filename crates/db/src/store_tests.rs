@@ -258,16 +258,20 @@ async fn message_jobs_refresh_search_documents_for_full_threads() {
 
     let search_documents = store.search_documents().await;
     assert_eq!(search_documents.len(), 2);
-    assert!(search_documents
-        .iter()
-        .all(|document| document.title.as_deref() == Some("root summary")));
+    assert!(
+        search_documents
+            .iter()
+            .all(|document| document.title.as_deref() == Some("root summary"))
+    );
 
     let reopened = JsonlEventStore::open(&path).await.expect("reopened");
     let reopened_documents = reopened.search_documents().await;
     assert_eq!(reopened_documents.len(), 2);
-    assert!(reopened_documents
-        .iter()
-        .all(|document| document.title.as_deref() == Some("root summary")));
+    assert!(
+        reopened_documents
+            .iter()
+            .all(|document| document.title.as_deref() == Some("root summary"))
+    );
 }
 
 #[tokio::test]

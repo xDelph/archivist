@@ -39,9 +39,18 @@ async fn in_memory_store_deduplicates_and_tracks_entities() {
         },
     };
 
-    assert_eq!(store.record_process_event(&rename).await, StoreOutcome::Inserted);
-    assert_eq!(store.record_process_event(&message).await, StoreOutcome::Inserted);
-    assert_eq!(store.record_process_event(&message).await, StoreOutcome::Duplicate);
+    assert_eq!(
+        store.record_process_event(&rename).await,
+        StoreOutcome::Inserted
+    );
+    assert_eq!(
+        store.record_process_event(&message).await,
+        StoreOutcome::Inserted
+    );
+    assert_eq!(
+        store.record_process_event(&message).await,
+        StoreOutcome::Duplicate
+    );
 
     let health = store.health().await;
     let files = store.files().await;
@@ -72,7 +81,10 @@ async fn in_memory_store_tracks_reactions() {
         },
     };
 
-    assert_eq!(store.record_process_event(&reaction).await, StoreOutcome::Inserted);
+    assert_eq!(
+        store.record_process_event(&reaction).await,
+        StoreOutcome::Inserted
+    );
 
     let reactions = store.reactions().await;
     let health = store.health().await;
@@ -116,15 +128,23 @@ async fn in_memory_store_refreshes_search_documents_for_threads() {
         },
     };
 
-    assert_eq!(store.record_process_event(&reply).await, StoreOutcome::Inserted);
-    assert_eq!(store.record_process_event(&root).await, StoreOutcome::Inserted);
+    assert_eq!(
+        store.record_process_event(&reply).await,
+        StoreOutcome::Inserted
+    );
+    assert_eq!(
+        store.record_process_event(&root).await,
+        StoreOutcome::Inserted
+    );
 
     let search_documents = store.search_documents().await;
 
     assert_eq!(search_documents.len(), 2);
-    assert!(search_documents
-        .iter()
-        .all(|document| document.title.as_deref() == Some("root summary")));
+    assert!(
+        search_documents
+            .iter()
+            .all(|document| document.title.as_deref() == Some("root summary"))
+    );
 }
 
 #[tokio::test]
@@ -180,9 +200,18 @@ async fn in_memory_store_refreshes_thread_summaries_for_threads() {
         },
     };
 
-    assert_eq!(store.record_process_event(&reply).await, StoreOutcome::Inserted);
-    assert_eq!(store.record_process_event(&root).await, StoreOutcome::Inserted);
-    assert_eq!(store.record_process_event(&reaction).await, StoreOutcome::Inserted);
+    assert_eq!(
+        store.record_process_event(&reply).await,
+        StoreOutcome::Inserted
+    );
+    assert_eq!(
+        store.record_process_event(&root).await,
+        StoreOutcome::Inserted
+    );
+    assert_eq!(
+        store.record_process_event(&reaction).await,
+        StoreOutcome::Inserted
+    );
 
     let thread_summaries = store.thread_summaries().await;
 

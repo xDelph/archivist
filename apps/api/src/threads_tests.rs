@@ -261,3 +261,76 @@ async fn thread_detail_route_rejects_invalid_ids() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn thread_detail_route_hides_threads_from_other_teams() {
+    let tempdir = tempdir().expect("tempdir");
+    let path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&path).await.expect("store");
+
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_other_team_root".to_owned(),
+            team_id: "T999".to_owned(),
+            event_time: 1,
+            received_at: 2,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U999".to_owned()),
+                text: Some("hidden root".to_owned()),
+                ts: "1700000000.000001".to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("message insert");
+    let session_token = build_session_token(
+        "session_secret",
+        &SessionClaims {
+            slack_user_id: "U123".to_owned(),
+            team_id: "T123".to_owned(),
+            email: None,
+            display_name: Some("Thomas".to_owned()),
+            avatar_url: None,
+            exp: current_unix_timestamp() + 60,
+        },
+    )
+    .expect("session token");
+
+    let response = build_router(ApiConfig {
+        host: "127.0.0.1".to_owned(),
+        port: 4000,
+        event_log_path: path.display().to_string(),
+        slack_client_id: None,
+        slack_client_secret: None,
+        slack_redirect_uri: None,
+        slack_workspace_id: None,
+        slack_token_url: None,
+        session_secret: Some("session_secret".to_owned()),
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
+        synced_users_path: tempdir
+            .path()
+            .join("synced-users.json")
+            .display()
+            .to_string(),
+    })
+    .await
+    .expect("router")
+    .oneshot(
+        Request::builder()
+            .uri("/api/threads/C123:1700000000.000001")
+            .header("cookie", format!("archivist_session={session_token}"))
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}

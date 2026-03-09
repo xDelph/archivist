@@ -2,7 +2,7 @@ use crate::SearchDocumentRow;
 use domain::Message;
 use std::collections::HashMap;
 
-pub(crate) type MessageMap = HashMap<(String, String), Message>;
+pub(crate) type MessageMap = HashMap<(String, String, String), Message>;
 pub(crate) type SearchDocumentMap = HashMap<(String, String, String), SearchDocumentRow>;
 
 pub(crate) fn refresh_search_documents(
@@ -12,7 +12,11 @@ pub(crate) fn refresh_search_documents(
     channel_id: &str,
     root_ts: &str,
 ) {
-    let root_key = (channel_id.to_owned(), root_ts.to_owned());
+    let root_key = (
+        team_id.to_owned(),
+        channel_id.to_owned(),
+        root_ts.to_owned(),
+    );
     let root_title = messages
         .get(&root_key)
         .map(|message| optional_text(&message.text))

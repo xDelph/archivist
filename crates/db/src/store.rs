@@ -107,7 +107,8 @@ impl JsonlEventStore {
         append_job(&self.path, job).await?;
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(job);
-        state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_summaries =
+            build_thread_summaries(&state.messages, &state.reactions, &state.files);
 
         Ok(StoreOutcome::Inserted)
     }
@@ -193,7 +194,8 @@ impl JsonlEventStore {
 
     pub async fn refresh_thread_summaries(&self) -> usize {
         let mut state = self.state.lock().await;
-        state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_summaries =
+            build_thread_summaries(&state.messages, &state.reactions, &state.files);
         state.thread_summaries.len()
     }
 }
@@ -209,7 +211,7 @@ impl StoreState {
                 files,
             } => {
                 self.messages.insert(
-                    (job.channel_id.clone(), ts.clone()),
+                    (job.team_id.clone(), job.channel_id.clone(), ts.clone()),
                     Message {
                         team_id: job.team_id.clone(),
                         channel_id: job.channel_id.clone(),
@@ -292,7 +294,8 @@ async fn load_state(path: &Path) -> Result<StoreState, StoreError> {
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(&job);
     }
-    state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
+    state.thread_summaries =
+        build_thread_summaries(&state.messages, &state.reactions, &state.files);
 
     Ok(state)
 }

@@ -1,6 +1,6 @@
-use crate::AppState;
+use crate::{AppState, auth::SessionClaims};
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Query, State},
     http::StatusCode,
 };
@@ -83,6 +83,7 @@ impl CatchUpWindow {
 
 pub(crate) async fn catch_up(
     State(state): State<AppState>,
+    Extension(claims): Extension<SessionClaims>,
     Query(query): Query<CatchUpQuery>,
 ) -> Result<Json<CatchUpResponse>, (StatusCode, Json<ErrorResponse>)> {
     let window = CatchUpWindow::parse(query.window.as_deref()).ok_or((
@@ -92,8 +93,20 @@ pub(crate) async fn catch_up(
         }),
     ))?;
     let channels = build_catch_up(
-        state.store.channels().await,
-        state.store.thread_summaries().await,
+        state
+            .store
+            .channels()
+            .await
+            .into_iter()
+            .filter(|channel| channel.team_id == claims.team_id)
+            .collect(),
+        state
+            .store
+            .thread_summaries()
+            .await
+            .into_iter()
+            .filter(|summary| summary.team_id == claims.team_id)
+            .collect(),
         window,
         current_unix_timestamp(),
     );

@@ -1,9 +1,10 @@
-use crate::AppState;
+use crate::{AppState, auth::SessionClaims};
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Query, State},
     http::StatusCode,
 };
+use db::SearchDocumentRow;
 use domain::{Channel, Message};
 use search::{SearchFilters, SearchQuery, SearchSort, normalize_query_text};
 use serde::{Deserialize, Serialize};
@@ -65,14 +66,34 @@ struct SearchResult {
 
 pub(crate) async fn search(
     State(state): State<AppState>,
+    Extension(claims): Extension<SessionClaims>,
     Query(query): Query<SearchApiQuery>,
 ) -> Result<Json<SearchResponse>, (StatusCode, Json<ErrorResponse>)> {
     let cursor = parse_cursor(query.cursor.as_deref())?;
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let search_query = parse_search_query(&query)?;
     let items = build_search_results(
-        state.store.channels().await,
-        state.store.messages().await,
+        state
+            .store
+            .channels()
+            .await
+            .into_iter()
+            .filter(|channel| channel.team_id == claims.team_id)
+            .collect(),
+        state
+            .store
+            .messages()
+            .await
+            .into_iter()
+            .filter(|message| message.team_id == claims.team_id)
+            .collect(),
+        state
+            .store
+            .search_documents()
+            .await
+            .into_iter()
+            .filter(|document| document.team_id == claims.team_id)
+            .collect(),
         &search_query,
     );
     let page = items
@@ -161,6 +182,7 @@ fn parse_cursor(cursor: Option<&str>) -> Result<usize, (StatusCode, Json<ErrorRe
 fn build_search_results(
     channels: Vec<Channel>,
     messages: Vec<Message>,
+    search_documents: Vec<SearchDocumentRow>,
     query: &SearchQuery,
 ) -> Vec<SearchResult> {
     let channel_names = channels
@@ -170,7 +192,11 @@ fn build_search_results(
     let roots = messages
         .iter()
         .filter(|message| message.thread_ts.is_none())
-        .map(|message| (message.ts.clone(), message))
+        .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
+        .collect::<HashMap<_, _>>();
+    let message_lookup = messages
+        .iter()
+        .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
         .collect::<HashMap<_, _>>();
     let tokens = query
         .text
@@ -184,47 +210,54 @@ fn build_search_results(
         .and_then(parse_ts_seconds);
     let date_to = query.filters.date_to.as_deref().and_then(parse_ts_seconds);
 
-    let mut results = messages
+    let mut results = search_documents
         .iter()
-        .filter_map(|message| {
+        .filter_map(|document| {
             if !query.filters.channel_ids.is_empty()
-                && !query.filters.channel_ids.contains(&message.channel_id)
+                && !query.filters.channel_ids.contains(&document.channel_id)
             {
                 return None;
             }
 
-            let message_seconds = parse_ts_seconds(&message.ts)?;
+            let message_seconds = parse_ts_seconds(&document.message_ts)?;
             if date_from.is_some_and(|date_from| message_seconds < date_from)
                 || date_to.is_some_and(|date_to| message_seconds > date_to)
             {
                 return None;
             }
 
-            let score = score_message(&message.text, &tokens);
+            let score = score_document(document.title.as_deref(), &document.body, &tokens);
             if score == 0 {
                 return None;
             }
 
+            let message =
+                message_lookup.get(&(document.channel_id.clone(), document.message_ts.clone()));
             let root_ts = message
-                .thread_ts
-                .clone()
-                .unwrap_or_else(|| message.ts.clone());
-            let root = roots.get(&root_ts).copied().unwrap_or(message);
+                .and_then(|message| message.thread_ts.clone())
+                .unwrap_or_else(|| document.message_ts.clone());
+            let root = roots
+                .get(&(document.channel_id.clone(), root_ts.clone()))
+                .copied()
+                .or(message.copied());
 
             Some(SearchResult {
-                id: format!("{}:{}", message.channel_id, message.ts),
-                thread_id: format!("{}:{root_ts}", message.channel_id),
-                channel_id: message.channel_id.clone(),
+                id: format!("{}:{}", document.channel_id, document.message_ts),
+                thread_id: format!("{}:{root_ts}", document.channel_id),
+                channel_id: document.channel_id.clone(),
                 channel_name: channel_names
-                    .get(&message.channel_id)
+                    .get(&document.channel_id)
                     .cloned()
                     .unwrap_or_default(),
                 root_ts: root_ts.clone(),
                 root_seconds: parse_ts_seconds(&root_ts).unwrap_or(message_seconds),
-                message_ts: message.ts.clone(),
+                message_ts: document.message_ts.clone(),
                 message_seconds,
-                title: summarize_text(&root.text),
-                snippet: build_snippet(&message.text, &tokens),
+                title: root
+                    .map(|root| summarize_text(&root.text))
+                    .or_else(|| document.title.clone())
+                    .unwrap_or_else(|| summarize_text(&document.body)),
+                snippet: build_snippet(&document.body, &tokens),
                 score,
             })
         })
@@ -259,8 +292,16 @@ fn build_search_results(
     results
 }
 
-fn score_message(message: &str, tokens: &[String]) -> usize {
-    let haystack = message.to_lowercase();
+fn score_document(title: Option<&str>, body: &str, tokens: &[String]) -> usize {
+    let mut score = score_text(body, tokens);
+    if let Some(title) = title {
+        score += score_text(title, tokens) * 2;
+    }
+    score
+}
+
+fn score_text(value: &str, tokens: &[String]) -> usize {
+    let haystack = value.to_lowercase();
     let mut score = 0;
     for token in tokens {
         if haystack.contains(token) {
