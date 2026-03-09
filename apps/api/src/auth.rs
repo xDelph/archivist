@@ -1,28 +1,36 @@
 use crate::{ApiConfig, AppState};
 use axum::{
     Json,
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
 };
-use serde::Serialize;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const SLACK_AUTHORIZE_URL: &str = "https://slack.com/openid/connect/authorize";
+const SLACK_TOKEN_URL: &str = "https://slack.com/api/openid.connect.token";
 const SLACK_OIDC_SCOPE: &str = "openid profile email";
+const SLACK_ISSUER: &str = "https://slack.com";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SlackAuthConfig {
-    client_id: Option<String>,
-    redirect_uri: Option<String>,
-    workspace_id: Option<String>,
+    pub(crate) client_id: Option<String>,
+    pub(crate) client_secret: Option<String>,
+    pub(crate) redirect_uri: Option<String>,
+    pub(crate) workspace_id: Option<String>,
+    pub(crate) token_url: Option<String>,
 }
 
 impl SlackAuthConfig {
     pub(crate) fn from_config(config: &ApiConfig) -> Self {
         Self {
             client_id: config.slack_client_id.clone(),
+            client_secret: config.slack_client_secret.clone(),
             redirect_uri: config.slack_redirect_uri.clone(),
             workspace_id: config.slack_workspace_id.clone(),
+            token_url: config.slack_token_url.clone(),
         }
     }
 }
@@ -30,6 +38,42 @@ impl SlackAuthConfig {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct ErrorResponse {
     error: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SlackCallbackQuery {
+    code: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct SlackIdentityResponse {
+    ok: bool,
+    slack_user_id: String,
+    team_id: String,
+    email: Option<String>,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SlackTokenExchangeResponse {
+    ok: bool,
+    id_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SlackIdentityClaims {
+    iss: String,
+    aud: String,
+    exp: i64,
+    #[serde(rename = "https://slack.com/user_id")]
+    slack_user_id: String,
+    #[serde(rename = "https://slack.com/team_id")]
+    team_id: String,
+    email: Option<String>,
+    name: Option<String>,
+    picture: Option<String>,
 }
 
 pub(crate) async fn slack_start(
@@ -45,7 +89,37 @@ pub(crate) async fn slack_start(
     Ok(Redirect::temporary(&authorize_url).into_response())
 }
 
-fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {
+pub(crate) async fn slack_callback(
+    State(state): State<AppState>,
+    Query(query): Query<SlackCallbackQuery>,
+) -> Result<Json<SlackIdentityResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if query.error.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "slack_authorization_failed",
+            }),
+        ));
+    }
+
+    let code = query
+        .code
+        .as_deref()
+        .filter(|code| !code.trim().is_empty())
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "missing_auth_code",
+            }),
+        ))?;
+    let identity = exchange_code_for_identity(&state.slack_auth, code)
+        .await
+        .map_err(callback_error_response)?;
+
+    Ok(Json(identity))
+}
+
+pub(crate) fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {
     let client_id = config.client_id.as_deref()?.trim();
     let redirect_uri = config.redirect_uri.as_deref()?.trim();
     if client_id.is_empty() || redirect_uri.is_empty() {
@@ -81,119 +155,152 @@ fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{SlackAuthConfig, build_authorize_url};
-    use crate::{ApiConfig, build_router};
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
-    use tempfile::tempdir;
-    use tower::util::ServiceExt;
-
-    #[test]
-    fn authorize_url_omits_team_when_workspace_is_not_configured() {
-        let url = build_authorize_url(&SlackAuthConfig {
-            client_id: Some("client_123".to_owned()),
-            redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-            workspace_id: None,
-        })
-        .expect("authorize url");
-
-        assert!(url.starts_with("https://slack.com/openid/connect/authorize?"));
-        assert!(url.contains("response_type=code"));
-        assert!(url.contains("client_id=client_123"));
-        assert!(url.contains("scope=openid%20profile%20email"));
-        assert!(
-            url.contains(
-                "redirect_uri=https%3A%2F%2Farchivist.dev%2Fapi%2Fauth%2Fslack%2Fcallback"
-            )
-        );
-        assert!(!url.contains("&team="));
+pub(crate) async fn exchange_code_for_identity(
+    config: &SlackAuthConfig,
+    code: &str,
+) -> Result<SlackIdentityResponse, CallbackError> {
+    let client_id = config
+        .client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(CallbackError::MissingConfig)?;
+    let client_secret = config
+        .client_secret
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(CallbackError::MissingConfig)?;
+    let redirect_uri = config
+        .redirect_uri
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(CallbackError::MissingConfig)?;
+    let response = reqwest::Client::new()
+        .post(config.token_url.as_deref().unwrap_or(SLACK_TOKEN_URL))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("redirect_uri", redirect_uri),
+        ])
+        .send()
+        .await
+        .map_err(|_| CallbackError::TokenExchangeFailed)?;
+    if !response.status().is_success() {
+        return Err(CallbackError::TokenExchangeFailed);
     }
 
-    #[test]
-    fn authorize_url_requires_client_id_and_redirect_uri() {
-        assert_eq!(
-            build_authorize_url(&SlackAuthConfig {
-                client_id: None,
-                redirect_uri: Some("https://archivist.dev/callback".to_owned()),
-                workspace_id: None,
+    let exchange: SlackTokenExchangeResponse = response
+        .json()
+        .await
+        .map_err(|_| CallbackError::TokenExchangeFailed)?;
+    if !exchange.ok {
+        return Err(CallbackError::TokenExchangeFailed);
+    }
+
+    validate_identity_token(
+        config,
+        exchange
+            .id_token
+            .as_deref()
+            .ok_or(CallbackError::InvalidIdentityToken)?,
+    )
+}
+
+pub(crate) fn validate_identity_token(
+    config: &SlackAuthConfig,
+    id_token: &str,
+) -> Result<SlackIdentityResponse, CallbackError> {
+    let client_id = config
+        .client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(CallbackError::MissingConfig)?;
+    let claims = parse_identity_claims(id_token)?;
+    if claims.iss != SLACK_ISSUER
+        || claims.aud != client_id
+        || claims.exp <= current_unix_timestamp()
+    {
+        return Err(CallbackError::InvalidIdentityToken);
+    }
+    if let Some(workspace_id) = config
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        && claims.team_id != workspace_id
+    {
+        return Err(CallbackError::WorkspaceMismatch);
+    }
+
+    Ok(SlackIdentityResponse {
+        ok: true,
+        slack_user_id: claims.slack_user_id,
+        team_id: claims.team_id,
+        email: claims.email,
+        display_name: claims.name,
+        avatar_url: claims.picture,
+    })
+}
+
+fn parse_identity_claims(id_token: &str) -> Result<SlackIdentityClaims, CallbackError> {
+    let payload = id_token
+        .split('.')
+        .nth(1)
+        .ok_or(CallbackError::InvalidIdentityToken)?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(payload.as_bytes())
+        .map_err(|_| CallbackError::InvalidIdentityToken)?;
+    serde_json::from_slice(&decoded).map_err(|_| CallbackError::InvalidIdentityToken)
+}
+
+fn callback_error_response(error: CallbackError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        CallbackError::MissingConfig => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "missing_slack_auth_config",
             }),
-            None
-        );
-        assert_eq!(
-            build_authorize_url(&SlackAuthConfig {
-                client_id: Some("client_123".to_owned()),
-                redirect_uri: Some("   ".to_owned()),
-                workspace_id: None,
+        ),
+        CallbackError::TokenExchangeFailed => (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "token_exchange_failed",
             }),
-            None
-        );
-    }
-
-    #[tokio::test]
-    async fn slack_start_redirects_to_slack_oidc() {
-        let tempdir = tempdir().expect("tempdir");
-        let path = tempdir.path().join("events.jsonl");
-        let response = build_router(ApiConfig {
-            host: "127.0.0.1".to_owned(),
-            port: 4000,
-            event_log_path: path.display().to_string(),
-            slack_client_id: Some("client_123".to_owned()),
-            slack_client_secret: Some("secret".to_owned()),
-            slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-            slack_workspace_id: Some("T123".to_owned()),
-        })
-        .await
-        .expect("router")
-        .oneshot(
-            Request::builder()
-                .uri("/api/auth/slack/start")
-                .body(Body::empty())
-                .expect("request"),
-        )
-        .await
-        .expect("response");
-
-        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
-        let location = response
-            .headers()
-            .get("location")
-            .and_then(|value| value.to_str().ok())
-            .expect("location header");
-
-        assert!(location.contains("response_type=code"));
-        assert!(location.contains("client_id=client_123"));
-        assert!(location.contains("scope=openid%20profile%20email"));
-        assert!(location.contains("team=T123"));
-    }
-
-    #[tokio::test]
-    async fn slack_start_rejects_missing_config() {
-        let tempdir = tempdir().expect("tempdir");
-        let path = tempdir.path().join("events.jsonl");
-        let response = build_router(ApiConfig {
-            host: "127.0.0.1".to_owned(),
-            port: 4000,
-            event_log_path: path.display().to_string(),
-            slack_client_id: None,
-            slack_client_secret: None,
-            slack_redirect_uri: None,
-            slack_workspace_id: None,
-        })
-        .await
-        .expect("router")
-        .oneshot(
-            Request::builder()
-                .uri("/api/auth/slack/start")
-                .body(Body::empty())
-                .expect("request"),
-        )
-        .await
-        .expect("response");
-
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        ),
+        CallbackError::InvalidIdentityToken => (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "invalid_identity_token",
+            }),
+        ),
+        CallbackError::WorkspaceMismatch => (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "workspace_mismatch",
+            }),
+        ),
     }
 }
+
+pub(crate) fn current_unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("current time should be after unix epoch")
+        .as_secs() as i64
+}
+
+#[derive(Debug)]
+pub(crate) enum CallbackError {
+    MissingConfig,
+    TokenExchangeFailed,
+    InvalidIdentityToken,
+    WorkspaceMismatch,
+}
+
+#[cfg(test)]
+mod tests;

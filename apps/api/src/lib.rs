@@ -22,6 +22,7 @@ pub struct ApiConfig {
     pub slack_client_secret: Option<String>,
     pub slack_redirect_uri: Option<String>,
     pub slack_workspace_id: Option<String>,
+    pub slack_token_url: Option<String>,
 }
 
 impl ApiConfig {
@@ -35,6 +36,7 @@ impl ApiConfig {
             slack_client_secret: std::env::var("SLACK_CLIENT_SECRET").ok(),
             slack_redirect_uri: std::env::var("SLACK_REDIRECT_URI").ok(),
             slack_workspace_id: std::env::var("SLACK_WORKSPACE_ID").ok(),
+            slack_token_url: std::env::var("SLACK_OIDC_TOKEN_URL").ok(),
         }
     }
 
@@ -103,6 +105,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     Ok(Router::new()
         .route("/health", get(health))
         .route("/api/auth/slack/start", get(auth::slack_start))
+        .route("/api/auth/slack/callback", get(auth::slack_callback))
         .route("/api/channels", get(channels))
         .route("/api/threads/{id}", get(threads::thread_detail))
         .with_state(AppState {
@@ -257,6 +260,7 @@ mod tests {
         assert_eq!(config.slack_client_secret, None);
         assert_eq!(config.slack_redirect_uri, None);
         assert_eq!(config.slack_workspace_id, None);
+        assert_eq!(config.slack_token_url, None);
         assert_eq!(config.bind_address(), "127.0.0.1:4000");
     }
 
@@ -272,6 +276,7 @@ mod tests {
             slack_client_secret: None,
             slack_redirect_uri: None,
             slack_workspace_id: None,
+            slack_token_url: None,
         })
         .await
         .expect("router")
@@ -384,6 +389,7 @@ mod tests {
             slack_client_secret: None,
             slack_redirect_uri: None,
             slack_workspace_id: None,
+            slack_token_url: None,
         })
         .await
         .expect("router")

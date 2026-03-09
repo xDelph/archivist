@@ -8,10 +8,13 @@ workspace = true
 
 [dependencies]
 axum.workspace = true
+base64.workspace = true
 db = { path = "../../crates/db" }
 domain = { path = "../../crates/domain" }
+reqwest.workspace = true
 search = { path = "../../crates/search" }
 serde.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tracing.workspace = true

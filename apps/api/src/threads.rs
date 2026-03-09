@@ -286,6 +286,7 @@ mod tests {
             slack_client_secret: None,
             slack_redirect_uri: None,
             slack_workspace_id: None,
+            slack_token_url: None,
         })
         .await
         .expect("router")
@@ -325,6 +326,7 @@ mod tests {
             slack_client_secret: None,
             slack_redirect_uri: None,
             slack_workspace_id: None,
+            slack_token_url: None,
         })
         .await
         .expect("router")
