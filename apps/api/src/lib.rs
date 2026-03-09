@@ -1,3 +1,5 @@
+mod threads;
+
 use axum::{Json, Router, extract::State, routing::get};
 use db::{JsonlEventStore, RepositoryMode, StoreError};
 use domain::{Channel, ChannelKind, File, Message, Reaction, WorkspaceMode};
@@ -33,8 +35,8 @@ impl ApiConfig {
 }
 
 #[derive(Clone)]
-struct AppState {
-    store: JsonlEventStore,
+pub(crate) struct AppState {
+    pub(crate) store: JsonlEventStore,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -91,6 +93,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     Ok(Router::new()
         .route("/health", get(health))
         .route("/api/channels", get(channels))
+        .route("/api/threads/{id}", get(threads::thread_detail))
         .with_state(AppState { store })
         .layer(TraceLayer::new_for_http()))
 }
