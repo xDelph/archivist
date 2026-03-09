@@ -85,6 +85,14 @@ async fn slack_callback_persists_identity_to_the_local_store() {
     token_server.1.abort();
 
     assert_eq!(response.status(), StatusCode::OK);
+    let set_cookie = response
+        .headers()
+        .get("set-cookie")
+        .and_then(|value| value.to_str().ok())
+        .expect("set-cookie");
+    assert!(set_cookie.contains("archivist_session="));
+    assert!(set_cookie.contains("HttpOnly"));
+    assert!(set_cookie.contains("SameSite=Lax"));
 
     let store = crate::auth_store::LocalAuthStore::open(&auth_store_path)
         .await
@@ -156,6 +164,37 @@ async fn slack_callback_rejects_inactive_synced_users() {
     token_server.1.abort();
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn slack_callback_requires_session_config_to_complete_sign_in() {
+    let tempdir = tempdir().expect("tempdir");
+    seed_synced_user(&tempdir, "U123", true).await;
+    let token_server = spawn_token_server(sample_id_token(
+        "client_123",
+        "T123",
+        "U123",
+        current_unix_timestamp() + 60,
+    ))
+    .await;
+    let mut config = config_with_defaults(&tempdir);
+    config.slack_token_url = Some(format!("{}/token", token_server.0));
+
+    let response = crate::build_router(config)
+        .await
+        .expect("router")
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/slack/callback?code=code_123")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    token_server.1.abort();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
