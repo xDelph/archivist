@@ -52,16 +52,21 @@ pub fn normalize_query_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+pub const fn search_rank_expression() -> &'static str {
+    "ts_rank(document, websearch_to_tsquery('english', $1))"
+}
+
 pub const fn ranked_search_query() -> &'static str {
     r#"
 SELECT team_id,
        channel_id,
        message_ts,
        title,
-       body
+       body,
+       ts_rank(document, websearch_to_tsquery('english', $1)) AS score
 FROM search_documents
 WHERE document @@ websearch_to_tsquery('english', $1)
-ORDER BY ts_rank(document, websearch_to_tsquery('english', $1)) DESC,
+ORDER BY score DESC,
          message_ts DESC
 "#
 }
@@ -70,7 +75,7 @@ ORDER BY ts_rank(document, websearch_to_tsquery('english', $1)) DESC,
 mod tests {
     use super::{
         SearchBackend, SearchQuery, SearchSort, normalize_query_text, ranked_search_query,
-        search_documents_table,
+        search_documents_table, search_rank_expression,
     };
 
     #[test]
@@ -104,7 +109,12 @@ mod tests {
         let sql = ranked_search_query();
 
         assert!(sql.contains("FROM search_documents"));
-        assert!(sql.contains("ts_rank"));
+        assert_eq!(
+            search_rank_expression(),
+            "ts_rank(document, websearch_to_tsquery('english', $1))"
+        );
+        assert!(sql.contains("AS score"));
         assert!(sql.contains("websearch_to_tsquery"));
+        assert!(sql.contains("ORDER BY score DESC"));
     }
 }
