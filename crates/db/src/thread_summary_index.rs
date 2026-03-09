@@ -24,12 +24,11 @@ struct ThreadSummaryAggregate {
     last_activity_seconds: i64,
 }
 
-pub(crate) fn rebuild_thread_summaries(
-    thread_summaries: &mut ThreadSummaryMap,
+pub(crate) fn build_thread_summaries(
     messages: &HashMap<MessageKey, Message>,
     reactions: &HashSet<ReactionKey>,
     files: &HashMap<FileKey, File>,
-) {
+) -> ThreadSummaryMap {
     let root_messages = messages
         .values()
         .filter(|message| message.thread_ts.is_none())
@@ -150,7 +149,7 @@ pub(crate) fn rebuild_thread_summaries(
         update_last_activity(entry, &file.message_ts);
     }
 
-    thread_summaries.clear();
+    let mut thread_summaries = ThreadSummaryMap::new();
     for aggregate in aggregates.into_values() {
         thread_summaries.insert(
             (
@@ -172,6 +171,8 @@ pub(crate) fn rebuild_thread_summaries(
             },
         );
     }
+
+    thread_summaries
 }
 
 fn summarize_text(value: &str) -> String {
@@ -199,7 +200,7 @@ fn update_last_activity(aggregate: &mut ThreadSummaryAggregate, ts: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{ThreadSummaryMap, rebuild_thread_summaries};
+    use super::build_thread_summaries;
     use domain::{File, Message};
     use std::collections::{HashMap, HashSet};
 
@@ -248,9 +249,7 @@ mod tests {
                 size: Some(42),
             },
         )]);
-        let mut thread_summaries = ThreadSummaryMap::new();
-
-        rebuild_thread_summaries(&mut thread_summaries, &messages, &reactions, &files);
+        let thread_summaries = build_thread_summaries(&messages, &reactions, &files);
 
         let summary = thread_summaries
             .get(&(

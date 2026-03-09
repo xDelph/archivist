@@ -1,14 +1,13 @@
 use crate::{
     RepositoryHealth, SearchDocumentRow, StoreOutcome, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
-    thread_summary_index::{ThreadSummaryMap, rebuild_thread_summaries},
+    thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-type MessageKey = (String, String);
 type FileKey = (String, String);
 type ReactionKey = (String, String, String, String, String);
 
@@ -53,12 +52,7 @@ impl InMemoryEventStore {
 
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(job);
-        rebuild_thread_summaries(
-            &mut state.thread_summaries,
-            &state.messages,
-            &state.reactions,
-            &state.files,
-        );
+        state.thread_summaries = build_thread_summaries(&state.messages, &state.reactions, &state.files);
 
         StoreOutcome::Inserted
     }
