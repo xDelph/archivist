@@ -1,6 +1,7 @@
 use super::{
     DEFAULT_QSTASH_BASE_URL, ProcessEventQueue, QStashQueue, QueueError, QueueMode,
-    build_heartbeat_endpoint, build_process_event_endpoint, build_refresh_thread_summaries_endpoint,
+    build_heartbeat_endpoint, build_process_event_endpoint,
+    build_refresh_thread_summaries_endpoint,
 };
 use axum::{
     Router,

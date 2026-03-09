@@ -45,7 +45,8 @@ fn padded_body_hash_is_accepted() {
     let body = br#"{"ok":true}"#;
     let signature = sign_qstash_request(CURRENT_SIGNING_KEY, body, URL, true, false);
 
-    let result = verify_qstash_signature(Some(&signature), body, URL, Some(CURRENT_SIGNING_KEY), None);
+    let result =
+        verify_qstash_signature(Some(&signature), body, URL, Some(CURRENT_SIGNING_KEY), None);
 
     assert_eq!(result, Ok(()));
 }
@@ -78,7 +79,8 @@ fn wrong_subject_is_rejected() {
         false,
     );
 
-    let result = verify_qstash_signature(Some(&signature), body, URL, Some(CURRENT_SIGNING_KEY), None);
+    let result =
+        verify_qstash_signature(Some(&signature), body, URL, Some(CURRENT_SIGNING_KEY), None);
 
     assert_eq!(result, Err(SignatureError::UnexpectedSubject));
 }
@@ -88,7 +90,8 @@ fn expired_signature_is_rejected() {
     let body = br#"{"ok":true}"#;
     let signature = sign_qstash_request(CURRENT_SIGNING_KEY, body, URL, false, true);
 
-    let result = verify_qstash_signature(Some(&signature), body, URL, Some(CURRENT_SIGNING_KEY), None);
+    let result =
+        verify_qstash_signature(Some(&signature), body, URL, Some(CURRENT_SIGNING_KEY), None);
 
     assert_eq!(result, Err(SignatureError::Expired));
 }
