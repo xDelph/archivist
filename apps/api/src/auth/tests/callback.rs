@@ -106,6 +106,52 @@ async fn slack_callback_persists_identity_to_the_local_store() {
 }
 
 #[tokio::test]
+async fn slack_callback_redirects_html_clients_back_to_the_app() {
+    let tempdir = tempdir().expect("tempdir");
+    seed_synced_user(&tempdir, "U123", true).await;
+    let token_server = spawn_token_server(sample_id_token(
+        "client_123",
+        "T123",
+        "U123",
+        current_unix_timestamp() + 60,
+    ))
+    .await;
+    let mut config = config_with_defaults(&tempdir);
+    config.slack_token_url = Some(format!("{}/token", token_server.0));
+    config.session_secret = Some("session_secret".to_owned());
+
+    let response = crate::build_router(config)
+        .await
+        .expect("router")
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/slack/callback?code=code_123")
+                .header("accept", "text/html")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    token_server.1.abort();
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok()),
+        Some("/")
+    );
+    let set_cookie = response
+        .headers()
+        .get("set-cookie")
+        .and_then(|value| value.to_str().ok())
+        .expect("set-cookie");
+    assert!(set_cookie.contains("archivist_session="));
+}
+
+#[tokio::test]
 async fn slack_callback_rejects_users_missing_from_the_synced_store() {
     let tempdir = tempdir().expect("tempdir");
     let token_server = spawn_token_server(sample_id_token(

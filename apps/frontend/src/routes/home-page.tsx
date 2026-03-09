@@ -1,235 +1,326 @@
-import { RoadmapCard } from "@/components/roadmap-card";
-import { buttonVariants } from "@/components/ui/button";
-import { fetchApiHealth } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/empty-state";
+import { SectionCard } from "@/components/section-card";
+import { ThreadCard } from "@/components/thread-card";
+import { Button } from "@/components/ui/button";
+import {
+	type CatchUpChannel,
+	type CatchUpThread,
+	fetchCatchUp,
+} from "@/lib/api";
+import { formatCompactNumber } from "@/lib/format";
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, DatabaseZap, Radar, ScrollText, Workflow } from "lucide-react";
+import { Flame, RefreshCcw, TrendingUp } from "lucide-react";
+import { useState } from "react";
 
-const services = [
-	{
-		name: "api",
-		port: "4000",
-		description:
-			"Public JSON API shell ready for auth, search, and thread reads.",
-		icon: Radar,
-	},
-	{
-		name: "ingest",
-		port: "4001",
-		description:
-			"Slack Events API receiver with signature validation and worker publish.",
-		icon: Workflow,
-	},
-	{
-		name: "worker",
-		port: "4002",
-		description:
-			"Background consumer with local mock persistence for the first vertical.",
-		icon: DatabaseZap,
-	},
-];
-
-const sharedCrates = [
-	"domain: channel scope and process-event job types",
-	"db: JSONL and in-memory stores for offline tests and worker replays",
-	"slack: signature verification and public-channel event parsing",
-	"queue: direct delivery plus signed QStash publishing helpers",
-	"search: normalized query/filter placeholder for ranked search work",
-];
-
-const workingVertical = [
-	"Slack event ingestion acknowledges public-channel callbacks and ignores unsupported envelopes.",
-	"Signed QStash-style delivery is covered end-to-end with a local mock and worker verification.",
-	"Worker persistence now stores messages, reactions, file shares, and channel rename/archive state.",
-	"Slack slash command endpoints exist as safe stubs for /ask-archivist, /recap, and /save-thread.",
-];
-
-const nextSlices = [
-	"Slack auth and session handling in the API layer",
-	"Worker backfill jobs for channel history and file archival",
-	"Real thread and search surfaces in the frontend instead of a workspace shell",
-];
+type ChannelFilter = "all" | string;
 
 export function HomePage() {
-	const apiHealth = useQuery({
-		queryKey: ["api-health"],
-		queryFn: fetchApiHealth,
+	const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
+	const dayQuery = useQuery({
+		queryKey: ["catch-up", "24h"],
+		queryFn: () => fetchCatchUp("24h"),
+	});
+	const weekQuery = useQuery({
+		queryKey: ["catch-up", "7d"],
+		queryFn: () => fetchCatchUp("7d"),
 	});
 
-	const statusText = apiHealth.isPending
-		? "Waiting for the API shell"
-		: apiHealth.isError
-			? "API shell offline"
-			: `API shell healthy: ${apiHealth.data.service}@${apiHealth.data.version}`;
-	const statusTone = apiHealth.isError
-		? "bg-rose-400"
-		: apiHealth.isSuccess
-			? "bg-[var(--accent-strong)]"
-			: "bg-amber-300";
+	const availableChannels = weekQuery.data?.channels ?? [];
+	const filteredDayChannels = filterChannels(
+		dayQuery.data?.channels ?? [],
+		channelFilter,
+	);
+	const filteredWeekChannels = filterChannels(availableChannels, channelFilter);
+	const trendingThreads = pickTrendingThreads(filteredWeekChannels);
+	const highlights = pickChannelHighlights(filteredWeekChannels);
 
 	return (
-		<main className="relative isolate min-h-screen overflow-hidden px-6 py-10 text-white sm:px-10">
-			<div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
-				<section className="overflow-hidden rounded-[2.5rem] border border-white/10 bg-[linear-gradient(135deg,rgba(18,28,44,0.94),rgba(7,17,26,0.88))] px-8 py-10 shadow-[0_30px_120px_rgba(4,9,16,0.6)]">
-					<div className="grid gap-10 lg:grid-cols-[1.35fr_0.95fr] lg:items-end">
-						<div>
-							<p className="text-xs uppercase tracking-[0.34em] text-[var(--accent-soft)]">
-								Milestone 0 Vertical
-							</p>
-							<h1 className="mt-5 max-w-2xl text-4xl font-bold tracking-tight text-white sm:text-6xl">
-								The clean v2 workspace is up. The first Slack vertical is live.
-							</h1>
-							<p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-								The legacy app is parked in backup. The new monorepo now has a
-								real ingest to worker flow, offline persistence helpers, and a
-								frontend shell that tracks what is actually shipping next.
-							</p>
-							<div className="mt-8 flex flex-wrap gap-3">
-								<a
-									className={buttonVariants({ variant: "default" })}
-									href="http://127.0.0.1:4001/health"
-									rel="noreferrer"
-									target="_blank"
-								>
-									Check ingest
-								</a>
-								<a
-									className={buttonVariants({ variant: "secondary" })}
-									href="http://127.0.0.1:4002/health"
-									rel="noreferrer"
-									target="_blank"
-								>
-									Check worker
-								</a>
-							</div>
-						</div>
-						<div className="rounded-[2rem] border border-white/10 bg-white/6 p-6 backdrop-blur">
-							<div className="flex items-center gap-3">
-								<span className={cn("size-3 rounded-full", statusTone)} />
-								<p className="text-xs uppercase tracking-[0.28em] text-slate-300">
-									Local health signal
-								</p>
-							</div>
-							<p className="mt-4 text-2xl font-semibold text-white">
-								{statusText}
-							</p>
-							<p className="mt-3 text-sm leading-6 text-slate-300">
-								The frontend probes the API health endpoint directly. It is
-								still a shell, but it now mirrors the actual backend milestone
-								instead of the bootstrap state.
-							</p>
-						</div>
-					</div>
-				</section>
-
-				<section className="grid gap-4 lg:grid-cols-3">
-					{services.map((service) => {
-						const Icon = service.icon;
-
-						return (
-							<article
-								key={service.name}
-								className="rounded-[2rem] border border-white/10 bg-white/6 p-6 backdrop-blur"
-							>
-								<div className="flex items-center justify-between">
-									<div>
-										<p className="text-xs uppercase tracking-[0.28em] text-slate-300">
-											service
-										</p>
-										<h2 className="mt-3 text-2xl font-semibold text-white">
-											{service.name}
-										</h2>
-									</div>
-									<div className="rounded-2xl border border-white/10 bg-white/8 p-3">
-										<Icon className="size-6 text-[var(--accent-soft)]" />
-									</div>
-								</div>
-								<p className="mt-4 text-sm leading-6 text-slate-300">
-									{service.description}
-								</p>
-								<p className="mt-6 text-xs uppercase tracking-[0.24em] text-slate-400">
-									localhost:{service.port}
-								</p>
-							</article>
-						);
-					})}
-				</section>
-
-				<section className="grid gap-5 lg:grid-cols-2">
-					<RoadmapCard
-						eyebrow="Shared crates"
-						title="Small crates, real behavior"
-						description="The shared layer is still lean, but it already carries the core contracts for event normalization, deduplication, queue delivery, and placeholder search boundaries."
-						items={sharedCrates}
-					/>
-					<RoadmapCard
-						eyebrow="Vertical status"
-						title="What works right now"
-						description="The first delivery path is not theoretical anymore. These slices are covered in the current workspace and test suite."
-						items={workingVertical}
-					/>
-				</section>
-
-				<section className="grid gap-5 lg:grid-cols-2">
-					<RoadmapCard
-						eyebrow="Next development slice"
-						title="What moves the product forward"
-						description="The remaining work has shifted from workspace bootstrapping to actual product capability: identity, backfills, and the first reader surfaces."
-						items={nextSlices}
-					/>
-					<article className="rounded-[2rem] border border-white/10 bg-white/6 p-6 shadow-[0_20px_50px_rgba(3,7,18,0.35)] backdrop-blur">
-						<div className="flex items-center gap-3">
-							<ScrollText className="size-5 text-[var(--accent-soft)]" />
-							<h2 className="text-xl font-semibold text-white">
-								Current operating model
-							</h2>
-						</div>
-						<p className="mt-4 text-sm leading-6 text-slate-300">
-							Development is running as short vertical slices. Legacy code can
-							be referenced from backup, but the active workspace stays clean,
-							small, and validated after each task.
+		<div className="space-y-5">
+			<section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,33,52,0.95),rgba(11,18,32,0.88))] p-5 shadow-[0_24px_80px_rgba(5,12,24,0.35)] sm:p-6">
+				<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+					<div>
+						<p className="text-[0.68rem] uppercase tracking-[0.32em] text-[var(--accent-soft)]">
+							Home / Catch up
 						</p>
-						<ul className="mt-6 space-y-3 text-sm text-slate-200">
-							<li className="flex items-start gap-3">
-								<span className="mt-1 size-2 rounded-full bg-[var(--accent-soft)]" />
-								<span>
-									Rust apps finish every slice with format, lint, test, build,
-									and check.
-								</span>
-							</li>
-							<li className="flex items-start gap-3">
-								<span className="mt-1 size-2 rounded-full bg-[var(--accent-soft)]" />
-								<span>
-									Backend logic is exercised offline first through JSONL and
-									in-memory stores.
-								</span>
-							</li>
-							<li className="flex items-start gap-3">
-								<span className="mt-1 size-2 rounded-full bg-[var(--accent-soft)]" />
-								<span>
-									Frontend work follows the new services instead of preserving
-									old app structure.
-								</span>
-							</li>
-						</ul>
-					</article>
-				</section>
-
-				<section className="rounded-[2rem] border border-white/10 bg-white/6 p-6 backdrop-blur">
-					<div className="flex items-center gap-3">
-						<Boxes className="size-5 text-[var(--accent-soft)]" />
-						<h2 className="text-xl font-semibold text-white">
-							Why this shell exists
+						<h2 className="mt-3 max-w-2xl text-3xl font-semibold text-white sm:text-4xl">
+							Start with what moved this week, not with the entire Slack
+							firehose.
 						</h2>
+						<p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+							Archivist groups recent public-channel threads into a catch-up
+							feed so you can see the conversations that actually shifted.
+						</p>
 					</div>
-					<p className="mt-4 max-w-3xl text-sm leading-6 text-slate-300">
-						The goal here is not polish for its own sake. This frontend gives
-						the new workspace a live entrypoint, TanStack Router and Query are
-						wired, shadcn conventions are present, and the health probe makes it
-						obvious when the backend slice is alive.
-					</p>
-				</section>
+					<div className="flex gap-3">
+						<Button
+							variant="secondary"
+							onClick={() => {
+								void dayQuery.refetch();
+								void weekQuery.refetch();
+							}}
+						>
+							<RefreshCcw className="mr-2 size-4" />
+							Refresh
+						</Button>
+					</div>
+				</div>
+				<div className="mt-5 flex flex-wrap gap-2">
+					<ChannelPill
+						isActive={channelFilter === "all"}
+						label="All channels"
+						onClick={() => setChannelFilter("all")}
+					/>
+					{availableChannels.map((channel) => (
+						<ChannelPill
+							key={channel.id}
+							isActive={channelFilter === channel.id}
+							label={channel.name || channel.id}
+							onClick={() => setChannelFilter(channel.id)}
+						/>
+					))}
+				</div>
+			</section>
+
+			<div className="grid gap-5 xl:grid-cols-[1.35fr_0.95fr]">
+				<div className="space-y-5">
+					<SectionCard
+						eyebrow="Since yesterday"
+						title="Fresh threads"
+						description="The last 24 hours of public-channel activity, ranked by actual movement."
+					>
+						<CatchUpSection
+							channels={filteredDayChannels}
+							isPending={dayQuery.isPending}
+							isError={dayQuery.isError}
+							emptyTitle="No recent public activity"
+							emptyDescription="Nothing crossed the 24-hour threshold for the selected channels."
+						/>
+					</SectionCard>
+
+					<SectionCard
+						eyebrow="Since last week"
+						title="Steady conversations"
+						description="Longer-running threads that still matter when you zoom out past today."
+					>
+						<CatchUpSection
+							channels={filteredWeekChannels}
+							isPending={weekQuery.isPending}
+							isError={weekQuery.isError}
+							emptyTitle="No weekly catch-up yet"
+							emptyDescription="Once the worker processes more public-channel history, longer windows will appear here."
+						/>
+					</SectionCard>
+				</div>
+
+				<div className="space-y-5">
+					<SectionCard
+						eyebrow="Trending"
+						title="Threads with momentum"
+						description="A simple blend of replies, participants, reactions, and files from the weekly window."
+						actions={<Flame className="size-5 text-[var(--accent-soft)]" />}
+					>
+						{trendingThreads.length ? (
+							<div className="space-y-3">
+								{trendingThreads.map((thread) => (
+									<ThreadCard
+										key={thread.id}
+										threadId={thread.id}
+										channelName={thread.channelName}
+										title={thread.title}
+										preview={thread.preview}
+										lastActivityTs={thread.last_activity_ts}
+										replyCount={thread.reply_count}
+										participantCount={thread.participant_count}
+										reactionCount={thread.reaction_count}
+										fileCount={thread.file_count}
+									/>
+								))}
+							</div>
+						) : (
+							<EmptyState
+								title="Trending needs more history"
+								description="This card fills in automatically as the worker accumulates public-channel thread summaries."
+							/>
+						)}
+					</SectionCard>
+
+					<SectionCard
+						eyebrow="Community highlights"
+						title="Where people are gathering"
+						description="Channels ranked by recent thread volume in the selected window."
+						actions={
+							<TrendingUp className="size-5 text-[var(--accent-soft)]" />
+						}
+					>
+						{highlights.length ? (
+							<div className="space-y-3">
+								{highlights.map((channel) => (
+									<article
+										key={channel.id}
+										className="rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4"
+									>
+										<div className="flex items-start justify-between gap-4">
+											<div>
+												<p className="text-[0.65rem] uppercase tracking-[0.22em] text-slate-400">
+													{channel.kind}
+												</p>
+												<h3 className="mt-2 text-lg font-semibold text-white">
+													{channel.name}
+												</h3>
+											</div>
+											<span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-slate-300">
+												{formatCompactNumber(channel.threadCount)} threads
+											</span>
+										</div>
+										<p className="mt-3 text-sm leading-6 text-slate-300">
+											{channel.highlight}
+										</p>
+									</article>
+								))}
+							</div>
+						) : (
+							<EmptyState
+								title="No channel highlights yet"
+								description="As soon as the catch-up feed sees more thread summaries, this panel will call out the liveliest channels."
+							/>
+						)}
+					</SectionCard>
+				</div>
 			</div>
-		</main>
+		</div>
 	);
+}
+
+function CatchUpSection({
+	channels,
+	isPending,
+	isError,
+	emptyTitle,
+	emptyDescription,
+}: {
+	channels: CatchUpChannel[];
+	isPending: boolean;
+	isError: boolean;
+	emptyTitle: string;
+	emptyDescription: string;
+}) {
+	if (isPending) {
+		return <LoadingGrid />;
+	}
+
+	if (isError) {
+		return (
+			<EmptyState
+				title="The catch-up feed is unavailable"
+				description="The API route is reachable, but the current query failed. Retry once the local API is healthy again."
+			/>
+		);
+	}
+
+	const threads = channels.flatMap((channel) =>
+		channel.threads.map((thread) => ({
+			...thread,
+			channelName: channel.name || channel.id,
+		})),
+	);
+
+	if (!threads.length) {
+		return <EmptyState title={emptyTitle} description={emptyDescription} />;
+	}
+
+	return (
+		<div className="space-y-3">
+			{threads.map((thread) => (
+				<ThreadCard
+					key={thread.id}
+					threadId={thread.id}
+					channelName={thread.channelName}
+					title={thread.title}
+					preview={thread.preview}
+					lastActivityTs={thread.last_activity_ts}
+					replyCount={thread.reply_count}
+					participantCount={thread.participant_count}
+					reactionCount={thread.reaction_count}
+					fileCount={thread.file_count}
+				/>
+			))}
+		</div>
+	);
+}
+
+function LoadingGrid() {
+	return (
+		<div className="space-y-3">
+			{["day-skeleton-1", "day-skeleton-2", "day-skeleton-3"].map((key) => (
+				<div
+					key={key}
+					className="h-36 animate-pulse rounded-[1.5rem] border border-white/8 bg-white/[0.04]"
+				/>
+			))}
+		</div>
+	);
+}
+
+function ChannelPill({
+	label,
+	isActive,
+	onClick,
+}: {
+	label: string;
+	isActive: boolean;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={
+				isActive
+					? "rounded-full border border-[var(--accent-soft)]/40 bg-[var(--accent-soft)]/14 px-4 py-2 text-xs uppercase tracking-[0.22em] text-[var(--accent-soft)]"
+					: "rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.22em] text-slate-300 transition hover:border-white/20 hover:text-white"
+			}
+		>
+			{label}
+		</button>
+	);
+}
+
+function filterChannels(channels: CatchUpChannel[], filter: ChannelFilter) {
+	if (filter === "all") {
+		return channels;
+	}
+
+	return channels.filter((channel) => channel.id === filter);
+}
+
+function pickTrendingThreads(channels: CatchUpChannel[]) {
+	return channels
+		.flatMap((channel) =>
+			channel.threads.map((thread) => ({
+				...thread,
+				channelName: channel.name || channel.id,
+				trendingScore:
+					thread.reply_count * 3 +
+					thread.participant_count * 2 +
+					thread.reaction_count * 2 +
+					thread.file_count,
+			})),
+		)
+		.sort((left, right) => right.trendingScore - left.trendingScore)
+		.slice(0, 4);
+}
+
+function pickChannelHighlights(channels: CatchUpChannel[]) {
+	return channels
+		.map((channel) => ({
+			id: channel.id,
+			name: channel.name || channel.id,
+			kind: channel.kind.replace("_", " "),
+			threadCount: channel.thread_count,
+			highlight:
+				channel.threads[0]?.title ||
+				"Recent public-channel activity is available, but this channel has not produced a summary title yet.",
+		}))
+		.sort((left, right) => right.threadCount - left.threadCount)
+		.slice(0, 4);
 }

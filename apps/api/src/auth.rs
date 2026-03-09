@@ -121,6 +121,7 @@ pub(crate) async fn slack_start(
 
 pub(crate) async fn slack_callback(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<SlackCallbackQuery>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     if query.error.is_some() {
@@ -189,7 +190,11 @@ pub(crate) async fn slack_callback(
             }),
         )
     })?;
-    let mut response = Json(identity).into_response();
+    let mut response = if prefers_html_response(&headers) {
+        Redirect::to("/").into_response()
+    } else {
+        Json(identity).into_response()
+    };
     response.headers_mut().insert(
         SET_COOKIE,
         session_cookie.parse().expect("valid session cookie"),
@@ -442,6 +447,13 @@ fn callback_error_response(error: CallbackError) -> (StatusCode, Json<ErrorRespo
             }),
         ),
     }
+}
+
+fn prefers_html_response(headers: &HeaderMap) -> bool {
+    headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|accept| accept.contains("text/html"))
 }
 
 pub(crate) fn current_unix_timestamp() -> i64 {
