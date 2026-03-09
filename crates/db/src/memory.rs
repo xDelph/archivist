@@ -1,4 +1,7 @@
-use crate::{RepositoryHealth, StoreOutcome};
+use crate::{
+    RepositoryHealth, SearchDocumentRow, StoreOutcome,
+    search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+};
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -16,10 +19,11 @@ pub struct InMemoryEventStore {
 #[derive(Debug, Default)]
 struct InMemoryState {
     seen_events: HashSet<String>,
-    messages: HashMap<MessageKey, Message>,
+    messages: MessageMap,
     files: HashMap<FileKey, File>,
     channels: HashMap<(String, String), Channel>,
     reactions: HashSet<ReactionKey>,
+    search_documents: SearchDocumentMap,
 }
 
 impl InMemoryEventStore {
@@ -111,6 +115,15 @@ impl InMemoryEventStore {
         channels.sort_by(|left, right| (&left.team_id, &left.id).cmp(&(&right.team_id, &right.id)));
         channels
     }
+
+    pub async fn search_documents(&self) -> Vec<SearchDocumentRow> {
+        let state = self.state.lock().await;
+        let mut search_documents = state.search_documents.values().cloned().collect::<Vec<_>>();
+        search_documents.sort_by(|left, right| {
+            (&left.channel_id, &left.message_ts).cmp(&(&right.channel_id, &right.message_ts))
+        });
+        search_documents
+    }
 }
 
 impl InMemoryState {
@@ -149,6 +162,13 @@ impl InMemoryState {
                         },
                     );
                 }
+                refresh_search_documents(
+                    &mut self.search_documents,
+                    &self.messages,
+                    &job.team_id,
+                    &job.channel_id,
+                    thread_ts.as_deref().unwrap_or(ts),
+                );
             }
             EventPayload::ReactionAdded {
                 user_id,
@@ -283,5 +303,50 @@ mod tests {
         assert_eq!(reactions.len(), 1);
         assert_eq!(reactions[0].name, "thumbsup");
         assert_eq!(health.tracked_reactions, 1);
+    }
+
+    #[tokio::test]
+    async fn in_memory_store_refreshes_search_documents_for_threads() {
+        let store = InMemoryEventStore::new();
+        let reply = ProcessEventJob {
+            event_id: "evt_reply".to_owned(),
+            team_id: "T123".to_owned(),
+            event_time: 5,
+            received_at: 6,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U456".to_owned()),
+                text: Some("reply details".to_owned()),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: Some("1700000000.000001".to_owned()),
+                files: vec![],
+            },
+        };
+        let root = ProcessEventJob {
+            event_id: "evt_root".to_owned(),
+            team_id: "T123".to_owned(),
+            event_time: 7,
+            received_at: 8,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U123".to_owned()),
+                text: Some("root summary".to_owned()),
+                ts: "1700000000.000001".to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        };
+
+        assert_eq!(store.record_process_event(&reply).await, StoreOutcome::Inserted);
+        assert_eq!(store.record_process_event(&root).await, StoreOutcome::Inserted);
+
+        let search_documents = store.search_documents().await;
+
+        assert_eq!(search_documents.len(), 2);
+        assert!(search_documents
+            .iter()
+            .all(|document| document.title.as_deref() == Some("root summary")));
     }
 }

@@ -1,3 +1,7 @@
+use crate::{
+    SearchDocumentRow,
+    search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+};
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
 use std::{
     collections::{HashMap, HashSet},
@@ -60,10 +64,11 @@ type ReactionKey = (String, String, String, String, String);
 #[derive(Debug, Default)]
 struct StoreState {
     seen_events: HashSet<String>,
-    messages: HashMap<MessageKey, Message>,
+    messages: MessageMap,
     files: HashMap<FileKey, File>,
     channels: HashMap<(String, String), Channel>,
     reactions: HashSet<ReactionKey>,
+    search_documents: SearchDocumentMap,
 }
 
 impl JsonlEventStore {
@@ -165,6 +170,15 @@ impl JsonlEventStore {
         channels.sort_by(|left, right| (&left.team_id, &left.id).cmp(&(&right.team_id, &right.id)));
         channels
     }
+
+    pub async fn search_documents(&self) -> Vec<SearchDocumentRow> {
+        let state = self.state.lock().await;
+        let mut search_documents = state.search_documents.values().cloned().collect::<Vec<_>>();
+        search_documents.sort_by(|left, right| {
+            (&left.channel_id, &left.message_ts).cmp(&(&right.channel_id, &right.message_ts))
+        });
+        search_documents
+    }
 }
 
 impl StoreState {
@@ -203,6 +217,13 @@ impl StoreState {
                         },
                     );
                 }
+                refresh_search_documents(
+                    &mut self.search_documents,
+                    &self.messages,
+                    &job.team_id,
+                    &job.channel_id,
+                    thread_ts.as_deref().unwrap_or(ts),
+                );
             }
             EventPayload::ReactionAdded {
                 user_id,
@@ -278,217 +299,4 @@ async fn append_job(path: &Path, job: &ProcessEventJob) -> Result<(), StoreError
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{JsonlEventStore, StoreOutcome};
-    use domain::{ChannelKind, EventPayload, ProcessEventJob, SharedFile};
-    use tempfile::tempdir;
-
-    fn sample_job(event_id: &str) -> ProcessEventJob {
-        ProcessEventJob {
-            event_id: event_id.to_owned(),
-            team_id: "team_1".to_owned(),
-            event_time: 1,
-            received_at: 2,
-            channel_id: "C123".to_owned(),
-            channel_kind: ChannelKind::Public,
-            payload: EventPayload::Message {
-                user_id: Some("U123".to_owned()),
-                text: Some("hello".to_owned()),
-                ts: "1700000000.000001".to_owned(),
-                thread_ts: None,
-                files: vec![],
-            },
-        }
-    }
-
-    #[tokio::test]
-    async fn store_deduplicates_and_persists_ids() {
-        let tempdir = tempdir().expect("tempdir");
-        let path = tempdir.path().join("events.jsonl");
-        let store = JsonlEventStore::open(&path).await.expect("store");
-
-        assert_eq!(
-            store
-                .record_process_event(&sample_job("evt_1"))
-                .await
-                .expect("insert"),
-            StoreOutcome::Inserted
-        );
-        assert_eq!(
-            store
-                .record_process_event(&sample_job("evt_1"))
-                .await
-                .expect("duplicate"),
-            StoreOutcome::Duplicate
-        );
-
-        let reopened = JsonlEventStore::open(&path).await.expect("reopened");
-        let health = reopened.health().await;
-
-        assert_eq!(health.tracked_events, 1);
-        assert_eq!(health.tracked_messages, 1);
-        assert_eq!(health.tracked_reactions, 0);
-        assert_eq!(health.tracked_files, 0);
-        assert_eq!(health.tracked_channels, 0);
-    }
-
-    #[tokio::test]
-    async fn message_jobs_upsert_by_channel_and_timestamp() {
-        let tempdir = tempdir().expect("tempdir");
-        let path = tempdir.path().join("events.jsonl");
-        let store = JsonlEventStore::open(&path).await.expect("store");
-        let original = sample_job("evt_1");
-        let EventPayload::Message {
-            user_id,
-            ts,
-            thread_ts,
-            ..
-        } = original.payload.clone()
-        else {
-            unreachable!("sample job is a message");
-        };
-        let updated = ProcessEventJob {
-            event_id: "evt_2".to_owned(),
-            payload: EventPayload::Message {
-                user_id,
-                text: Some("updated".to_owned()),
-                ts,
-                thread_ts,
-                files: vec![],
-            },
-            ..original
-        };
-
-        store
-            .record_process_event(&sample_job("evt_1"))
-            .await
-            .expect("insert original");
-        store
-            .record_process_event(&updated)
-            .await
-            .expect("insert updated");
-
-        let messages = store.messages().await;
-
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].text, "updated");
-    }
-
-    #[tokio::test]
-    async fn reaction_jobs_are_tracked_separately() {
-        let tempdir = tempdir().expect("tempdir");
-        let path = tempdir.path().join("events.jsonl");
-        let store = JsonlEventStore::open(&path).await.expect("store");
-        let reaction_job = ProcessEventJob {
-            event_id: "evt_reaction".to_owned(),
-            team_id: "team_1".to_owned(),
-            event_time: 3,
-            received_at: 4,
-            channel_id: "C123".to_owned(),
-            channel_kind: ChannelKind::Public,
-            payload: EventPayload::ReactionAdded {
-                user_id: "U123".to_owned(),
-                reaction: "thumbsup".to_owned(),
-                item_ts: "1700000000.000001".to_owned(),
-            },
-        };
-
-        store
-            .record_process_event(&reaction_job)
-            .await
-            .expect("insert reaction");
-
-        let reactions = store.reactions().await;
-        let health = store.health().await;
-
-        assert_eq!(reactions.len(), 1);
-        assert_eq!(reactions[0].name, "thumbsup");
-        assert_eq!(health.tracked_reactions, 1);
-    }
-
-    #[tokio::test]
-    async fn file_share_messages_track_attached_files() {
-        let tempdir = tempdir().expect("tempdir");
-        let path = tempdir.path().join("events.jsonl");
-        let store = JsonlEventStore::open(&path).await.expect("store");
-        let file_job = ProcessEventJob {
-            event_id: "evt_file".to_owned(),
-            team_id: "team_1".to_owned(),
-            event_time: 5,
-            received_at: 6,
-            channel_id: "C123".to_owned(),
-            channel_kind: ChannelKind::Public,
-            payload: EventPayload::Message {
-                user_id: Some("U123".to_owned()),
-                text: Some("uploaded brief".to_owned()),
-                ts: "1700000000.000002".to_owned(),
-                thread_ts: None,
-                files: vec![SharedFile {
-                    id: "F123".to_owned(),
-                    name: "brief.pdf".to_owned(),
-                    mimetype: Some("application/pdf".to_owned()),
-                    permalink: Some("https://files.example.com/brief.pdf".to_owned()),
-                    size: Some(42),
-                }],
-            },
-        };
-
-        store
-            .record_process_event(&file_job)
-            .await
-            .expect("insert file event");
-
-        let files = store.files().await;
-        let health = store.health().await;
-
-        assert_eq!(files.len(), 1);
-        assert_eq!(files[0].name, "brief.pdf");
-        assert_eq!(health.tracked_files, 1);
-    }
-
-    #[tokio::test]
-    async fn channel_update_jobs_preserve_latest_name_and_archive_state() {
-        let tempdir = tempdir().expect("tempdir");
-        let path = tempdir.path().join("events.jsonl");
-        let store = JsonlEventStore::open(&path).await.expect("store");
-        let rename_job = ProcessEventJob {
-            event_id: "evt_channel_rename".to_owned(),
-            team_id: "team_1".to_owned(),
-            event_time: 7,
-            received_at: 8,
-            channel_id: "C123".to_owned(),
-            channel_kind: ChannelKind::Public,
-            payload: EventPayload::ChannelUpdated {
-                name: Some("announcements".to_owned()),
-                is_archived: None,
-            },
-        };
-        let archive_job = ProcessEventJob {
-            event_id: "evt_channel_archive".to_owned(),
-            event_time: 9,
-            received_at: 10,
-            payload: EventPayload::ChannelUpdated {
-                name: None,
-                is_archived: Some(true),
-            },
-            ..rename_job.clone()
-        };
-
-        store
-            .record_process_event(&rename_job)
-            .await
-            .expect("insert rename");
-        store
-            .record_process_event(&archive_job)
-            .await
-            .expect("insert archive");
-
-        let channels = store.channels().await;
-        let health = store.health().await;
-
-        assert_eq!(channels.len(), 1);
-        assert_eq!(channels[0].name.as_deref(), Some("announcements"));
-        assert!(channels[0].is_archived);
-        assert_eq!(health.tracked_channels, 1);
-    }
-}
+mod tests;
