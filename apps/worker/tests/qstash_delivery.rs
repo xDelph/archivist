@@ -146,6 +146,8 @@ fn signed_worker_config(log_path: &std::path::Path) -> WorkerConfig {
         port: 4002,
         event_log_path: log_path.display().to_string(),
         worker_base_url: WORKER_BASE_URL.to_owned(),
+        slack_api_base_url: "https://slack.com/api".to_owned(),
+        slack_bot_token: None,
         current_signing_key: Some(CURRENT_SIGNING_KEY.to_owned()),
         next_signing_key: Some(NEXT_SIGNING_KEY.to_owned()),
     }
