@@ -2,7 +2,10 @@ use crate::{ApiConfig, AppState};
 use axum::{
     Json,
     extract::{Query, State},
-    http::{HeaderMap, StatusCode, header::COOKIE},
+    http::{
+        HeaderMap, StatusCode,
+        header::{COOKIE, SET_COOKIE},
+    },
     response::{IntoResponse, Redirect, Response},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -63,6 +66,11 @@ pub(crate) struct SlackIdentityResponse {
 pub(crate) struct MeResponse {
     ok: bool,
     user: SessionUserResponse,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct LogoutResponse {
+    ok: bool,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -176,6 +184,17 @@ pub(crate) async fn me(
             avatar_url: claims.avatar_url,
         },
     }))
+}
+
+pub(crate) async fn logout() -> Response {
+    let mut response = Json(LogoutResponse { ok: true }).into_response();
+    response.headers_mut().insert(
+        SET_COOKIE,
+        "archivist_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"
+            .parse()
+            .expect("valid session clearing cookie"),
+    );
+    response
 }
 
 pub(crate) fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {

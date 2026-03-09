@@ -110,6 +110,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         .route("/api/auth/slack/start", get(auth::slack_start))
         .route("/api/auth/slack/callback", get(auth::slack_callback))
         .route("/api/auth/me", get(auth::me))
+        .route("/api/auth/logout", axum::routing::post(auth::logout))
         .route("/api/channels", get(channels))
         .route("/api/threads/{id}", get(threads::thread_detail))
         .with_state(AppState {

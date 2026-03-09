@@ -329,6 +329,44 @@ async fn me_rejects_expired_sessions() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
+#[tokio::test]
+async fn logout_clears_the_session_cookie() {
+    let tempdir = tempdir().expect("tempdir");
+    let path = tempdir.path().join("events.jsonl");
+    let response = build_router(ApiConfig {
+        host: "127.0.0.1".to_owned(),
+        port: 4000,
+        event_log_path: path.display().to_string(),
+        slack_client_id: Some("client_123".to_owned()),
+        slack_client_secret: Some("secret".to_owned()),
+        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        slack_workspace_id: Some("T123".to_owned()),
+        slack_token_url: None,
+        session_secret: Some("session_secret".to_owned()),
+    })
+    .await
+    .expect("router")
+    .oneshot(
+        Request::builder()
+            .method("POST")
+            .uri("/api/auth/logout")
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let set_cookie = response
+        .headers()
+        .get("set-cookie")
+        .and_then(|value| value.to_str().ok())
+        .expect("set-cookie");
+    assert!(set_cookie.contains("archivist_session="));
+    assert!(set_cookie.contains("Max-Age=0"));
+    assert!(set_cookie.contains("HttpOnly"));
+}
+
 fn sample_id_token(client_id: &str, team_id: &str, user_id: &str, exp: i64) -> String {
     let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
     let claims = URL_SAFE_NO_PAD.encode(
