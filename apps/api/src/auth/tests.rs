@@ -1,12 +1,11 @@
 use super::{
-    CallbackError, SLACK_ISSUER, SessionClaims, SlackAuthConfig, build_authorize_url,
-    current_unix_timestamp, exchange_code_for_identity, me, parse_identity_claims,
+    SLACK_ISSUER, SessionClaims, SlackAuthConfig, build_authorize_url, current_unix_timestamp,
+    parse_identity_claims,
 };
-use crate::{ApiConfig, AppState, build_router};
+use crate::ApiConfig;
 use axum::{
     Json,
     body::{Body, Bytes},
-    extract::State,
     http::{Request, StatusCode},
     routing::post,
 };
@@ -14,9 +13,12 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, Mac};
 use serde_json::json;
 use sha2::Sha256;
-use tempfile::tempdir;
+use tempfile::{TempDir, tempdir};
 use tokio::{net::TcpListener, task::JoinHandle};
 use tower::util::ServiceExt;
+
+mod callback;
+mod session;
 
 #[test]
 fn authorize_url_omits_team_when_workspace_is_not_configured() {
@@ -77,33 +79,17 @@ fn parse_identity_claims_reads_slack_claims() {
 #[tokio::test]
 async fn slack_start_redirects_to_slack_oidc() {
     let tempdir = tempdir().expect("tempdir");
-    let path = tempdir.path().join("events.jsonl");
-    let response = build_router(ApiConfig {
-        host: "127.0.0.1".to_owned(),
-        port: 4000,
-        event_log_path: path.display().to_string(),
-        slack_client_id: Some("client_123".to_owned()),
-        slack_client_secret: Some("secret".to_owned()),
-        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-        slack_workspace_id: Some("T123".to_owned()),
-        slack_token_url: None,
-        session_secret: None,
-        auth_store_path: tempdir
-            .path()
-            .join("auth-identities.json")
-            .display()
-            .to_string(),
-    })
-    .await
-    .expect("router")
-    .oneshot(
-        Request::builder()
-            .uri("/api/auth/slack/start")
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await
-    .expect("response");
+    let response = crate::build_router(config_with_defaults(&tempdir))
+        .await
+        .expect("router")
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/slack/start")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
 
     assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
     let location = response
@@ -121,45 +107,32 @@ async fn slack_start_redirects_to_slack_oidc() {
 #[tokio::test]
 async fn slack_start_rejects_missing_config() {
     let tempdir = tempdir().expect("tempdir");
-    let path = tempdir.path().join("events.jsonl");
-    let response = build_router(ApiConfig {
-        host: "127.0.0.1".to_owned(),
-        port: 4000,
-        event_log_path: path.display().to_string(),
-        slack_client_id: None,
-        slack_client_secret: None,
-        slack_redirect_uri: None,
-        slack_workspace_id: None,
-        slack_token_url: None,
-        session_secret: None,
-        auth_store_path: tempdir
-            .path()
-            .join("auth-identities.json")
-            .display()
-            .to_string(),
-    })
-    .await
-    .expect("router")
-    .oneshot(
-        Request::builder()
-            .uri("/api/auth/slack/start")
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await
-    .expect("response");
+    let mut config = config_with_defaults(&tempdir);
+    config.slack_client_id = None;
+    config.slack_client_secret = None;
+    config.slack_redirect_uri = None;
+    config.slack_workspace_id = None;
+
+    let response = crate::build_router(config)
+        .await
+        .expect("router")
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/slack/start")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
 
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
-#[tokio::test]
-async fn slack_callback_rejects_missing_code() {
-    let tempdir = tempdir().expect("tempdir");
-    let path = tempdir.path().join("events.jsonl");
-    let response = build_router(ApiConfig {
+fn config_with_defaults(tempdir: &TempDir) -> ApiConfig {
+    ApiConfig {
         host: "127.0.0.1".to_owned(),
         port: 4000,
-        event_log_path: path.display().to_string(),
+        event_log_path: tempdir.path().join("events.jsonl").display().to_string(),
         slack_client_id: Some("client_123".to_owned()),
         slack_client_secret: Some("secret".to_owned()),
         slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
@@ -171,288 +144,27 @@ async fn slack_callback_rejects_missing_code() {
             .join("auth-identities.json")
             .display()
             .to_string(),
-    })
-    .await
-    .expect("router")
-    .oneshot(
-        Request::builder()
-            .uri("/api/auth/slack/callback")
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await
-    .expect("response");
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        synced_users_path: tempdir
+            .path()
+            .join("synced-users.json")
+            .display()
+            .to_string(),
+    }
 }
 
-#[tokio::test]
-async fn slack_callback_exchanges_code_and_validates_identity() {
-    let token_server = spawn_token_server(sample_id_token(
-        "client_123",
-        "T123",
-        "U123",
-        current_unix_timestamp() + 60,
-    ))
-    .await;
-    let identity = exchange_code_for_identity(
-        &SlackAuthConfig {
-            client_id: Some("client_123".to_owned()),
-            client_secret: Some("secret".to_owned()),
-            redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-            workspace_id: Some("T123".to_owned()),
-            token_url: Some(format!("{}/token", token_server.0)),
-        },
-        "code_123",
-    )
-    .await
-    .expect("identity");
-
-    token_server.1.abort();
-
-    assert_eq!(identity.slack_user_id, "U123");
-    assert_eq!(identity.team_id, "T123");
-    assert_eq!(identity.display_name.as_deref(), Some("Thomas"));
-}
-
-#[tokio::test]
-async fn slack_callback_persists_identity_to_the_local_store() {
-    let tempdir = tempdir().expect("tempdir");
-    let event_log_path = tempdir.path().join("events.jsonl");
-    let auth_store_path = tempdir.path().join("auth-identities.json");
-    let token_server = spawn_token_server(sample_id_token(
-        "client_123",
-        "T123",
-        "U123",
-        current_unix_timestamp() + 60,
-    ))
-    .await;
-    let response = build_router(ApiConfig {
-        host: "127.0.0.1".to_owned(),
-        port: 4000,
-        event_log_path: event_log_path.display().to_string(),
-        slack_client_id: Some("client_123".to_owned()),
-        slack_client_secret: Some("secret".to_owned()),
-        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-        slack_workspace_id: Some("T123".to_owned()),
-        slack_token_url: Some(format!("{}/token", token_server.0)),
-        session_secret: Some("session_secret".to_owned()),
-        auth_store_path: auth_store_path.display().to_string(),
-    })
-    .await
-    .expect("router")
-    .oneshot(
-        Request::builder()
-            .uri("/api/auth/slack/callback?code=code_123")
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await
-    .expect("response");
-
-    token_server.1.abort();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let store = crate::auth_store::LocalAuthStore::open(&auth_store_path)
+async fn seed_synced_user(tempdir: &TempDir, user_id: &str, is_active: bool) {
+    crate::user_store::LocalUserStore::open(tempdir.path().join("synced-users.json"))
         .await
-        .expect("reopened auth store");
-    let identities = store.identities().await;
-
-    assert_eq!(identities.len(), 1);
-    assert_eq!(identities[0].slack_user_id, "U123");
-    assert_eq!(identities[0].team_id, "T123");
-    assert_eq!(identities[0].display_name.as_deref(), Some("Thomas"));
-}
-
-#[tokio::test]
-async fn slack_callback_rejects_workspace_mismatch() {
-    let token_server = spawn_token_server(sample_id_token(
-        "client_123",
-        "T999",
-        "U123",
-        current_unix_timestamp() + 60,
-    ))
-    .await;
-    let result = exchange_code_for_identity(
-        &SlackAuthConfig {
-            client_id: Some("client_123".to_owned()),
-            client_secret: Some("secret".to_owned()),
-            redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-            workspace_id: Some("T123".to_owned()),
-            token_url: Some(format!("{}/token", token_server.0)),
-        },
-        "code_123",
-    )
-    .await;
-
-    token_server.1.abort();
-
-    assert!(matches!(result, Err(CallbackError::WorkspaceMismatch)));
-}
-
-#[tokio::test]
-async fn me_returns_the_current_user_from_a_valid_session_cookie() {
-    let tempdir = tempdir().expect("tempdir");
-    let path = tempdir.path().join("events.jsonl");
-    let session_token = build_session_token(
-        "session_secret",
-        &SessionClaims {
-            slack_user_id: "U123".to_owned(),
+        .expect("user store")
+        .upsert_user(crate::user_store::SyncedUserRecord {
             team_id: "T123".to_owned(),
-            email: Some("thomas@example.com".to_owned()),
+            slack_user_id: user_id.to_owned(),
             display_name: Some("Thomas".to_owned()),
             avatar_url: Some("https://images.example.com/avatar.png".to_owned()),
-            exp: current_unix_timestamp() + 60,
-        },
-    );
-    let response = build_router(ApiConfig {
-        host: "127.0.0.1".to_owned(),
-        port: 4000,
-        event_log_path: path.display().to_string(),
-        slack_client_id: Some("client_123".to_owned()),
-        slack_client_secret: Some("secret".to_owned()),
-        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-        slack_workspace_id: Some("T123".to_owned()),
-        slack_token_url: None,
-        session_secret: Some("session_secret".to_owned()),
-        auth_store_path: tempdir
-            .path()
-            .join("auth-identities.json")
-            .display()
-            .to_string(),
-    })
-    .await
-    .expect("router")
-    .oneshot(
-        Request::builder()
-            .uri("/api/auth/me")
-            .header("cookie", format!("archivist_session={session_token}"))
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await
-    .expect("response");
-
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn me_rejects_missing_sessions() {
-    let state = AppState {
-        store: db::JsonlEventStore::open(tempdir().expect("tempdir").path().join("events.jsonl"))
-            .await
-            .expect("store"),
-        slack_auth: super::SlackAuthConfig {
-            client_id: None,
-            client_secret: None,
-            redirect_uri: None,
-            workspace_id: None,
-            token_url: None,
-        },
-        session_secret: Some("session_secret".to_owned()),
-        auth_store: crate::auth_store::LocalAuthStore::open(
-            tempdir()
-                .expect("tempdir")
-                .path()
-                .join("auth-identities.json"),
-        )
+            is_active,
+        })
         .await
-        .expect("auth store"),
-    };
-
-    let result = me(State(state), axum::http::HeaderMap::new()).await;
-
-    assert!(matches!(result, Err((StatusCode::UNAUTHORIZED, _))));
-}
-
-#[tokio::test]
-async fn me_rejects_expired_sessions() {
-    let tempdir = tempdir().expect("tempdir");
-    let path = tempdir.path().join("events.jsonl");
-    let session_token = build_session_token(
-        "session_secret",
-        &SessionClaims {
-            slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
-            email: None,
-            display_name: Some("Thomas".to_owned()),
-            avatar_url: None,
-            exp: current_unix_timestamp() - 1,
-        },
-    );
-    let response = build_router(ApiConfig {
-        host: "127.0.0.1".to_owned(),
-        port: 4000,
-        event_log_path: path.display().to_string(),
-        slack_client_id: Some("client_123".to_owned()),
-        slack_client_secret: Some("secret".to_owned()),
-        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-        slack_workspace_id: Some("T123".to_owned()),
-        slack_token_url: None,
-        session_secret: Some("session_secret".to_owned()),
-        auth_store_path: tempdir
-            .path()
-            .join("auth-identities.json")
-            .display()
-            .to_string(),
-    })
-    .await
-    .expect("router")
-    .oneshot(
-        Request::builder()
-            .uri("/api/auth/me")
-            .header("cookie", format!("archivist_session={session_token}"))
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await
-    .expect("response");
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn logout_clears_the_session_cookie() {
-    let tempdir = tempdir().expect("tempdir");
-    let path = tempdir.path().join("events.jsonl");
-    let response = build_router(ApiConfig {
-        host: "127.0.0.1".to_owned(),
-        port: 4000,
-        event_log_path: path.display().to_string(),
-        slack_client_id: Some("client_123".to_owned()),
-        slack_client_secret: Some("secret".to_owned()),
-        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-        slack_workspace_id: Some("T123".to_owned()),
-        slack_token_url: None,
-        session_secret: Some("session_secret".to_owned()),
-        auth_store_path: tempdir
-            .path()
-            .join("auth-identities.json")
-            .display()
-            .to_string(),
-    })
-    .await
-    .expect("router")
-    .oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/api/auth/logout")
-            .body(Body::empty())
-            .expect("request"),
-    )
-    .await
-    .expect("response");
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let set_cookie = response
-        .headers()
-        .get("set-cookie")
-        .and_then(|value| value.to_str().ok())
-        .expect("set-cookie");
-    assert!(set_cookie.contains("archivist_session="));
-    assert!(set_cookie.contains("Max-Age=0"));
-    assert!(set_cookie.contains("HttpOnly"));
+        .expect("seed synced user");
 }
 
 fn sample_id_token(client_id: &str, team_id: &str, user_id: &str, exp: i64) -> String {

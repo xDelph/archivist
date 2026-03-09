@@ -1,6 +1,7 @@
 mod auth;
 mod auth_store;
 mod threads;
+mod user_store;
 
 use axum::{Json, Router, extract::State, routing::get};
 use db::{JsonlEventStore, RepositoryMode, StoreError};
@@ -14,6 +15,7 @@ const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 4000;
 const DEFAULT_EVENT_LOG_PATH: &str = "logs/process-events.jsonl";
 const DEFAULT_AUTH_STORE_PATH: &str = "logs/auth-identities.json";
+const DEFAULT_SYNCED_USERS_PATH: &str = "logs/synced-users.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiConfig {
@@ -27,6 +29,7 @@ pub struct ApiConfig {
     pub slack_token_url: Option<String>,
     pub session_secret: Option<String>,
     pub auth_store_path: String,
+    pub synced_users_path: String,
 }
 
 impl ApiConfig {
@@ -44,6 +47,8 @@ impl ApiConfig {
             session_secret: std::env::var("ARCHIVIST_SESSION_SECRET").ok(),
             auth_store_path: std::env::var("ARCHIVIST_AUTH_STORE_PATH")
                 .unwrap_or_else(|_| DEFAULT_AUTH_STORE_PATH.to_owned()),
+            synced_users_path: std::env::var("ARCHIVIST_SYNCED_USERS_PATH")
+                .unwrap_or_else(|_| DEFAULT_SYNCED_USERS_PATH.to_owned()),
         }
     }
 
@@ -58,6 +63,7 @@ pub(crate) struct AppState {
     pub(crate) slack_auth: auth::SlackAuthConfig,
     pub(crate) session_secret: Option<String>,
     pub(crate) auth_store: auth_store::LocalAuthStore,
+    pub(crate) user_store: user_store::LocalUserStore,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -113,6 +119,9 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let auth_store = auth_store::LocalAuthStore::open(&config.auth_store_path)
         .await
         .map_err(auth_store_error_to_store_error)?;
+    let user_store = user_store::LocalUserStore::open(&config.synced_users_path)
+        .await
+        .map_err(user_store_error_to_store_error)?;
 
     Ok(Router::new()
         .route("/health", get(health))
@@ -127,6 +136,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
             slack_auth: auth::SlackAuthConfig::from_config(&config),
             session_secret: config.session_secret.clone(),
             auth_store,
+            user_store,
         })
         .layer(TraceLayer::new_for_http()))
 }
@@ -137,6 +147,16 @@ fn auth_store_error_to_store_error(error: auth_store::AuthStoreError) -> StoreEr
         | auth_store::AuthStoreError::CreateDirectory(error)
         | auth_store::AuthStoreError::Write(error) => StoreError::Read(error),
         auth_store::AuthStoreError::Parse(error) => StoreError::Parse(error),
+    }
+}
+
+fn user_store_error_to_store_error(error: user_store::UserStoreError) -> StoreError {
+    match error {
+        user_store::UserStoreError::Read(error) => StoreError::Read(error),
+        user_store::UserStoreError::Parse(error) => StoreError::Parse(error),
+        #[cfg(test)]
+        user_store::UserStoreError::CreateDirectory(error)
+        | user_store::UserStoreError::Write(error) => StoreError::Read(error),
     }
 }
 
@@ -288,6 +308,7 @@ mod tests {
         assert_eq!(config.slack_token_url, None);
         assert_eq!(config.session_secret, None);
         assert_eq!(config.auth_store_path, "logs/auth-identities.json");
+        assert_eq!(config.synced_users_path, "logs/synced-users.json");
         assert_eq!(config.bind_address(), "127.0.0.1:4000");
     }
 
@@ -308,6 +329,11 @@ mod tests {
             auth_store_path: tempdir
                 .path()
                 .join("auth-identities.json")
+                .display()
+                .to_string(),
+            synced_users_path: tempdir
+                .path()
+                .join("synced-users.json")
                 .display()
                 .to_string(),
         })
@@ -427,6 +453,11 @@ mod tests {
             auth_store_path: tempdir
                 .path()
                 .join("auth-identities.json")
+                .display()
+                .to_string(),
+            synced_users_path: tempdir
+                .path()
+                .join("synced-users.json")
                 .display()
                 .to_string(),
         })

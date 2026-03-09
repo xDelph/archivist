@@ -151,6 +151,14 @@ pub(crate) async fn slack_callback(
     let identity = exchange_code_for_identity(&state.slack_auth, code)
         .await
         .map_err(callback_error_response)?;
+    let synced_user = state
+        .user_store
+        .find_user(&identity.team_id, &identity.slack_user_id)
+        .await
+        .ok_or_else(|| callback_error_response(CallbackError::UserNotSynced))?;
+    if !synced_user.is_active {
+        return Err(callback_error_response(CallbackError::UserInactive));
+    }
     state
         .auth_store
         .upsert_identity(&identity)
@@ -374,6 +382,18 @@ fn callback_error_response(error: CallbackError) -> (StatusCode, Json<ErrorRespo
                 error: "workspace_mismatch",
             }),
         ),
+        CallbackError::UserNotSynced => (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "user_not_synced",
+            }),
+        ),
+        CallbackError::UserInactive => (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "user_inactive",
+            }),
+        ),
     }
 }
 
@@ -442,6 +462,8 @@ pub(crate) enum CallbackError {
     TokenExchangeFailed,
     InvalidIdentityToken,
     WorkspaceMismatch,
+    UserNotSynced,
+    UserInactive,
 }
 
 #[derive(Debug)]

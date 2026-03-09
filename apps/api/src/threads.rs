@@ -293,6 +293,11 @@ mod tests {
                 .join("auth-identities.json")
                 .display()
                 .to_string(),
+            synced_users_path: tempdir
+                .path()
+                .join("synced-users.json")
+                .display()
+                .to_string(),
         })
         .await
         .expect("router")
@@ -337,6 +342,11 @@ mod tests {
             auth_store_path: tempdir
                 .path()
                 .join("auth-identities.json")
+                .display()
+                .to_string(),
+            synced_users_path: tempdir
+                .path()
+                .join("synced-users.json")
                 .display()
                 .to_string(),
         })
