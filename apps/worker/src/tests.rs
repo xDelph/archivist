@@ -16,6 +16,12 @@ fn config_uses_local_defaults() {
     assert_eq!(config.worker_base_url, "http://127.0.0.1:4002");
     assert_eq!(config.slack_api_base_url, "https://slack.com/api");
     assert_eq!(config.slack_bot_token, None);
+    assert_eq!(config.r2_account_id, None);
+    assert_eq!(config.r2_access_key_id, None);
+    assert_eq!(config.r2_secret_access_key, None);
+    assert_eq!(config.r2_bucket, None);
+    assert_eq!(config.r2_public_url, None);
+    assert_eq!(config.r2_endpoint_url, None);
     assert_eq!(config.current_signing_key, None);
     assert_eq!(config.next_signing_key, None);
 }
@@ -34,6 +40,12 @@ async fn duplicate_events_are_acknowledged() {
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
             slack_bot_token: None,
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -123,6 +135,12 @@ async fn reaction_events_are_counted_in_health() {
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
             slack_bot_token: None,
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -191,6 +209,12 @@ async fn file_share_messages_are_counted_in_health() {
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
             slack_bot_token: None,
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
             current_signing_key: None,
             next_signing_key: None,
         },

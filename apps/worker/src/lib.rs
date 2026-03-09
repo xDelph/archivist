@@ -1,4 +1,6 @@
+mod archive;
 mod backfill;
+mod storage;
 
 use axum::{
     Json, Router,
@@ -30,6 +32,12 @@ pub struct WorkerConfig {
     pub worker_base_url: String,
     pub slack_api_base_url: String,
     pub slack_bot_token: Option<String>,
+    pub r2_account_id: Option<String>,
+    pub r2_access_key_id: Option<String>,
+    pub r2_secret_access_key: Option<String>,
+    pub r2_bucket: Option<String>,
+    pub r2_public_url: Option<String>,
+    pub r2_endpoint_url: Option<String>,
     pub current_signing_key: Option<String>,
     pub next_signing_key: Option<String>,
 }
@@ -47,6 +55,12 @@ impl WorkerConfig {
             slack_api_base_url: std::env::var("SLACK_API_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_SLACK_API_BASE_URL.to_owned()),
             slack_bot_token: std::env::var("SLACK_BOT_TOKEN").ok(),
+            r2_account_id: std::env::var("CLOUDFLARE_R2_ACCOUNT_ID").ok(),
+            r2_access_key_id: std::env::var("CLOUDFLARE_R2_ACCESS_KEY_ID").ok(),
+            r2_secret_access_key: std::env::var("CLOUDFLARE_R2_SECRET_ACCESS_KEY").ok(),
+            r2_bucket: std::env::var("CLOUDFLARE_R2_BUCKET").ok(),
+            r2_public_url: std::env::var("CLOUDFLARE_R2_PUBLIC_URL").ok(),
+            r2_endpoint_url: std::env::var("CLOUDFLARE_R2_ENDPOINT_URL").ok(),
             current_signing_key: std::env::var("UPSTASH_QSTASH_CURRENT_SIGNING_KEY").ok(),
             next_signing_key: std::env::var("UPSTASH_QSTASH_NEXT_SIGNING_KEY").ok(),
         }
@@ -65,6 +79,7 @@ struct AppState {
     heartbeat_url: String,
     slack_api_base_url: String,
     slack_bot_token: Option<String>,
+    r2_config: Option<storage::R2Config>,
     current_signing_key: Option<String>,
     next_signing_key: Option<String>,
 }
@@ -108,6 +123,7 @@ pub fn build_router(store: JsonlEventStore, config: WorkerConfig) -> Result<Rout
         .route("/jobs/process_event", post(process_event))
         .route("/jobs/heartbeat", post(heartbeat))
         .route("/jobs/backfill_channel", post(backfill::backfill_channel))
+        .route("/jobs/archive_file", post(archive::archive_file))
         .with_state(AppState {
             store,
             event_log_path: config.event_log_path,
@@ -115,6 +131,14 @@ pub fn build_router(store: JsonlEventStore, config: WorkerConfig) -> Result<Rout
             heartbeat_url,
             slack_api_base_url: config.slack_api_base_url,
             slack_bot_token: config.slack_bot_token,
+            r2_config: storage::R2Config::from_options(
+                config.r2_account_id,
+                config.r2_access_key_id,
+                config.r2_secret_access_key,
+                config.r2_bucket,
+                config.r2_public_url,
+                config.r2_endpoint_url,
+            ),
             current_signing_key: config.current_signing_key,
             next_signing_key: config.next_signing_key,
         })

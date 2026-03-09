@@ -148,6 +148,12 @@ fn signed_worker_config(log_path: &std::path::Path) -> WorkerConfig {
         worker_base_url: WORKER_BASE_URL.to_owned(),
         slack_api_base_url: "https://slack.com/api".to_owned(),
         slack_bot_token: None,
+        r2_account_id: None,
+        r2_access_key_id: None,
+        r2_secret_access_key: None,
+        r2_bucket: None,
+        r2_public_url: None,
+        r2_endpoint_url: None,
         current_signing_key: Some(CURRENT_SIGNING_KEY.to_owned()),
         next_signing_key: Some(NEXT_SIGNING_KEY.to_owned()),
     }

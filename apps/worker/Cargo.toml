@@ -8,6 +8,9 @@ workspace = true
 
 [dependencies]
 axum.workspace = true
+aws-config.workspace = true
+aws-sdk-s3.workspace = true
+bytes.workspace = true
 db = { path = "../../crates/db" }
 domain = { path = "../../crates/domain" }
 queue = { path = "../../crates/queue" }
