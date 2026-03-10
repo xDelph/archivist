@@ -77,6 +77,7 @@ pub(crate) async fn search(
             .store
             .channels()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|channel| channel.team_id == claims.team_id)
             .collect(),
@@ -84,6 +85,7 @@ pub(crate) async fn search(
             .store
             .messages()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|message| message.team_id == claims.team_id)
             .collect(),
@@ -91,6 +93,7 @@ pub(crate) async fn search(
             .store
             .search_documents()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|document| document.team_id == claims.team_id)
             .collect(),
@@ -352,6 +355,15 @@ fn summarize_text(value: &str) -> String {
 
 fn parse_ts_seconds(value: &str) -> Option<i64> {
     value.split('.').next()?.parse().ok()
+}
+
+fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "store_failed",
+        }),
+    )
 }
 
 #[cfg(test)]

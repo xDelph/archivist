@@ -97,6 +97,7 @@ pub(crate) async fn catch_up(
             .store
             .channels()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|channel| channel.team_id == claims.team_id)
             .collect(),
@@ -104,6 +105,7 @@ pub(crate) async fn catch_up(
             .store
             .thread_summaries()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|summary| summary.team_id == claims.team_id)
             .collect(),
@@ -230,6 +232,15 @@ fn current_unix_timestamp() -> i64 {
         .duration_since(UNIX_EPOCH)
         .expect("current time should be after unix epoch")
         .as_secs() as i64
+}
+
+fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "store_failed",
+        }),
+    )
 }
 
 #[cfg(test)]

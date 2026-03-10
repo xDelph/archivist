@@ -1,4 +1,5 @@
 mod memory;
+mod pg_store;
 mod search_index;
 mod sqlx_models;
 mod sqlx_queries;
@@ -7,6 +8,7 @@ mod store;
 mod thread_summary_index;
 
 pub use memory::InMemoryEventStore;
+pub use pg_store::PgEventStore;
 pub use sqlx_models::{
     AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SavedItemRow,
     SearchDocumentRow, ThreadSummaryRow, UserRow,
@@ -21,4 +23,6 @@ pub use sqlx_schema::{
     backfill_search_documents_query, create_saved_items_table_query,
     create_search_documents_table_query, create_thread_summaries_table_query,
 };
-pub use store::{JsonlEventStore, RepositoryHealth, RepositoryMode, StoreError, StoreOutcome};
+pub use store::{
+    EventStore, JsonlEventStore, RepositoryHealth, RepositoryMode, StoreError, StoreOutcome,
+};

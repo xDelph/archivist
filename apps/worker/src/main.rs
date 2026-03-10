@@ -1,4 +1,4 @@
-use db::JsonlEventStore;
+use db::EventStore;
 use tokio::net::TcpListener;
 use worker::{WorkerConfig, build_router};
 
@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = WorkerConfig::from_env();
     let listener = TcpListener::bind(config.bind_address()).await?;
-    let store = JsonlEventStore::open(&config.event_log_path).await?;
+    let store = EventStore::open(&config.event_log_path).await?;
     let router = build_router(store, config)?;
 
     tracing::info!("worker listening on {}", listener.local_addr()?);

@@ -11,8 +11,8 @@ mod thread_list;
 mod threads;
 mod user_store;
 
-use axum::{Json, Router, middleware, routing::get};
-use db::{JsonlEventStore, RepositoryMode, StoreError};
+use axum::{Json, Router, extract::State, middleware, routing::get};
+use db::{EventStore, StoreError};
 use domain::WorkspaceMode;
 use search::SearchBackend;
 use serde::Serialize;
@@ -69,7 +69,7 @@ impl ApiConfig {
 
 #[derive(Clone)]
 pub(crate) struct AppState {
-    pub(crate) store: JsonlEventStore,
+    pub(crate) store: EventStore,
     pub(crate) slack_auth: auth::SlackAuthConfig,
     pub(crate) session_secret: Option<String>,
     pub(crate) auth_store: auth_store::LocalAuthStore,
@@ -88,7 +88,7 @@ struct HealthResponse {
 }
 
 pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
-    let store = JsonlEventStore::open(&config.event_log_path).await?;
+    let store = EventStore::open(&config.event_log_path).await?;
     let auth_store = auth_store::LocalAuthStore::open(&config.auth_store_path)
         .await
         .map_err(auth_store_error_to_store_error)?;
@@ -182,12 +182,12 @@ fn saved_store_error_to_store_error(error: saved_store::SavedItemStoreError) -> 
     }
 }
 
-async fn health() -> Json<HealthResponse> {
+async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         service: "api",
         version: env!("CARGO_PKG_VERSION"),
         workspace_mode: WorkspaceMode::SingleWorkspace.as_str(),
-        repository_mode: RepositoryMode::LocalJsonlMock.as_str(),
+        repository_mode: state.store.mode().as_str(),
         search_backend: SearchBackend::PostgresTsvectorPlaceholder.as_str(),
     })
 }

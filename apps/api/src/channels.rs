@@ -1,5 +1,5 @@
 use crate::{AppState, auth::SessionClaims};
-use axum::{Extension, Json, extract::State};
+use axum::{Extension, Json, extract::State, http::StatusCode};
 use domain::{Channel, ChannelKind, File, Message, Reaction};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -14,6 +14,11 @@ pub(crate) struct ChannelSummaryResponse {
     reaction_count: usize,
     file_count: usize,
     last_message_ts: Option<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct ErrorResponse {
+    error: &'static str,
 }
 
 #[derive(Debug)]
@@ -46,13 +51,14 @@ impl Default for ChannelSummaryBuilder {
 pub(crate) async fn channels(
     State(state): State<AppState>,
     Extension(claims): Extension<SessionClaims>,
-) -> Json<Vec<ChannelSummaryResponse>> {
-    Json(
+) -> Result<Json<Vec<ChannelSummaryResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    Ok(Json(
         build_channel_summaries(
             state
                 .store
                 .channels()
                 .await
+                .map_err(store_failed)?
                 .into_iter()
                 .filter(|channel| channel.team_id == claims.team_id)
                 .collect(),
@@ -60,6 +66,7 @@ pub(crate) async fn channels(
                 .store
                 .messages()
                 .await
+                .map_err(store_failed)?
                 .into_iter()
                 .filter(|message| message.team_id == claims.team_id)
                 .collect(),
@@ -67,6 +74,7 @@ pub(crate) async fn channels(
                 .store
                 .reactions()
                 .await
+                .map_err(store_failed)?
                 .into_iter()
                 .filter(|reaction| reaction.team_id == claims.team_id)
                 .collect(),
@@ -74,6 +82,7 @@ pub(crate) async fn channels(
                 .store
                 .files()
                 .await
+                .map_err(store_failed)?
                 .into_iter()
                 .filter(|file| file.team_id == claims.team_id)
                 .collect(),
@@ -90,7 +99,7 @@ pub(crate) async fn channels(
             last_message_ts: summary.last_message_ts,
         })
         .collect(),
-    )
+    ))
 }
 
 fn build_channel_summaries(
@@ -174,6 +183,15 @@ fn inferred_channel_summary(channel_id: &str) -> ChannelSummaryBuilder {
         kind: ChannelKind::from_channel_id(channel_id),
         ..ChannelSummaryBuilder::default()
     }
+}
+
+fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "store_failed",
+        }),
+    )
 }
 
 #[cfg(test)]

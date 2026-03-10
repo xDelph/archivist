@@ -53,8 +53,8 @@ pub(crate) struct ErrorResponse {
 pub(crate) async fn list_saved_items(
     State(state): State<AppState>,
     Extension(claims): Extension<SessionClaims>,
-) -> Json<SavedItemsResponse> {
-    let channel_names = channel_names(state.store.channels().await);
+) -> Result<Json<SavedItemsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let channel_names = channel_names(state.store.channels().await.map_err(store_failed)?);
     let items = state
         .saved_store
         .list_items(&claims.team_id, &claims.slack_user_id)
@@ -63,7 +63,7 @@ pub(crate) async fn list_saved_items(
         .map(|item| saved_item_response(item, &channel_names))
         .collect();
 
-    Json(SavedItemsResponse { items })
+    Ok(Json(SavedItemsResponse { items }))
 }
 
 pub(crate) async fn save_item(
@@ -82,6 +82,7 @@ pub(crate) async fn save_item(
         .store
         .thread_summaries()
         .await
+        .map_err(store_failed)?
         .into_iter()
         .find(|summary| {
             summary.team_id == claims.team_id
@@ -94,7 +95,7 @@ pub(crate) async fn save_item(
                 error: "thread_not_found",
             }),
         ))?;
-    let channel_names = channel_names(state.store.channels().await);
+    let channel_names = channel_names(state.store.channels().await.map_err(store_failed)?);
     let saved_item = state
         .saved_store
         .upsert_item(SavedItemRecord {
@@ -197,6 +198,15 @@ fn saved_store_error(
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse {
             error: "saved_store_failed",
+        }),
+    )
+}
+
+fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "store_failed",
         }),
     )
 }

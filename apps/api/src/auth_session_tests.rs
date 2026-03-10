@@ -48,7 +48,8 @@ async fn me_rejects_missing_sessions() {
     let state = AppState {
         store: db::JsonlEventStore::open(tempdir.path().join("events.jsonl"))
             .await
-            .expect("store"),
+            .expect("store")
+            .into(),
         slack_auth: SlackAuthConfig {
             client_id: None,
             client_secret: None,

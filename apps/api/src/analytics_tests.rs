@@ -1,10 +1,5 @@
 use super::*;
 use crate::analytics_store::LocalAnalyticsStore;
-use axum::Router;
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
-use axum::routing::{get, post};
-use tower::ServiceExt;
 
 async fn test_state() -> AppState {
     let analytics_file = tempfile::NamedTempFile::new().unwrap();
@@ -31,7 +26,7 @@ async fn test_state() -> AppState {
         .unwrap();
 
     AppState {
-        store,
+        store: store.into(),
         slack_auth: crate::auth::SlackAuthConfig {
             client_id: None,
             client_secret: None,

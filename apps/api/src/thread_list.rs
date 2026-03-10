@@ -112,6 +112,7 @@ pub(crate) async fn thread_list(
             .store
             .channels()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|channel| channel.team_id == claims.team_id)
             .collect(),
@@ -119,6 +120,7 @@ pub(crate) async fn thread_list(
             .store
             .messages()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|message| message.team_id == claims.team_id)
             .collect(),
@@ -126,6 +128,7 @@ pub(crate) async fn thread_list(
             .store
             .reactions()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|reaction| reaction.team_id == claims.team_id)
             .collect(),
@@ -133,6 +136,7 @@ pub(crate) async fn thread_list(
             .store
             .files()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|file| file.team_id == claims.team_id)
             .collect(),
@@ -403,6 +407,15 @@ fn root_text<'a>(root_messages: &'a HashMap<String, &'a Message>, root_ts: &str)
 
 fn parse_ts_seconds(value: &str) -> Option<i64> {
     value.split('.').next()?.parse().ok()
+}
+
+fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "store_failed",
+        }),
+    )
 }
 
 #[cfg(test)]

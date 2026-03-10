@@ -1,5 +1,5 @@
 use crate::{
-    SearchDocumentRow, ThreadSummaryRow,
+    PgEventStore, SearchDocumentRow, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
     thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
@@ -15,12 +15,14 @@ use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryMode {
     LocalJsonlMock,
+    PostgresLegacy,
 }
 
 impl RepositoryMode {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::LocalJsonlMock => "local_jsonl_mock",
+            Self::PostgresLegacy => "postgres_legacy",
         }
     }
 }
@@ -46,10 +48,122 @@ pub enum StoreError {
     Read(#[source] std::io::Error),
     #[error("failed to parse event log")]
     Parse(#[from] serde_json::Error),
+    #[error("database operation failed")]
+    Sqlx(#[source] sqlx::Error),
     #[error("failed to create event log directory")]
     CreateDirectory(#[source] std::io::Error),
     #[error("failed to append to event log")]
     Append(#[source] std::io::Error),
+}
+
+#[derive(Debug, Clone)]
+pub enum EventStore {
+    Local(JsonlEventStore),
+    Postgres(PgEventStore),
+}
+
+impl EventStore {
+    pub async fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+        #[cfg(test)]
+        {
+            JsonlEventStore::open(path).await.map(Self::Local)
+        }
+
+        #[cfg(not(test))]
+        {
+            let path = path.as_ref();
+            if let Some(database_url) = runtime_database_url() {
+                PgEventStore::open(&database_url).await.map(Self::Postgres)
+            } else {
+                JsonlEventStore::open(path).await.map(Self::Local)
+            }
+        }
+    }
+
+    pub const fn mode(&self) -> RepositoryMode {
+        match self {
+            Self::Local(_) => RepositoryMode::LocalJsonlMock,
+            Self::Postgres(_) => RepositoryMode::PostgresLegacy,
+        }
+    }
+
+    pub async fn health(&self) -> Result<RepositoryHealth, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.health().await),
+            Self::Postgres(store) => store.health().await,
+        }
+    }
+
+    pub async fn record_process_event(
+        &self,
+        job: &ProcessEventJob,
+    ) -> Result<StoreOutcome, StoreError> {
+        match self {
+            Self::Local(store) => store.record_process_event(job).await,
+            Self::Postgres(store) => store.record_process_event(job).await,
+        }
+    }
+
+    pub async fn messages(&self) -> Result<Vec<Message>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.messages().await),
+            Self::Postgres(store) => store.messages().await,
+        }
+    }
+
+    pub async fn reactions(&self) -> Result<Vec<Reaction>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.reactions().await),
+            Self::Postgres(store) => store.reactions().await,
+        }
+    }
+
+    pub async fn files(&self) -> Result<Vec<File>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.files().await),
+            Self::Postgres(store) => store.files().await,
+        }
+    }
+
+    pub async fn channels(&self) -> Result<Vec<Channel>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.channels().await),
+            Self::Postgres(store) => store.channels().await,
+        }
+    }
+
+    pub async fn search_documents(&self) -> Result<Vec<SearchDocumentRow>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.search_documents().await),
+            Self::Postgres(store) => store.search_documents().await,
+        }
+    }
+
+    pub async fn thread_summaries(&self) -> Result<Vec<ThreadSummaryRow>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.thread_summaries().await),
+            Self::Postgres(store) => store.thread_summaries().await,
+        }
+    }
+
+    pub async fn refresh_thread_summaries(&self) -> Result<usize, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.refresh_thread_summaries().await),
+            Self::Postgres(store) => store.refresh_thread_summaries().await,
+        }
+    }
+}
+
+impl From<JsonlEventStore> for EventStore {
+    fn from(value: JsonlEventStore) -> Self {
+        Self::Local(value)
+    }
+}
+
+impl From<PgEventStore> for EventStore {
+    fn from(value: PgEventStore) -> Self {
+        Self::Postgres(value)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -317,6 +431,18 @@ async fn append_job(path: &Path, job: &ProcessEventJob) -> Result<(), StoreError
     payload.push(b'\n');
 
     file.write_all(&payload).await.map_err(StoreError::Append)
+}
+
+#[cfg(not(test))]
+fn runtime_database_url() -> Option<String> {
+    std::env::var("POSTGRES_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("DATABASE_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
 }
 
 #[cfg(test)]

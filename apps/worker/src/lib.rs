@@ -10,7 +10,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
-use db::{JsonlEventStore, RepositoryMode, StoreError, StoreOutcome};
+use db::{EventStore, StoreError, StoreOutcome};
 use domain::ProcessEventJob;
 use queue::{
     QueueError, SignatureError, UPSTASH_SIGNATURE_HEADER, build_heartbeat_endpoint,
@@ -74,7 +74,7 @@ impl WorkerConfig {
 
 #[derive(Clone)]
 struct AppState {
-    store: JsonlEventStore,
+    store: EventStore,
     event_log_path: String,
     process_event_url: String,
     heartbeat_url: String,
@@ -116,7 +116,10 @@ struct HeartbeatResponse {
     job: &'static str,
 }
 
-pub fn build_router(store: JsonlEventStore, config: WorkerConfig) -> Result<Router, QueueError> {
+pub fn build_router(
+    store: impl Into<EventStore>,
+    config: WorkerConfig,
+) -> Result<Router, QueueError> {
     let process_event_url = build_process_event_endpoint(&config.worker_base_url)?;
     let heartbeat_url = build_heartbeat_endpoint(&config.worker_base_url)?;
     let refresh_thread_summaries_url =
@@ -133,7 +136,7 @@ pub fn build_router(store: JsonlEventStore, config: WorkerConfig) -> Result<Rout
         .route("/jobs/backfill_channel", post(backfill::backfill_channel))
         .route("/jobs/archive_file", post(archive::archive_file))
         .with_state(AppState {
-            store,
+            store: store.into(),
             event_log_path: config.event_log_path,
             process_event_url,
             heartbeat_url,
@@ -154,13 +157,15 @@ pub fn build_router(store: JsonlEventStore, config: WorkerConfig) -> Result<Rout
         .layer(TraceLayer::new_for_http()))
 }
 
-async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
-    let repository_health = state.store.health().await;
+async fn health(
+    State(state): State<AppState>,
+) -> Result<Json<HealthResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let repository_health = state.store.health().await.map_err(store_failed)?;
 
-    Json(HealthResponse {
+    Ok(Json(HealthResponse {
         service: "worker",
         version: env!("CARGO_PKG_VERSION"),
-        repository_mode: RepositoryMode::LocalJsonlMock.as_str(),
+        repository_mode: state.store.mode().as_str(),
         event_log_path: state.event_log_path,
         queue_signature_verification: signature_verification_enabled(
             state.current_signing_key.as_deref(),
@@ -170,7 +175,7 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         tracked_messages: repository_health.tracked_messages,
         tracked_reactions: repository_health.tracked_reactions,
         tracked_files: repository_health.tracked_files,
-    })
+    }))
 }
 
 async fn process_event(
@@ -235,7 +240,8 @@ async fn refresh_thread_summaries(
     summaries::refresh_thread_summaries(State(state), body).await
 }
 
-fn store_failed(_: StoreError) -> (StatusCode, Json<ErrorResponse>) {
+fn store_failed(error: StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    tracing::error!(?error, "worker store request failed");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse {

@@ -67,6 +67,7 @@ pub(crate) async fn thread_detail(
             .store
             .messages()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|message| message.team_id == claims.team_id)
             .collect(),
@@ -74,6 +75,7 @@ pub(crate) async fn thread_detail(
             .store
             .reactions()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|reaction| reaction.team_id == claims.team_id)
             .collect(),
@@ -81,6 +83,7 @@ pub(crate) async fn thread_detail(
             .store
             .files()
             .await
+            .map_err(store_failed)?
             .into_iter()
             .filter(|file| file.team_id == claims.team_id)
             .collect(),
@@ -108,6 +111,15 @@ fn parse_thread_id(thread_id: &str) -> Option<(&str, &str)> {
         return None;
     }
     Some((channel_id, root_ts))
+}
+
+fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "store_failed",
+        }),
+    )
 }
 
 fn build_thread_detail(
