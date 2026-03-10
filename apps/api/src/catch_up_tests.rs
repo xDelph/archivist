@@ -28,6 +28,7 @@ fn build_catch_up_filters_to_the_requested_window() {
             participant_count: 1,
             reaction_count: 0,
             file_count: 0,
+            root_message_at: format!("{}.000001", now - 60),
             last_activity_ts: format!("{}.000001", now - 60),
         },
         ThreadSummaryRow {
@@ -40,6 +41,7 @@ fn build_catch_up_filters_to_the_requested_window() {
             participant_count: 1,
             reaction_count: 0,
             file_count: 0,
+            root_message_at: format!("{}.000001", now - (8 * DAY_SECONDS)),
             last_activity_ts: format!("{}.000001", now - (8 * DAY_SECONDS)),
         },
     ];

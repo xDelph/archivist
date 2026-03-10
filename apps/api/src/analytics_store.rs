@@ -1,4 +1,7 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -20,12 +23,25 @@ pub(crate) struct LocalAnalyticsStore {
     state: Arc<Mutex<Vec<AnalyticsEventRecord>>>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PostgresAnalyticsStore {
+    pool: PgPool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum AnalyticsStore {
+    Local(LocalAnalyticsStore),
+    Postgres(PostgresAnalyticsStore),
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum AnalyticsStoreError {
     #[error("failed to read analytics events")]
     Read(#[source] std::io::Error),
     #[error("failed to parse analytics events")]
     Parse(#[from] serde_json::Error),
+    #[error("failed to query analytics events")]
+    Sqlx(#[source] sqlx::Error),
     #[error("failed to create analytics directory")]
     CreateDirectory(#[source] std::io::Error),
     #[error("failed to write analytics events")]
@@ -80,6 +96,112 @@ impl LocalAnalyticsStore {
         let mut result: Vec<_> = counts.into_iter().collect();
         result.sort_by(|a, b| b.1.cmp(&a.1));
         result
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+impl PostgresAnalyticsStore {
+    pub(crate) fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl AnalyticsStore {
+    pub(crate) async fn record_event(
+        &self,
+        event: AnalyticsEventRecord,
+    ) -> Result<(), AnalyticsStoreError> {
+        match self {
+            Self::Local(store) => store.record_event(event).await,
+            Self::Postgres(store) => {
+                sqlx::query(
+                    r#"
+                    INSERT INTO analytics_events (event_type, user_id, metadata, created_at)
+                    VALUES ($1, $2, $3, to_timestamp($4))
+                    "#,
+                )
+                .bind(&event.event_type)
+                .bind(&event.user_id)
+                .bind(&event.metadata)
+                .bind(event.created_at.parse::<f64>().unwrap_or_default())
+                .execute(&store.pool)
+                .await
+                .map_err(AnalyticsStoreError::Sqlx)?;
+                Ok(())
+            }
+        }
+    }
+
+    pub(crate) async fn list_events(
+        &self,
+        event_type: Option<&str>,
+        limit: usize,
+    ) -> Vec<AnalyticsEventRecord> {
+        match self {
+            Self::Local(store) => store.list_events(event_type, limit).await,
+            Self::Postgres(store) => sqlx::query(
+                r#"
+                SELECT
+                    event_type,
+                    user_id,
+                    metadata,
+                    CAST(EXTRACT(EPOCH FROM created_at) AS bigint)::text AS created_at
+                FROM analytics_events
+                WHERE ($1::text IS NULL OR event_type = $1)
+                ORDER BY created_at DESC, id DESC
+                LIMIT $2
+                "#,
+            )
+            .bind(event_type)
+            .bind(limit as i64)
+            .fetch_all(&store.pool)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| AnalyticsEventRecord {
+                        event_type: row.get("event_type"),
+                        user_id: row.get("user_id"),
+                        metadata: row.get("metadata"),
+                        created_at: row.get("created_at"),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        }
+    }
+
+    pub(crate) async fn count_by_type(&self) -> Vec<(String, usize)> {
+        match self {
+            Self::Local(store) => store.count_by_type().await,
+            Self::Postgres(store) => sqlx::query(
+                r#"
+                SELECT event_type, COUNT(*)::bigint AS count
+                FROM analytics_events
+                GROUP BY event_type
+                ORDER BY count DESC, event_type ASC
+                "#,
+            )
+            .fetch_all(&store.pool)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| (row.get("event_type"), row.get::<i64, _>("count") as usize))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<LocalAnalyticsStore> for AnalyticsStore {
+    fn from(value: LocalAnalyticsStore) -> Self {
+        Self::Local(value)
+    }
+}
+
+impl From<PostgresAnalyticsStore> for AnalyticsStore {
+    fn from(value: PostgresAnalyticsStore) -> Self {
+        Self::Postgres(value)
     }
 }
 

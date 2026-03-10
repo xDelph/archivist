@@ -1,8 +1,14 @@
 use crate::{
     RepositoryHealth, SearchDocumentRow, StoreError, StoreOutcome, ThreadSummaryRow,
+    pg_materialized::{refresh_thread_views, upsert_search_document, upsert_thread_summary},
+    pg_support::{
+        count_rows, event_type, map_message_row, message_root_ts, normalize_empty,
+        parse_channel_kind, thread_root_ts, upsert_channel,
+    },
+    search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
     thread_summary_index::build_thread_summaries,
 };
-use domain::{Channel, ChannelKind, EventPayload, File, Message, ProcessEventJob, Reaction};
+use domain::{Channel, EventPayload, File, ProcessEventJob, Reaction};
 use serde_json::json;
 use sqlx::{
     PgPool, Row,
@@ -19,6 +25,7 @@ type ReactionKey = (String, String, String, String, String);
 #[derive(Debug, Clone)]
 pub struct PgEventStore {
     pool: PgPool,
+    workspace_id: String,
 }
 
 impl PgEventStore {
@@ -32,15 +39,22 @@ impl PgEventStore {
             .await
             .map_err(StoreError::Sqlx)?;
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            workspace_id: std::env::var("SLACK_WORKSPACE_ID").unwrap_or_default(),
+        })
+    }
+
+    pub fn pool(&self) -> PgPool {
+        self.pool.clone()
     }
 
     pub async fn health(&self) -> Result<RepositoryHealth, StoreError> {
         Ok(RepositoryHealth {
-            tracked_events: count_rows(&self.pool, "slack_events").await?,
+            tracked_events: count_rows(&self.pool, "app_events").await?,
             tracked_messages: count_rows(&self.pool, "messages").await?,
             tracked_reactions: count_rows(&self.pool, "reactions").await?,
-            tracked_files: count_rows(&self.pool, "files").await?,
+            tracked_files: count_rows(&self.pool, "message_files").await?,
             tracked_channels: count_rows(&self.pool, "channels").await?,
         })
     }
@@ -50,30 +64,41 @@ impl PgEventStore {
         job: &ProcessEventJob,
     ) -> Result<StoreOutcome, StoreError> {
         let mut tx = self.pool.begin().await.map_err(StoreError::Sqlx)?;
-        let payload_json = json!(job);
         let inserted = sqlx::query(
             r#"
-            INSERT INTO slack_events (event_id, team_id, event_time, payload_json)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO app_events (
+                event_id,
+                channel_id,
+                channel_kind,
+                event_type,
+                occurred_at,
+                received_at,
+                payload_json
+            )
+            VALUES ($1, $2, $3, $4, to_timestamp($5), to_timestamp($6), $7)
             ON CONFLICT (event_id) DO NOTHING
             "#,
         )
         .bind(&job.event_id)
-        .bind(&job.team_id)
-        .bind(job.event_time)
-        .bind(payload_json)
+        .bind(&job.channel_id)
+        .bind(job.channel_kind.as_str())
+        .bind(event_type(&job.payload))
+        .bind(job.event_time as f64)
+        .bind(job.received_at as f64)
+        .bind(json!(&job.payload))
         .execute(&mut *tx)
         .await
         .map_err(StoreError::Sqlx)?
         .rows_affected()
             > 0;
-
         if !inserted {
             tx.rollback().await.map_err(StoreError::Sqlx)?;
             return Ok(StoreOutcome::Duplicate);
         }
 
-        match &job.payload {
+        upsert_channel(&mut tx, &job.channel_id, job.channel_kind, None, false).await?;
+
+        let affected_root_ts = match &job.payload {
             EventPayload::Message {
                 user_id,
                 text,
@@ -81,78 +106,82 @@ impl PgEventStore {
                 thread_ts,
                 files,
             } => {
+                let root_ts = thread_root_ts(ts, thread_ts.as_deref());
                 sqlx::query(
                     r#"
                     INSERT INTO messages (
-                        team_id,
                         channel_id,
                         ts,
-                        thread_ts,
+                        root_ts,
                         user_id,
                         text,
-                        subtype,
-                        edited_ts,
-                        deleted,
-                        raw_json
+                        raw_json,
+                        occurred_at
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, FALSE, $7)
+                    VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7))
                     ON CONFLICT (channel_id, ts) DO UPDATE
-                    SET thread_ts = EXCLUDED.thread_ts,
+                    SET root_ts = EXCLUDED.root_ts,
                         user_id = EXCLUDED.user_id,
                         text = EXCLUDED.text,
                         raw_json = EXCLUDED.raw_json,
-                        updated_at = NOW()
+                        occurred_at = EXCLUDED.occurred_at,
+                        updated_at = now()
                     "#,
                 )
-                .bind(&job.team_id)
                 .bind(&job.channel_id)
                 .bind(ts)
-                .bind(thread_ts)
+                .bind(&root_ts)
                 .bind(user_id)
                 .bind(text.clone().unwrap_or_default())
-                .bind(json!(job.payload))
+                .bind(json!(&job.payload))
+                .bind(ts.parse::<f64>().unwrap_or_default())
                 .execute(&mut *tx)
                 .await
                 .map_err(StoreError::Sqlx)?;
-
                 for file in files {
                     sqlx::query(
                         r#"
                         INSERT INTO files (
-                            file_id,
-                            team_id,
-                            channel_id,
-                            message_ts,
+                            id,
                             name,
                             mimetype,
+                            permalink,
                             size_bytes,
                             storage_key,
                             storage_url
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, '', $8)
-                        ON CONFLICT (file_id) DO UPDATE
-                        SET team_id = EXCLUDED.team_id,
-                            channel_id = EXCLUDED.channel_id,
-                            message_ts = EXCLUDED.message_ts,
-                            name = EXCLUDED.name,
+                        VALUES ($1, $2, $3, $4, $5, '', '')
+                        ON CONFLICT (id) DO UPDATE
+                        SET name = EXCLUDED.name,
                             mimetype = EXCLUDED.mimetype,
+                            permalink = EXCLUDED.permalink,
                             size_bytes = EXCLUDED.size_bytes,
-                            storage_url = EXCLUDED.storage_url,
-                            cached_at = NOW()
+                            updated_at = now()
                         "#,
                     )
                     .bind(&file.id)
-                    .bind(&job.team_id)
+                    .bind(&file.name)
+                    .bind(&file.mimetype)
+                    .bind(&file.permalink)
+                    .bind(file.size.map(|value| value as i64))
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(StoreError::Sqlx)?;
+                    sqlx::query(
+                        r#"
+                        INSERT INTO message_files (channel_id, message_ts, file_id)
+                        VALUES ($1, $2, $3)
+                        ON CONFLICT (channel_id, message_ts, file_id) DO NOTHING
+                        "#,
+                    )
                     .bind(&job.channel_id)
                     .bind(ts)
-                    .bind(&file.name)
-                    .bind(file.mimetype.clone().unwrap_or_default())
-                    .bind(file.size.unwrap_or_default() as i64)
-                    .bind(file.permalink.clone().unwrap_or_default())
+                    .bind(&file.id)
                     .execute(&mut *tx)
                     .await
                     .map_err(StoreError::Sqlx)?;
                 }
+                Some(root_ts)
             }
             EventPayload::ReactionAdded {
                 user_id,
@@ -161,56 +190,44 @@ impl PgEventStore {
             } => {
                 sqlx::query(
                     r#"
-                    INSERT INTO reactions (
-                        team_id,
-                        channel_id,
-                        message_ts,
-                        user_id,
-                        reaction_name,
-                        event_ts
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (team_id, channel_id, message_ts, user_id, reaction_name) DO NOTHING
+                    INSERT INTO reactions (channel_id, message_ts, user_id, name, occurred_at)
+                    VALUES ($1, $2, $3, $4, to_timestamp($5))
+                    ON CONFLICT (channel_id, message_ts, user_id, name) DO NOTHING
                     "#,
                 )
-                .bind(&job.team_id)
                 .bind(&job.channel_id)
                 .bind(item_ts)
                 .bind(user_id)
                 .bind(reaction)
-                .bind(job.event_time.to_string())
+                .bind(job.event_time as f64)
                 .execute(&mut *tx)
                 .await
                 .map_err(StoreError::Sqlx)?;
+                message_root_ts(&mut tx, &job.channel_id, item_ts).await?
             }
-            EventPayload::ChannelUpdated { name, .. } => {
-                sqlx::query(
-                    r#"
-                    INSERT INTO channels (channel_id, team_id, name)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (channel_id) DO UPDATE
-                    SET team_id = EXCLUDED.team_id,
-                        name = EXCLUDED.name,
-                        cached_at = NOW()
-                    "#,
+            EventPayload::ChannelUpdated { name, is_archived } => {
+                upsert_channel(
+                    &mut tx,
+                    &job.channel_id,
+                    job.channel_kind,
+                    name.clone(),
+                    is_archived.unwrap_or(false),
                 )
-                .bind(&job.channel_id)
-                .bind(&job.team_id)
-                .bind(name.clone().unwrap_or_default())
-                .execute(&mut *tx)
-                .await
-                .map_err(StoreError::Sqlx)?;
+                .await?;
+                None
             }
+        };
+        if let Some(root_ts) = affected_root_ts {
+            refresh_thread_views(&mut tx, &self.workspace_id, &job.channel_id, &root_ts).await?;
         }
-
         tx.commit().await.map_err(StoreError::Sqlx)?;
         Ok(StoreOutcome::Inserted)
     }
 
-    pub async fn messages(&self) -> Result<Vec<Message>, StoreError> {
+    pub async fn messages(&self) -> Result<Vec<domain::Message>, StoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT team_id, channel_id, ts, thread_ts, user_id, text
+            SELECT channel_id, ts, root_ts, user_id, text
             FROM messages
             ORDER BY channel_id ASC, ts ASC
             "#,
@@ -218,40 +235,31 @@ impl PgEventStore {
         .fetch_all(&self.pool)
         .await
         .map_err(StoreError::Sqlx)?;
-
         Ok(rows
             .into_iter()
-            .map(|row| Message {
-                team_id: row.get("team_id"),
-                channel_id: row.get("channel_id"),
-                ts: row.get("ts"),
-                thread_ts: row.get("thread_ts"),
-                user_id: row.get("user_id"),
-                text: row.get("text"),
-            })
+            .map(|row| map_message_row(&self.workspace_id, row))
             .collect())
     }
 
     pub async fn reactions(&self) -> Result<Vec<Reaction>, StoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT team_id, channel_id, message_ts, user_id, reaction_name
+            SELECT channel_id, message_ts, user_id, name
             FROM reactions
-            ORDER BY channel_id ASC, message_ts ASC, user_id ASC, reaction_name ASC
+            ORDER BY channel_id ASC, message_ts ASC, user_id ASC, name ASC
             "#,
         )
         .fetch_all(&self.pool)
         .await
         .map_err(StoreError::Sqlx)?;
-
         Ok(rows
             .into_iter()
             .map(|row| Reaction {
-                team_id: row.get("team_id"),
+                team_id: self.workspace_id.clone(),
                 channel_id: row.get("channel_id"),
                 message_ts: row.get("message_ts"),
                 user_id: row.get("user_id"),
-                name: row.get("reaction_name"),
+                name: row.get("name"),
             })
             .collect())
     }
@@ -259,31 +267,39 @@ impl PgEventStore {
     pub async fn files(&self) -> Result<Vec<File>, StoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT file_id, team_id, channel_id, message_ts, name, mimetype, size_bytes, storage_url
-            FROM files
-            ORDER BY channel_id ASC, message_ts ASC, file_id ASC
+            SELECT
+                message_files.channel_id,
+                message_files.message_ts,
+                files.id,
+                files.name,
+                files.mimetype,
+                files.permalink,
+                files.size_bytes,
+                files.storage_url
+            FROM message_files
+            JOIN files ON files.id = message_files.file_id
+            ORDER BY message_files.channel_id ASC, message_files.message_ts ASC, files.id ASC
             "#,
         )
         .fetch_all(&self.pool)
         .await
         .map_err(StoreError::Sqlx)?;
-
         Ok(rows
             .into_iter()
             .map(|row| {
-                let storage_url: String = row.get("storage_url");
-                let mimetype: String = row.get("mimetype");
-                let size_bytes: i64 = row.get("size_bytes");
-
+                let storage_url: Option<String> = row.get("storage_url");
+                let permalink: Option<String> = row.get("permalink");
                 File {
-                    id: row.get("file_id"),
-                    team_id: row.get("team_id"),
+                    id: row.get("id"),
+                    team_id: self.workspace_id.clone(),
                     channel_id: row.get("channel_id"),
                     message_ts: row.get("message_ts"),
                     name: row.get("name"),
-                    mimetype: normalize_empty(mimetype),
-                    permalink: normalize_empty(storage_url),
-                    size: (size_bytes > 0).then_some(size_bytes as u64),
+                    mimetype: row.get("mimetype"),
+                    permalink: storage_url.or(permalink).and_then(normalize_empty),
+                    size: row
+                        .get::<Option<i64>, _>("size_bytes")
+                        .and_then(|value| (value > 0).then_some(value as u64)),
                 }
             })
             .collect())
@@ -292,28 +308,22 @@ impl PgEventStore {
     pub async fn channels(&self) -> Result<Vec<Channel>, StoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT channel_id, team_id, name
+            SELECT id, kind, name, is_archived
             FROM channels
-            ORDER BY channel_id ASC
+            ORDER BY id ASC
             "#,
         )
         .fetch_all(&self.pool)
         .await
         .map_err(StoreError::Sqlx)?;
-
         Ok(rows
             .into_iter()
-            .map(|row| {
-                let channel_id: String = row.get("channel_id");
-                let name: String = row.get("name");
-
-                Channel {
-                    team_id: row.get("team_id"),
-                    id: channel_id.clone(),
-                    kind: ChannelKind::from_channel_id(&channel_id),
-                    name: normalize_empty(name),
-                    is_archived: false,
-                }
+            .map(|row| Channel {
+                team_id: self.workspace_id.clone(),
+                id: row.get("id"),
+                kind: parse_channel_kind(row.get("kind")),
+                name: row.get("name"),
+                is_archived: row.get("is_archived"),
             })
             .collect())
     }
@@ -321,42 +331,77 @@ impl PgEventStore {
     pub async fn search_documents(&self) -> Result<Vec<SearchDocumentRow>, StoreError> {
         let rows = sqlx::query(
             r#"
-            WITH root_messages AS (
-                SELECT team_id, channel_id, ts AS root_ts, text AS root_text
-                FROM messages
-                WHERE thread_ts IS NULL
-            )
             SELECT
-                messages.team_id,
-                messages.channel_id,
-                messages.ts AS message_ts,
-                COALESCE(root_messages.root_text, messages.text) AS title,
-                messages.text AS body
-            FROM messages
-            LEFT JOIN root_messages
-                ON root_messages.team_id = messages.team_id
-               AND root_messages.channel_id = messages.channel_id
-               AND root_messages.root_ts = COALESCE(messages.thread_ts, messages.ts)
-            ORDER BY messages.channel_id ASC, messages.ts ASC
+                channel_id,
+                root_ts,
+                message_ts,
+                title,
+                body,
+                to_char(
+                    message_occurred_at AT TIME ZONE 'UTC',
+                    'YYYY-MM-DD"T"HH24:MI:SS"Z"'
+                ) AS message_occurred_at
+            FROM search_documents
+            ORDER BY channel_id ASC, message_ts ASC
             "#,
         )
         .fetch_all(&self.pool)
         .await
         .map_err(StoreError::Sqlx)?;
-
         Ok(rows
             .into_iter()
             .map(|row| SearchDocumentRow {
-                team_id: row.get("team_id"),
+                team_id: self.workspace_id.clone(),
                 channel_id: row.get("channel_id"),
+                root_ts: row.get("root_ts"),
                 message_ts: row.get("message_ts"),
-                title: normalize_empty(row.get::<String, _>("title")),
+                title: row.get("title"),
                 body: row.get("body"),
+                message_occurred_at: row.get("message_occurred_at"),
             })
             .collect())
     }
 
     pub async fn thread_summaries(&self) -> Result<Vec<ThreadSummaryRow>, StoreError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                channel_id,
+                root_ts,
+                title,
+                preview,
+                reply_count,
+                participant_count,
+                reaction_count,
+                file_count,
+                CAST(EXTRACT(EPOCH FROM root_message_at) AS bigint)::text AS root_message_at,
+                CAST(EXTRACT(EPOCH FROM last_activity_at) AS bigint)::text AS last_activity_ts
+            FROM thread_summaries
+            ORDER BY channel_id ASC, root_ts ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(StoreError::Sqlx)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| ThreadSummaryRow {
+                team_id: self.workspace_id.clone(),
+                channel_id: row.get("channel_id"),
+                root_ts: row.get("root_ts"),
+                title: row.get("title"),
+                preview: row.get("preview"),
+                reply_count: row.get("reply_count"),
+                participant_count: row.get("participant_count"),
+                reaction_count: row.get("reaction_count"),
+                file_count: row.get("file_count"),
+                root_message_at: row.get("root_message_at"),
+                last_activity_ts: row.get("last_activity_ts"),
+            })
+            .collect())
+    }
+
+    pub async fn refresh_thread_summaries(&self) -> Result<usize, StoreError> {
         let messages = self.messages().await?;
         let reactions = self.reactions().await?;
         let files = self.files().await?;
@@ -372,7 +417,7 @@ impl PgEventStore {
                     message,
                 )
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<MessageMap>();
         let reaction_set = reactions
             .into_iter()
             .map(|reaction| {
@@ -389,30 +434,34 @@ impl PgEventStore {
             .into_iter()
             .map(|file| ((file.team_id.clone(), file.id.clone()), file))
             .collect::<HashMap<FileKey, _>>();
-        let mut summaries = build_thread_summaries(&message_map, &reaction_set, &file_map)
-            .into_values()
-            .collect::<Vec<_>>();
-        summaries.sort_by(|left, right| {
-            (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
-        });
-        Ok(summaries)
+        let thread_summaries = build_thread_summaries(&message_map, &reaction_set, &file_map);
+        let mut search_documents = SearchDocumentMap::new();
+        for summary in thread_summaries.values() {
+            refresh_search_documents(
+                &mut search_documents,
+                &message_map,
+                &summary.team_id,
+                &summary.channel_id,
+                &summary.root_ts,
+            );
+        }
+
+        let mut tx = self.pool.begin().await.map_err(StoreError::Sqlx)?;
+        sqlx::query("DELETE FROM search_documents")
+            .execute(&mut *tx)
+            .await
+            .map_err(StoreError::Sqlx)?;
+        for row in search_documents.values() {
+            upsert_search_document(&mut tx, row).await?;
+        }
+        sqlx::query("DELETE FROM thread_summaries")
+            .execute(&mut *tx)
+            .await
+            .map_err(StoreError::Sqlx)?;
+        for row in thread_summaries.values() {
+            upsert_thread_summary(&mut tx, row).await?;
+        }
+        tx.commit().await.map_err(StoreError::Sqlx)?;
+        Ok(thread_summaries.len())
     }
-
-    pub async fn refresh_thread_summaries(&self) -> Result<usize, StoreError> {
-        Ok(self.thread_summaries().await?.len())
-    }
-}
-
-async fn count_rows(pool: &PgPool, table: &str) -> Result<usize, StoreError> {
-    let query = format!("SELECT COUNT(*)::bigint AS count FROM {table}");
-    let count = sqlx::query_scalar::<_, i64>(&query)
-        .fetch_one(pool)
-        .await
-        .map_err(StoreError::Sqlx)?;
-    Ok(count.max(0) as usize)
-}
-
-fn normalize_empty(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }

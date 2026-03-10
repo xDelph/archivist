@@ -87,6 +87,13 @@ impl EventStore {
         }
     }
 
+    pub fn postgres_pool(&self) -> Option<sqlx::PgPool> {
+        match self {
+            Self::Local(_) => None,
+            Self::Postgres(store) => Some(store.pool()),
+        }
+    }
+
     pub async fn health(&self) -> Result<RepositoryHealth, StoreError> {
         match self {
             Self::Local(store) => Ok(store.health().await),

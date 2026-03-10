@@ -36,9 +36,11 @@ pub(crate) fn refresh_search_documents(
             SearchDocumentRow {
                 team_id: message.team_id.clone(),
                 channel_id: message.channel_id.clone(),
+                root_ts: root_ts.to_owned(),
                 message_ts: message.ts.clone(),
                 title: root_title.clone().or_else(|| optional_text(&message.text)),
                 body: message.text.clone(),
+                message_occurred_at: message.ts.clone(),
             },
         );
     }

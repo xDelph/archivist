@@ -1,4 +1,7 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -26,6 +29,17 @@ pub(crate) struct LocalSavedItemStore {
     state: SharedSavedItemState,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PostgresSavedItemStore {
+    pool: PgPool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum SavedItemStore {
+    Local(LocalSavedItemStore),
+    Postgres(PostgresSavedItemStore),
+}
+
 type SavedItemKey = (String, String, String);
 type SavedItemMap = HashMap<SavedItemKey, SavedItemRecord>;
 type SharedSavedItemState = Arc<Mutex<SavedItemMap>>;
@@ -36,6 +50,8 @@ pub(crate) enum SavedItemStoreError {
     Read(#[source] std::io::Error),
     #[error("failed to parse saved items")]
     Parse(#[from] serde_json::Error),
+    #[error("failed to query saved items")]
+    Sqlx(#[source] sqlx::Error),
     #[error("failed to create saved item directory")]
     CreateDirectory(#[source] std::io::Error),
     #[error("failed to write saved items")]
@@ -105,6 +121,141 @@ impl LocalSavedItemStore {
             persist_state(&self.path, &state).await?;
         }
         Ok(removed)
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+impl PostgresSavedItemStore {
+    pub(crate) fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl SavedItemStore {
+    pub(crate) async fn upsert_item(
+        &self,
+        item: SavedItemRecord,
+    ) -> Result<SavedItemRecord, SavedItemStoreError> {
+        match self {
+            Self::Local(store) => store.upsert_item(item).await,
+            Self::Postgres(store) => {
+                sqlx::query(
+                    r#"
+                    INSERT INTO saved_items (user_id, channel_id, root_ts, saved_at)
+                    VALUES ($1, $2, $3, to_timestamp($4))
+                    ON CONFLICT (user_id, channel_id, root_ts) DO UPDATE
+                    SET saved_at = EXCLUDED.saved_at
+                    "#,
+                )
+                .bind(&item.slack_user_id)
+                .bind(&item.channel_id)
+                .bind(&item.root_ts)
+                .bind(item.saved_at.parse::<f64>().unwrap_or_default())
+                .execute(&store.pool)
+                .await
+                .map_err(SavedItemStoreError::Sqlx)?;
+                Ok(item)
+            }
+        }
+    }
+
+    pub(crate) async fn list_items(
+        &self,
+        team_id: &str,
+        slack_user_id: &str,
+    ) -> Vec<SavedItemRecord> {
+        match self {
+            Self::Local(store) => store.list_items(team_id, slack_user_id).await,
+            Self::Postgres(store) => sqlx::query(
+                r#"
+                SELECT
+                    saved_items.user_id,
+                    saved_items.channel_id,
+                    saved_items.root_ts,
+                    thread_summaries.title,
+                    thread_summaries.preview,
+                    CAST(EXTRACT(EPOCH FROM thread_summaries.last_activity_at) AS bigint)::text
+                        AS last_activity_ts,
+                    CAST(EXTRACT(EPOCH FROM saved_items.saved_at) AS bigint)::text
+                        AS saved_at
+                FROM saved_items
+                JOIN thread_summaries
+                    ON thread_summaries.channel_id = saved_items.channel_id
+                   AND thread_summaries.root_ts = saved_items.root_ts
+                WHERE saved_items.user_id = $1
+                ORDER BY saved_items.saved_at DESC,
+                         saved_items.channel_id ASC,
+                         saved_items.root_ts ASC
+                "#,
+            )
+            .bind(slack_user_id)
+            .fetch_all(&store.pool)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| {
+                        let channel_id: String = row.get("channel_id");
+                        let root_ts: String = row.get("root_ts");
+                        SavedItemRecord {
+                            team_id: team_id.to_owned(),
+                            slack_user_id: row.get("user_id"),
+                            thread_id: format!("{channel_id}:{root_ts}"),
+                            channel_id,
+                            root_ts,
+                            title: row.get("title"),
+                            preview: row.get("preview"),
+                            last_activity_ts: row.get("last_activity_ts"),
+                            saved_at: row.get("saved_at"),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        }
+    }
+
+    pub(crate) async fn remove_item(
+        &self,
+        team_id: &str,
+        slack_user_id: &str,
+        thread_id: &str,
+    ) -> Result<bool, SavedItemStoreError> {
+        match self {
+            Self::Local(store) => store.remove_item(team_id, slack_user_id, thread_id).await,
+            Self::Postgres(store) => {
+                let Some((channel_id, root_ts)) = thread_id.split_once(':') else {
+                    return Ok(false);
+                };
+                Ok(sqlx::query(
+                    r#"
+                    DELETE FROM saved_items
+                    WHERE user_id = $1
+                      AND channel_id = $2
+                      AND root_ts = $3
+                    "#,
+                )
+                .bind(slack_user_id)
+                .bind(channel_id)
+                .bind(root_ts)
+                .execute(&store.pool)
+                .await
+                .map_err(SavedItemStoreError::Sqlx)?
+                .rows_affected()
+                    > 0)
+            }
+        }
+    }
+}
+
+impl From<LocalSavedItemStore> for SavedItemStore {
+    fn from(value: LocalSavedItemStore) -> Self {
+        Self::Local(value)
+    }
+}
+
+impl From<PostgresSavedItemStore> for SavedItemStore {
+    fn from(value: PostgresSavedItemStore) -> Self {
+        Self::Postgres(value)
     }
 }
 

@@ -62,22 +62,26 @@ async fn me_rejects_missing_sessions() {
             tempdir.path().join("auth-identities.json"),
         )
         .await
-        .expect("auth store"),
+        .expect("auth store")
+        .into(),
         user_store: crate::user_store::LocalUserStore::open(
             tempdir.path().join("synced-users.json"),
         )
         .await
-        .expect("user store"),
+        .expect("user store")
+        .into(),
         saved_store: crate::saved_store::LocalSavedItemStore::open(
             tempdir.path().join("saved-items.json"),
         )
         .await
-        .expect("saved store"),
+        .expect("saved store")
+        .into(),
         analytics_store: crate::analytics_store::LocalAnalyticsStore::open(
             tempdir.path().join("analytics-events.json"),
         )
         .await
-        .expect("analytics store"),
+        .expect("analytics store")
+        .into(),
     };
 
     let result = me(State(state), axum::http::HeaderMap::new()).await;

@@ -184,17 +184,21 @@ pub(crate) fn build_thread_summaries(
                 aggregate.channel_id.clone(),
                 aggregate.root_ts.clone(),
             ),
-            ThreadSummaryRow {
-                team_id: aggregate.team_id,
-                channel_id: aggregate.channel_id,
-                root_ts: aggregate.root_ts,
-                title: aggregate.title,
-                preview: aggregate.preview,
-                reply_count: aggregate.reply_count as i64,
-                participant_count: aggregate.participants.len() as i64,
-                reaction_count: aggregate.reaction_count as i64,
-                file_count: aggregate.file_count as i64,
-                last_activity_ts: aggregate.last_activity_ts,
+            {
+                let root_ts = aggregate.root_ts.clone();
+                ThreadSummaryRow {
+                    team_id: aggregate.team_id,
+                    channel_id: aggregate.channel_id,
+                    root_ts,
+                    title: aggregate.title,
+                    preview: aggregate.preview,
+                    reply_count: aggregate.reply_count as i64,
+                    participant_count: aggregate.participants.len() as i64,
+                    reaction_count: aggregate.reaction_count as i64,
+                    file_count: aggregate.file_count as i64,
+                    root_message_at: aggregate.root_ts,
+                    last_activity_ts: aggregate.last_activity_ts,
+                }
             },
         );
     }

@@ -1,4 +1,7 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 #[cfg(test)]
 use std::path::PathBuf;
 use std::{path::Path, sync::Arc};
@@ -19,6 +22,17 @@ pub(crate) struct LocalUserStore {
     #[cfg(test)]
     path: Arc<PathBuf>,
     state: Arc<Mutex<Vec<SyncedUserRecord>>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PostgresUserStore {
+    pool: PgPool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum UserStore {
+    Local(LocalUserStore),
+    Postgres(PostgresUserStore),
 }
 
 #[derive(Debug, Error)]
@@ -78,6 +92,56 @@ impl LocalUserStore {
     #[cfg(test)]
     pub(crate) async fn users(&self) -> Vec<SyncedUserRecord> {
         self.state.lock().await.clone()
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+impl PostgresUserStore {
+    pub(crate) fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl UserStore {
+    pub(crate) async fn find_user(
+        &self,
+        team_id: &str,
+        slack_user_id: &str,
+    ) -> Option<SyncedUserRecord> {
+        match self {
+            Self::Local(store) => store.find_user(team_id, slack_user_id).await,
+            Self::Postgres(store) => sqlx::query(
+                r#"
+                SELECT id, display_name, avatar_url, is_active
+                FROM users
+                WHERE id = $1
+                "#,
+            )
+            .bind(slack_user_id)
+            .fetch_optional(&store.pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|row| SyncedUserRecord {
+                team_id: team_id.to_owned(),
+                slack_user_id: row.get("id"),
+                display_name: row.get("display_name"),
+                avatar_url: row.get("avatar_url"),
+                is_active: row.get("is_active"),
+            }),
+        }
+    }
+}
+
+impl From<LocalUserStore> for UserStore {
+    fn from(value: LocalUserStore) -> Self {
+        Self::Local(value)
+    }
+}
+
+impl From<PostgresUserStore> for UserStore {
+    fn from(value: PostgresUserStore) -> Self {
+        Self::Postgres(value)
     }
 }
 

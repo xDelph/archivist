@@ -18,6 +18,7 @@ use db::{EventStore, StoreError};
 use domain::WorkspaceMode;
 use search::SearchBackend;
 use serde::Serialize;
+#[cfg(test)]
 use std::path::Path;
 use tower_http::trace::TraceLayer;
 
@@ -26,7 +27,9 @@ const DEFAULT_PORT: u16 = 4000;
 const DEFAULT_EVENT_LOG_PATH: &str = "logs/process-events.jsonl";
 const DEFAULT_AUTH_STORE_PATH: &str = "logs/auth-identities.json";
 const DEFAULT_SYNCED_USERS_PATH: &str = "logs/synced-users.json";
+#[cfg(test)]
 const DEFAULT_SAVED_ITEMS_PATH: &str = "logs/saved-items.json";
+#[cfg(test)]
 const DEFAULT_ANALYTICS_PATH: &str = "logs/analytics-events.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,10 +77,10 @@ pub(crate) struct AppState {
     pub(crate) store: EventStore,
     pub(crate) slack_auth: auth::SlackAuthConfig,
     pub(crate) session_secret: Option<String>,
-    pub(crate) auth_store: auth_store::LocalAuthStore,
-    pub(crate) user_store: user_store::LocalUserStore,
-    pub(crate) saved_store: saved_store::LocalSavedItemStore,
-    pub(crate) analytics_store: analytics_store::LocalAnalyticsStore,
+    pub(crate) auth_store: auth_store::AuthStore,
+    pub(crate) user_store: user_store::UserStore,
+    pub(crate) saved_store: saved_store::SavedItemStore,
+    pub(crate) analytics_store: analytics_store::AnalyticsStore,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -91,18 +94,10 @@ struct HealthResponse {
 
 pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let store = open_store(&config).await?;
-    let auth_store = auth_store::LocalAuthStore::open(&config.auth_store_path)
-        .await
-        .map_err(auth_store_error_to_store_error)?;
-    let user_store = user_store::LocalUserStore::open(&config.synced_users_path)
-        .await
-        .map_err(user_store_error_to_store_error)?;
-    let saved_store = saved_store::LocalSavedItemStore::open(saved_items_path(&config))
-        .await
-        .map_err(saved_store_error_to_store_error)?;
-    let analytics_store = analytics_store::LocalAnalyticsStore::open(analytics_path(&config))
-        .await
-        .map_err(analytics_store_error_to_store_error)?;
+    let auth_store = open_auth_store(&config, &store).await?;
+    let user_store = open_user_store(&config, &store).await?;
+    let saved_store = open_saved_store(&config, &store).await?;
+    let analytics_store = open_analytics_store(&config, &store).await?;
     let state = AppState {
         store,
         slack_auth: auth::SlackAuthConfig::from_config(&config),
@@ -159,15 +154,106 @@ async fn open_store(config: &ApiConfig) -> Result<EventStore, StoreError> {
     EventStore::open(&config.event_log_path).await
 }
 
+#[cfg(test)]
+async fn open_auth_store(
+    config: &ApiConfig,
+    _store: &EventStore,
+) -> Result<auth_store::AuthStore, StoreError> {
+    auth_store::LocalAuthStore::open(&config.auth_store_path)
+        .await
+        .map(Into::into)
+        .map_err(auth_store_error_to_store_error)
+}
+
+#[cfg(not(test))]
+async fn open_auth_store(
+    _config: &ApiConfig,
+    store: &EventStore,
+) -> Result<auth_store::AuthStore, StoreError> {
+    let pool = store
+        .postgres_pool()
+        .ok_or(StoreError::MissingDatabaseUrl)?;
+    Ok(auth_store::PostgresAuthStore::new(pool).into())
+}
+
+#[cfg(test)]
+async fn open_user_store(
+    config: &ApiConfig,
+    _store: &EventStore,
+) -> Result<user_store::UserStore, StoreError> {
+    user_store::LocalUserStore::open(&config.synced_users_path)
+        .await
+        .map(Into::into)
+        .map_err(user_store_error_to_store_error)
+}
+
+#[cfg(not(test))]
+async fn open_user_store(
+    _config: &ApiConfig,
+    store: &EventStore,
+) -> Result<user_store::UserStore, StoreError> {
+    let pool = store
+        .postgres_pool()
+        .ok_or(StoreError::MissingDatabaseUrl)?;
+    Ok(user_store::PostgresUserStore::new(pool).into())
+}
+
+#[cfg(test)]
+async fn open_saved_store(
+    config: &ApiConfig,
+    _store: &EventStore,
+) -> Result<saved_store::SavedItemStore, StoreError> {
+    saved_store::LocalSavedItemStore::open(saved_items_path(config))
+        .await
+        .map(Into::into)
+        .map_err(saved_store_error_to_store_error)
+}
+
+#[cfg(not(test))]
+async fn open_saved_store(
+    _config: &ApiConfig,
+    store: &EventStore,
+) -> Result<saved_store::SavedItemStore, StoreError> {
+    let pool = store
+        .postgres_pool()
+        .ok_or(StoreError::MissingDatabaseUrl)?;
+    Ok(saved_store::PostgresSavedItemStore::new(pool).into())
+}
+
+#[cfg(test)]
+async fn open_analytics_store(
+    config: &ApiConfig,
+    _store: &EventStore,
+) -> Result<analytics_store::AnalyticsStore, StoreError> {
+    analytics_store::LocalAnalyticsStore::open(analytics_path(config))
+        .await
+        .map(Into::into)
+        .map_err(analytics_store_error_to_store_error)
+}
+
+#[cfg(not(test))]
+async fn open_analytics_store(
+    _config: &ApiConfig,
+    store: &EventStore,
+) -> Result<analytics_store::AnalyticsStore, StoreError> {
+    let pool = store
+        .postgres_pool()
+        .ok_or(StoreError::MissingDatabaseUrl)?;
+    Ok(analytics_store::PostgresAnalyticsStore::new(pool).into())
+}
+
+#[cfg(test)]
 fn auth_store_error_to_store_error(error: auth_store::AuthStoreError) -> StoreError {
     match error {
         auth_store::AuthStoreError::Read(error)
         | auth_store::AuthStoreError::CreateDirectory(error)
         | auth_store::AuthStoreError::Write(error) => StoreError::Read(error),
+        auth_store::AuthStoreError::Sqlx(error) => StoreError::Sqlx(error),
         auth_store::AuthStoreError::Parse(error) => StoreError::Parse(error),
     }
 }
 
+#[cfg(test)]
 fn user_store_error_to_store_error(error: user_store::UserStoreError) -> StoreError {
     match error {
         user_store::UserStoreError::Read(error) => StoreError::Read(error),
@@ -178,20 +264,24 @@ fn user_store_error_to_store_error(error: user_store::UserStoreError) -> StoreEr
     }
 }
 
+#[cfg(test)]
 fn analytics_store_error_to_store_error(error: analytics_store::AnalyticsStoreError) -> StoreError {
     match error {
         analytics_store::AnalyticsStoreError::Read(error)
         | analytics_store::AnalyticsStoreError::CreateDirectory(error)
         | analytics_store::AnalyticsStoreError::Write(error) => StoreError::Read(error),
+        analytics_store::AnalyticsStoreError::Sqlx(error) => StoreError::Sqlx(error),
         analytics_store::AnalyticsStoreError::Parse(error) => StoreError::Parse(error),
     }
 }
 
+#[cfg(test)]
 fn saved_store_error_to_store_error(error: saved_store::SavedItemStoreError) -> StoreError {
     match error {
         saved_store::SavedItemStoreError::Read(error)
         | saved_store::SavedItemStoreError::CreateDirectory(error)
         | saved_store::SavedItemStoreError::Write(error) => StoreError::Read(error),
+        saved_store::SavedItemStoreError::Sqlx(error) => StoreError::Sqlx(error),
         saved_store::SavedItemStoreError::Parse(error) => StoreError::Parse(error),
     }
 }
@@ -213,6 +303,7 @@ fn read_port(key: &str, fallback: u16) -> u16 {
         .unwrap_or(fallback)
 }
 
+#[cfg(test)]
 fn saved_items_path(config: &ApiConfig) -> String {
     std::env::var("ARCHIVIST_SAVED_ITEMS_PATH").unwrap_or_else(|_| {
         Path::new(&config.auth_store_path)
@@ -223,6 +314,7 @@ fn saved_items_path(config: &ApiConfig) -> String {
     })
 }
 
+#[cfg(test)]
 fn analytics_path(config: &ApiConfig) -> String {
     std::env::var("ARCHIVIST_ANALYTICS_PATH").unwrap_or_else(|_| {
         Path::new(&config.auth_store_path)
@@ -233,10 +325,12 @@ fn analytics_path(config: &ApiConfig) -> String {
     })
 }
 
+#[cfg(test)]
 trait DefaultIfEmpty {
     fn if_empty(self, fallback: &str) -> String;
 }
 
+#[cfg(test)]
 impl DefaultIfEmpty for String {
     fn if_empty(self, fallback: &str) -> String {
         if self.is_empty() {

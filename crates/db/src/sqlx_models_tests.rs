@@ -6,23 +6,22 @@ use super::{
 #[test]
 fn sqlx_rows_cover_core_entities() {
     let message = MessageRow {
-        team_id: "T123".to_owned(),
         channel_id: "C123".to_owned(),
         ts: "1700000000.000001".to_owned(),
-        thread_ts: None,
+        root_ts: "1700000000.000001".to_owned(),
         user_id: Some("U123".to_owned()),
         text: "hello".to_owned(),
+        occurred_at: "2026-03-10T12:00:00Z".to_owned(),
     };
     let reaction = ReactionRow {
-        team_id: "T123".to_owned(),
         channel_id: "C123".to_owned(),
         message_ts: message.ts.clone(),
         user_id: "U123".to_owned(),
         name: "thumbsup".to_owned(),
+        occurred_at: "2026-03-10T12:01:00Z".to_owned(),
     };
     let file = FileRow {
         id: "F123".to_owned(),
-        team_id: "T123".to_owned(),
         channel_id: "C123".to_owned(),
         message_ts: message.ts.clone(),
         name: "brief.pdf".to_owned(),
@@ -31,14 +30,12 @@ fn sqlx_rows_cover_core_entities() {
         size_bytes: Some(42),
     };
     let channel = ChannelRow {
-        team_id: "T123".to_owned(),
         id: "C123".to_owned(),
         kind: "public".to_owned(),
         name: Some("general".to_owned()),
         is_archived: false,
     };
     let user = UserRow {
-        team_id: "T123".to_owned(),
         id: "U123".to_owned(),
         display_name: Some("Thomas".to_owned()),
         avatar_url: Some("https://example.com/avatar.png".to_owned()),
@@ -47,24 +44,22 @@ fn sqlx_rows_cover_core_entities() {
     let search_document = SearchDocumentRow {
         team_id: "T123".to_owned(),
         channel_id: "C123".to_owned(),
+        root_ts: message.ts.clone(),
         message_ts: message.ts.clone(),
         title: Some("General".to_owned()),
         body: "hello".to_owned(),
+        message_occurred_at: "2026-03-10T12:00:00Z".to_owned(),
     };
     let analytics_event = AnalyticsEventRow {
-        event_name: "thread_viewed".to_owned(),
-        subject_id: Some("thread_1".to_owned()),
-        payload_json: "{}".to_owned(),
+        event_type: "thread_viewed".to_owned(),
+        user_id: Some("U123".to_owned()),
+        metadata: "{}".to_owned(),
+        created_at: "2026-03-10T12:10:00Z".to_owned(),
     };
     let saved_item = SavedItemRow {
-        team_id: "T123".to_owned(),
-        slack_user_id: "U123".to_owned(),
-        thread_id: "C123:1700000000.000001".to_owned(),
+        user_id: "U123".to_owned(),
         channel_id: "C123".to_owned(),
         root_ts: message.ts.clone(),
-        title: "General".to_owned(),
-        preview: "hello".to_owned(),
-        last_activity_ts: "1700000000.000002".to_owned(),
         saved_at: "2026-03-09T12:00:00Z".to_owned(),
     };
     let thread_summary = ThreadSummaryRow {
@@ -77,6 +72,7 @@ fn sqlx_rows_cover_core_entities() {
         participant_count: 2,
         reaction_count: 1,
         file_count: 1,
+        root_message_at: "2026-03-10T12:00:00Z".to_owned(),
         last_activity_ts: "1700000000.000002".to_owned(),
     };
 
@@ -85,7 +81,7 @@ fn sqlx_rows_cover_core_entities() {
     assert_eq!(channel.name.as_deref(), Some("general"));
     assert!(user.is_active);
     assert_eq!(search_document.body, "hello");
-    assert_eq!(saved_item.thread_id, "C123:1700000000.000001");
+    assert_eq!(saved_item.user_id, "U123");
     assert_eq!(thread_summary.participant_count, 2);
-    assert_eq!(analytics_event.event_name, "thread_viewed");
+    assert_eq!(analytics_event.event_type, "thread_viewed");
 }

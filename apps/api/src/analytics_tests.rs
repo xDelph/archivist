@@ -35,10 +35,10 @@ async fn test_state() -> AppState {
             token_url: None,
         },
         session_secret: None,
-        auth_store,
-        user_store,
-        saved_store,
-        analytics_store,
+        auth_store: auth_store.into(),
+        user_store: user_store.into(),
+        saved_store: saved_store.into(),
+        analytics_store: analytics_store.into(),
     }
 }
 
