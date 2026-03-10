@@ -12,6 +12,8 @@ mod threads;
 mod user_store;
 
 use axum::{Json, Router, extract::State, middleware, routing::get};
+#[cfg(test)]
+use db::JsonlEventStore;
 use db::{EventStore, StoreError};
 use domain::WorkspaceMode;
 use search::SearchBackend;
@@ -88,7 +90,7 @@ struct HealthResponse {
 }
 
 pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
-    let store = EventStore::open(&config.event_log_path).await?;
+    let store = open_store(&config).await?;
     let auth_store = auth_store::LocalAuthStore::open(&config.auth_store_path)
         .await
         .map_err(auth_store_error_to_store_error)?;
@@ -143,6 +145,18 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         .merge(protected_api)
         .with_state(state)
         .layer(TraceLayer::new_for_http()))
+}
+
+#[cfg(test)]
+async fn open_store(config: &ApiConfig) -> Result<EventStore, StoreError> {
+    JsonlEventStore::open(&config.event_log_path)
+        .await
+        .map(Into::into)
+}
+
+#[cfg(not(test))]
+async fn open_store(config: &ApiConfig) -> Result<EventStore, StoreError> {
+    EventStore::open(&config.event_log_path).await
 }
 
 fn auth_store_error_to_store_error(error: auth_store::AuthStoreError) -> StoreError {

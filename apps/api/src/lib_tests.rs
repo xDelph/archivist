@@ -68,5 +68,5 @@ async fn health_route_reports_workspace_capabilities() {
 
     assert_eq!(payload["service"], "api");
     assert_eq!(payload["workspace_mode"], "single_workspace");
-    assert_eq!(payload["repository_mode"], "local_jsonl_mock");
+    assert_eq!(payload["repository_mode"], "test_jsonl");
 }

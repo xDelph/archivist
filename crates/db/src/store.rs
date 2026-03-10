@@ -14,15 +14,15 @@ use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryMode {
-    LocalJsonlMock,
-    PostgresLegacy,
+    TestJsonl,
+    Postgres,
 }
 
 impl RepositoryMode {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::LocalJsonlMock => "local_jsonl_mock",
-            Self::PostgresLegacy => "postgres_legacy",
+            Self::TestJsonl => "test_jsonl",
+            Self::Postgres => "postgres",
         }
     }
 }
@@ -50,6 +50,8 @@ pub enum StoreError {
     Parse(#[from] serde_json::Error),
     #[error("database operation failed")]
     Sqlx(#[source] sqlx::Error),
+    #[error("missing postgres database url")]
+    MissingDatabaseUrl,
     #[error("failed to create event log directory")]
     CreateDirectory(#[source] std::io::Error),
     #[error("failed to append to event log")]
@@ -71,19 +73,17 @@ impl EventStore {
 
         #[cfg(not(test))]
         {
-            let path = path.as_ref();
-            if let Some(database_url) = runtime_database_url() {
-                PgEventStore::open(&database_url).await.map(Self::Postgres)
-            } else {
-                JsonlEventStore::open(path).await.map(Self::Local)
-            }
+            let _ = path.as_ref();
+            PgEventStore::open(&runtime_database_url()?)
+                .await
+                .map(Self::Postgres)
         }
     }
 
     pub const fn mode(&self) -> RepositoryMode {
         match self {
-            Self::Local(_) => RepositoryMode::LocalJsonlMock,
-            Self::Postgres(_) => RepositoryMode::PostgresLegacy,
+            Self::Local(_) => RepositoryMode::TestJsonl,
+            Self::Postgres(_) => RepositoryMode::Postgres,
         }
     }
 
@@ -434,15 +434,13 @@ async fn append_job(path: &Path, job: &ProcessEventJob) -> Result<(), StoreError
 }
 
 #[cfg(not(test))]
-fn runtime_database_url() -> Option<String> {
+fn runtime_database_url() -> Result<String, StoreError> {
     std::env::var("POSTGRES_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
         .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            std::env::var("DATABASE_URL")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-        })
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .ok_or(StoreError::MissingDatabaseUrl)
 }
 
 #[cfg(test)]

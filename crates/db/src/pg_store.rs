@@ -49,29 +49,24 @@ impl PgEventStore {
         &self,
         job: &ProcessEventJob,
     ) -> Result<StoreOutcome, StoreError> {
-        let has_slack_events = table_exists(&self.pool, "slack_events").await?;
         let mut tx = self.pool.begin().await.map_err(StoreError::Sqlx)?;
         let payload_json = json!(job);
-        let inserted = if has_slack_events {
-            sqlx::query(
-                r#"
-                INSERT INTO slack_events (event_id, team_id, event_time, payload_json)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (event_id) DO NOTHING
-                "#,
-            )
-            .bind(&job.event_id)
-            .bind(&job.team_id)
-            .bind(job.event_time)
-            .bind(payload_json)
-            .execute(&mut *tx)
-            .await
-            .map_err(StoreError::Sqlx)?
-            .rows_affected()
-                > 0
-        } else {
-            true
-        };
+        let inserted = sqlx::query(
+            r#"
+            INSERT INTO slack_events (event_id, team_id, event_time, payload_json)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (event_id) DO NOTHING
+            "#,
+        )
+        .bind(&job.event_id)
+        .bind(&job.team_id)
+        .bind(job.event_time)
+        .bind(payload_json)
+        .execute(&mut *tx)
+        .await
+        .map_err(StoreError::Sqlx)?
+        .rows_affected()
+            > 0;
 
         if !inserted {
             tx.rollback().await.map_err(StoreError::Sqlx)?;
@@ -409,24 +404,12 @@ impl PgEventStore {
 }
 
 async fn count_rows(pool: &PgPool, table: &str) -> Result<usize, StoreError> {
-    if !table_exists(pool, table).await? {
-        return Ok(0);
-    }
-
     let query = format!("SELECT COUNT(*)::bigint AS count FROM {table}");
     let count = sqlx::query_scalar::<_, i64>(&query)
         .fetch_one(pool)
         .await
         .map_err(StoreError::Sqlx)?;
     Ok(count.max(0) as usize)
-}
-
-async fn table_exists(pool: &PgPool, table: &str) -> Result<bool, StoreError> {
-    sqlx::query_scalar::<_, bool>("SELECT to_regclass($1) IS NOT NULL")
-        .bind(table)
-        .fetch_one(pool)
-        .await
-        .map_err(StoreError::Sqlx)
 }
 
 fn normalize_empty(value: String) -> Option<String> {
