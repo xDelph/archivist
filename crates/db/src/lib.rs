@@ -3,6 +3,7 @@ mod local_store;
 mod memory;
 mod pg_materialized;
 mod pg_store_backfill;
+mod pg_store_backfill_sql;
 mod pg_store;
 mod pg_store_reads;
 mod pg_support;
