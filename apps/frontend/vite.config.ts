@@ -10,6 +10,7 @@ export default defineConfig({
 			"/api": "http://127.0.0.1:4000",
 			"/health": "http://127.0.0.1:4000",
 		},
+		allowedHosts: ["past-organizer-vinyl-boom.trycloudflare.com"],
 	},
 	resolve: {
 		alias: {

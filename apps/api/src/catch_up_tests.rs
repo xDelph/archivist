@@ -73,6 +73,7 @@ async fn catch_up_route_requires_authenticated_session() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -234,6 +235,7 @@ async fn catch_up_route_groups_threads_by_channel_and_sorts_by_activity() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -303,6 +305,7 @@ async fn catch_up_route_rejects_invalid_windows() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -379,6 +382,7 @@ async fn catch_up_route_returns_all_single_workspace_threads() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")

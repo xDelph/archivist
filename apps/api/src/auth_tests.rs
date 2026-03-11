@@ -144,6 +144,7 @@ fn config_with_defaults(tempdir: &TempDir) -> ApiConfig {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     }
 }
 

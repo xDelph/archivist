@@ -185,7 +185,7 @@ pub(crate) async fn slack_callback(
         )
     })?;
     let mut response = if prefers_html_response(&headers) {
-        Redirect::to("/").into_response()
+        Redirect::to(&state.web_origin).into_response()
     } else {
         Json(identity).into_response()
     };

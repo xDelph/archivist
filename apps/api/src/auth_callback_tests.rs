@@ -133,7 +133,7 @@ async fn slack_callback_redirects_html_clients_back_to_the_app() {
             .headers()
             .get("location")
             .and_then(|value| value.to_str().ok()),
-        Some("/")
+        Some(crate::LOCAL_DEV_WEB_ORIGIN)
     );
     let set_cookie = response
         .headers()

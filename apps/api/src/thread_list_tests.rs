@@ -124,6 +124,7 @@ async fn thread_list_route_returns_paginated_filtered_threads() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router");
@@ -200,6 +201,7 @@ async fn thread_list_route_rejects_invalid_sort_values() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -276,6 +278,7 @@ async fn thread_list_route_uses_single_workspace_thread_keys() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")

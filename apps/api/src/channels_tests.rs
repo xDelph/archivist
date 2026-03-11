@@ -30,6 +30,7 @@ async fn channels_route_requires_authenticated_session() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -151,6 +152,7 @@ async fn channels_route_reports_activity_and_channel_metadata() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -243,6 +245,7 @@ async fn channels_route_merges_single_workspace_channel_activity() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")

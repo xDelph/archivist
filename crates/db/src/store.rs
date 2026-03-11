@@ -45,6 +45,8 @@ pub enum StoreError {
     Sqlx(#[source] sqlx::Error),
     #[error("missing postgres database url")]
     MissingDatabaseUrl,
+    #[error("invalid runtime configuration: {0}")]
+    InvalidRuntimeConfig(&'static str),
     #[error("failed to create event log directory")]
     CreateDirectory(#[source] std::io::Error),
     #[error("failed to append to event log")]

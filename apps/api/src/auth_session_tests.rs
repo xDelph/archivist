@@ -55,6 +55,7 @@ async fn me_rejects_missing_sessions() {
             redirect_uri: None,
             token_url: None,
         },
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
         session_secret: Some("session_secret".to_owned()),
         auth_store: crate::auth_store::LocalAuthStore::open(
             tempdir.path().join("auth-identities.json"),

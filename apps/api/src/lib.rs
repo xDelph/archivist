@@ -11,7 +11,16 @@ mod thread_list;
 mod threads;
 mod user_store;
 
-use axum::{Json, Router, extract::State, middleware, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::{
+        HeaderValue, Method,
+        header::{ACCEPT, CONTENT_TYPE},
+    },
+    middleware,
+    routing::get,
+};
 #[cfg(test)]
 use db::JsonlEventStore;
 use db::{EventStore, StoreError};
@@ -20,13 +29,19 @@ use search::SearchBackend;
 use serde::Serialize;
 #[cfg(test)]
 use std::path::Path;
-use tower_http::trace::TraceLayer;
+use tower_http::{
+    cors::{AllowOrigin, CorsLayer},
+    trace::TraceLayer,
+};
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 4000;
 const DEFAULT_EVENT_LOG_PATH: &str = "logs/process-events.jsonl";
 const DEFAULT_AUTH_STORE_PATH: &str = "logs/auth-identities.json";
 const DEFAULT_SYNCED_USERS_PATH: &str = "logs/synced-users.json";
+pub(crate) const LOCAL_DEV_WEB_ORIGIN: &str = "http://127.0.0.1:3001";
+pub(crate) const LOCALHOST_WEB_ORIGIN: &str = "http://localhost:3001";
+const DEFAULT_WEB_ORIGIN: &str = LOCAL_DEV_WEB_ORIGIN;
 #[cfg(test)]
 const DEFAULT_SAVED_ITEMS_PATH: &str = "logs/saved-items.json";
 #[cfg(test)]
@@ -44,6 +59,7 @@ pub struct ApiConfig {
     pub session_secret: Option<String>,
     pub auth_store_path: String,
     pub synced_users_path: String,
+    pub web_origin: String,
 }
 
 impl ApiConfig {
@@ -62,6 +78,8 @@ impl ApiConfig {
                 .unwrap_or_else(|_| DEFAULT_AUTH_STORE_PATH.to_owned()),
             synced_users_path: std::env::var("ARCHIVIST_SYNCED_USERS_PATH")
                 .unwrap_or_else(|_| DEFAULT_SYNCED_USERS_PATH.to_owned()),
+            web_origin: std::env::var("ARCHIVIST_WEB_ORIGIN")
+                .unwrap_or_else(|_| DEFAULT_WEB_ORIGIN.to_owned()),
         }
     }
 
@@ -74,6 +92,7 @@ impl ApiConfig {
 pub(crate) struct AppState {
     pub(crate) store: EventStore,
     pub(crate) slack_auth: auth::SlackAuthConfig,
+    pub(crate) web_origin: String,
     pub(crate) session_secret: Option<String>,
     pub(crate) auth_store: auth_store::AuthStore,
     pub(crate) user_store: user_store::UserStore,
@@ -99,12 +118,19 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let state = AppState {
         store,
         slack_auth: auth::SlackAuthConfig::from_config(&config),
+        web_origin: config.web_origin.clone(),
         session_secret: config.session_secret.clone(),
         auth_store,
         user_store,
         saved_store,
         analytics_store,
     };
+    let web_origins = allowlisted_web_origins(&config.web_origin)?;
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_headers([ACCEPT, CONTENT_TYPE])
+        .allow_credentials(true)
+        .allow_origin(AllowOrigin::list(web_origins));
     let protected_api = Router::new()
         .route("/api/catch-up", get(catch_up::catch_up))
         .route("/api/channels", get(channels::channels))
@@ -137,7 +163,25 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         .route("/api/auth/logout", axum::routing::post(auth::logout))
         .merge(protected_api)
         .with_state(state)
+        .layer(cors)
         .layer(TraceLayer::new_for_http()))
+}
+
+fn allowlisted_web_origins(web_origin: &str) -> Result<Vec<HeaderValue>, StoreError> {
+    let mut origins = vec![web_origin.to_owned()];
+    if web_origin == LOCAL_DEV_WEB_ORIGIN {
+        origins.push(LOCALHOST_WEB_ORIGIN.to_owned());
+    } else if web_origin == LOCALHOST_WEB_ORIGIN {
+        origins.push(LOCAL_DEV_WEB_ORIGIN.to_owned());
+    }
+
+    origins
+        .into_iter()
+        .map(|origin| {
+            HeaderValue::from_str(&origin)
+                .map_err(|_| StoreError::InvalidRuntimeConfig("ARCHIVIST_WEB_ORIGIN"))
+        })
+        .collect()
 }
 
 #[cfg(test)]

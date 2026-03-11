@@ -213,6 +213,7 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router");
@@ -268,6 +269,7 @@ async fn search_route_requires_authenticated_session() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -317,6 +319,7 @@ async fn search_route_rejects_invalid_sort_values() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")

@@ -136,6 +136,7 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -187,6 +188,7 @@ async fn thread_detail_route_requires_authenticated_session() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -237,6 +239,7 @@ async fn thread_detail_route_rejects_invalid_ids() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
@@ -307,6 +310,7 @@ async fn thread_detail_route_resolves_single_workspace_threads() {
             .join("synced-users.json")
             .display()
             .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
     })
     .await
     .expect("router")
