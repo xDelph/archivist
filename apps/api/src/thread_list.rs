@@ -82,7 +82,7 @@ struct ThreadSummary {
 
 pub(crate) async fn thread_list(
     State(state): State<AppState>,
-    Extension(claims): Extension<SessionClaims>,
+    Extension(_claims): Extension<SessionClaims>,
     Query(query): Query<ThreadListQuery>,
 ) -> Result<Json<ThreadListResponse>, (StatusCode, Json<ErrorResponse>)> {
     let sort = ThreadSort::parse(query.sort.as_deref()).ok_or((
@@ -108,38 +108,10 @@ pub(crate) async fn thread_list(
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
     let items = build_thread_summaries(
-        state
-            .store
-            .channels()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|channel| channel.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .messages()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|message| message.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .reactions()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|reaction| reaction.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .files()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|file| file.team_id == claims.team_id)
-            .collect(),
+        state.store.channels().await.map_err(store_failed)?,
+        state.store.messages().await.map_err(store_failed)?,
+        state.store.reactions().await.map_err(store_failed)?,
+        state.store.files().await.map_err(store_failed)?,
         ThreadListFilters {
             channel_id: query.channel_id.as_deref(),
             date_from: query.date_from.as_deref(),

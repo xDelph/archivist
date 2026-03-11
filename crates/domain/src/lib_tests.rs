@@ -23,7 +23,6 @@ fn channel_kind_can_be_inferred_from_ids_and_types() {
 fn process_event_jobs_report_public_scope() {
     let job = ProcessEventJob {
         event_id: "evt_1".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -43,14 +42,12 @@ fn process_event_jobs_report_public_scope() {
 #[test]
 fn core_entities_are_constructible_for_single_workspace_scope() {
     let channel = Channel {
-        team_id: "T123".to_owned(),
         id: "C123".to_owned(),
         kind: ChannelKind::Public,
         name: Some("general".to_owned()),
         is_archived: false,
     };
     let user = User {
-        team_id: "T123".to_owned(),
         id: "U123".to_owned(),
         display_name: Some("Thomas".to_owned()),
         is_active: true,
@@ -60,7 +57,6 @@ fn core_entities_are_constructible_for_single_workspace_scope() {
         root_ts: "1700000000.000001".to_owned(),
     };
     let message = Message {
-        team_id: user.team_id.clone(),
         channel_id: channel.id.clone(),
         ts: thread.root_ts.clone(),
         thread_ts: Some(thread.root_ts.clone()),
@@ -68,7 +64,6 @@ fn core_entities_are_constructible_for_single_workspace_scope() {
         text: "hello".to_owned(),
     };
     let reaction = Reaction {
-        team_id: user.team_id,
         channel_id: channel.id,
         message_ts: thread.root_ts,
         user_id: user.id,
@@ -76,7 +71,6 @@ fn core_entities_are_constructible_for_single_workspace_scope() {
     };
     let file = File {
         id: "F123".to_owned(),
-        team_id: "T123".to_owned(),
         channel_id: "C123".to_owned(),
         message_ts: "1700000000.000001".to_owned(),
         name: "brief.pdf".to_owned(),

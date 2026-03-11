@@ -15,7 +15,6 @@ fn config_uses_defaults() {
     assert_eq!(config.slack_client_id, None);
     assert_eq!(config.slack_client_secret, None);
     assert_eq!(config.slack_redirect_uri, None);
-    assert_eq!(config.slack_workspace_id, None);
     assert_eq!(config.slack_token_url, None);
     assert_eq!(config.session_secret, None);
     assert_eq!(config.auth_store_path, "logs/auth-identities.json");
@@ -34,7 +33,6 @@ async fn health_route_reports_workspace_capabilities() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: None,
         auth_store_path: tempdir

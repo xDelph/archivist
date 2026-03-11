@@ -1,6 +1,8 @@
+mod local_store;
 mod memory;
 mod pg_materialized;
 mod pg_store;
+mod pg_store_reads;
 mod pg_support;
 mod search_index;
 mod sqlx_models;
@@ -9,6 +11,7 @@ mod sqlx_schema;
 mod store;
 mod thread_summary_index;
 
+pub use local_store::JsonlEventStore;
 pub use memory::InMemoryEventStore;
 pub use pg_store::PgEventStore;
 pub use sqlx_models::{
@@ -25,6 +28,4 @@ pub use sqlx_schema::{
     backfill_search_documents_query, create_saved_items_table_query,
     create_search_documents_table_query, create_thread_summaries_table_query,
 };
-pub use store::{
-    EventStore, JsonlEventStore, RepositoryHealth, RepositoryMode, StoreError, StoreOutcome,
-};
+pub use store::{EventStore, RepositoryHealth, RepositoryMode, StoreError, StoreOutcome};

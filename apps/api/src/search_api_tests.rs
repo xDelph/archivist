@@ -46,14 +46,12 @@ fn build_search_results_respects_filters_and_sorting() {
         vec![
             domain::Channel {
                 id: "C123".to_owned(),
-                team_id: "T123".to_owned(),
                 name: Some("product".to_owned()),
                 kind: domain::ChannelKind::Public,
                 is_archived: false,
             },
             domain::Channel {
                 id: "C999".to_owned(),
-                team_id: "T123".to_owned(),
                 name: Some("random".to_owned()),
                 kind: domain::ChannelKind::Public,
                 is_archived: false,
@@ -61,7 +59,6 @@ fn build_search_results_respects_filters_and_sorting() {
         ],
         vec![
             domain::Message {
-                team_id: "T123".to_owned(),
                 channel_id: "C123".to_owned(),
                 ts: "1700000200.000001".to_owned(),
                 thread_ts: None,
@@ -69,7 +66,6 @@ fn build_search_results_respects_filters_and_sorting() {
                 text: "release notes are ready".to_owned(),
             },
             domain::Message {
-                team_id: "T123".to_owned(),
                 channel_id: "C123".to_owned(),
                 ts: "1700000300.000001".to_owned(),
                 thread_ts: Some("1700000200.000001".to_owned()),
@@ -77,7 +73,6 @@ fn build_search_results_respects_filters_and_sorting() {
                 text: "release notes include search improvements".to_owned(),
             },
             domain::Message {
-                team_id: "T123".to_owned(),
                 channel_id: "C999".to_owned(),
                 ts: "1700000400.000001".to_owned(),
                 thread_ts: None,
@@ -87,7 +82,6 @@ fn build_search_results_respects_filters_and_sorting() {
         ],
         vec![
             SearchDocumentRow {
-                team_id: "T123".to_owned(),
                 channel_id: "C123".to_owned(),
                 root_ts: "1700000200.000001".to_owned(),
                 message_ts: "1700000200.000001".to_owned(),
@@ -96,7 +90,6 @@ fn build_search_results_respects_filters_and_sorting() {
                 message_occurred_at: "1700000200".to_owned(),
             },
             SearchDocumentRow {
-                team_id: "T123".to_owned(),
                 channel_id: "C123".to_owned(),
                 root_ts: "1700000200.000001".to_owned(),
                 message_ts: "1700000300.000001".to_owned(),
@@ -105,7 +98,6 @@ fn build_search_results_respects_filters_and_sorting() {
                 message_occurred_at: "1700000300".to_owned(),
             },
             SearchDocumentRow {
-                team_id: "T123".to_owned(),
                 channel_id: "C999".to_owned(),
                 root_ts: "1700000400.000001".to_owned(),
                 message_ts: "1700000400.000001".to_owned(),
@@ -157,7 +149,6 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
         store
             .record_process_event(&ProcessEventJob {
                 event_id: event_id.to_owned(),
-                team_id: "T123".to_owned(),
                 event_time: now,
                 received_at: now,
                 channel_id: channel_id.to_owned(),
@@ -176,14 +167,13 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_4".to_owned(),
-            team_id: "T999".to_owned(),
             event_time: now,
             received_at: now,
             channel_id: "C123".to_owned(),
             channel_kind: ChannelKind::Public,
             payload: EventPayload::Message {
                 user_id: Some("U999".to_owned()),
-                text: Some("release notes for another workspace".to_owned()),
+                text: Some("release notes from another author".to_owned()),
                 ts: format!("{}.000001", now - 10),
                 thread_ts: None,
                 files: vec![],
@@ -196,7 +186,6 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
@@ -212,7 +201,6 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -253,7 +241,7 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
         payload
             .items
             .iter()
-            .all(|item| !item.snippet.contains("another workspace"))
+            .any(|item| item.snippet.contains("another author"))
     );
 }
 
@@ -268,7 +256,6 @@ async fn search_route_requires_authenticated_session() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -303,7 +290,6 @@ async fn search_route_rejects_invalid_sort_values() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
@@ -319,7 +305,6 @@ async fn search_route_rejects_invalid_sort_values() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir

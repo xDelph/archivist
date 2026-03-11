@@ -8,36 +8,26 @@ use domain::{File, Reaction};
 use sqlx::{Row, Transaction};
 use std::collections::{HashMap, HashSet};
 
-type FileKey = (String, String);
-type ReactionKey = (String, String, String, String, String);
+type FileKey = (String, String, String);
+type ReactionKey = (String, String, String, String);
 
 pub(crate) async fn refresh_thread_views(
     tx: &mut Transaction<'_, sqlx::Postgres>,
-    workspace_id: &str,
     channel_id: &str,
     root_ts: &str,
 ) -> Result<(), StoreError> {
-    let messages = load_thread_messages(tx, workspace_id, channel_id, root_ts).await?;
-    let reactions = load_thread_reactions(tx, workspace_id, channel_id, root_ts).await?;
-    let files = load_thread_files(tx, workspace_id, channel_id, root_ts).await?;
+    let messages = load_thread_messages(tx, channel_id, root_ts).await?;
+    let reactions = load_thread_reactions(tx, channel_id, root_ts).await?;
+    let files = load_thread_files(tx, channel_id, root_ts).await?;
     let message_map = messages
         .into_iter()
-        .map(|message| {
-            (
-                (
-                    message.team_id.clone(),
-                    message.channel_id.clone(),
-                    message.ts.clone(),
-                ),
-                message,
-            )
-        })
+        .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
         .collect::<MessageMap>();
+    let root_key = (channel_id.to_owned(), root_ts.to_owned());
     let reaction_set = reactions
         .into_iter()
         .map(|reaction| {
             (
-                reaction.team_id,
                 reaction.channel_id,
                 reaction.message_ts,
                 reaction.user_id,
@@ -47,21 +37,55 @@ pub(crate) async fn refresh_thread_views(
         .collect::<HashSet<ReactionKey>>();
     let file_map = files
         .into_iter()
-        .map(|file| ((file.team_id.clone(), file.id.clone()), file))
+        .map(|file| {
+            (
+                (
+                    file.channel_id.clone(),
+                    file.message_ts.clone(),
+                    file.id.clone(),
+                ),
+                file,
+            )
+        })
         .collect::<HashMap<FileKey, _>>();
+
+    // Thread read models are root-keyed, so replies arriving before the root must not
+    // materialize rows that would violate root-message foreign keys.
+    if !message_map.contains_key(&root_key) {
+        tracing::debug!(
+            channel_id = %channel_id,
+            root_ts = %root_ts,
+            "skipping thread view materialization until root message exists"
+        );
+        sqlx::query(
+            r#"
+            DELETE FROM search_documents
+            WHERE channel_id = $1 AND root_ts = $2
+            "#,
+        )
+        .bind(channel_id)
+        .bind(root_ts)
+        .execute(&mut **tx)
+        .await
+        .map_err(StoreError::Sqlx)?;
+        sqlx::query(
+            r#"
+            DELETE FROM thread_summaries
+            WHERE channel_id = $1 AND root_ts = $2
+            "#,
+        )
+        .bind(channel_id)
+        .bind(root_ts)
+        .execute(&mut **tx)
+        .await
+        .map_err(StoreError::Sqlx)?;
+        return Ok(());
+    }
+
     let mut search_documents = SearchDocumentMap::new();
-    refresh_search_documents(
-        &mut search_documents,
-        &message_map,
-        workspace_id,
-        channel_id,
-        root_ts,
-    );
-    let summary = build_thread_summaries(&message_map, &reaction_set, &file_map).remove(&(
-        workspace_id.to_owned(),
-        channel_id.to_owned(),
-        root_ts.to_owned(),
-    ));
+    refresh_search_documents(&mut search_documents, &message_map, channel_id, root_ts);
+    let summary = build_thread_summaries(&message_map, &reaction_set, &file_map)
+        .remove(&(channel_id.to_owned(), root_ts.to_owned()));
 
     sqlx::query(
         r#"
@@ -192,7 +216,6 @@ pub(crate) async fn upsert_thread_summary(
 
 async fn load_thread_messages(
     tx: &mut Transaction<'_, sqlx::Postgres>,
-    workspace_id: &str,
     channel_id: &str,
     root_ts: &str,
 ) -> Result<Vec<domain::Message>, StoreError> {
@@ -210,15 +233,11 @@ async fn load_thread_messages(
     .await
     .map_err(StoreError::Sqlx)?;
 
-    Ok(rows
-        .into_iter()
-        .map(|row| map_message_row(workspace_id, row))
-        .collect())
+    Ok(rows.into_iter().map(map_message_row).collect())
 }
 
 async fn load_thread_reactions(
     tx: &mut Transaction<'_, sqlx::Postgres>,
-    workspace_id: &str,
     channel_id: &str,
     root_ts: &str,
 ) -> Result<Vec<Reaction>, StoreError> {
@@ -243,7 +262,6 @@ async fn load_thread_reactions(
     Ok(rows
         .into_iter()
         .map(|row| Reaction {
-            team_id: workspace_id.to_owned(),
             channel_id: row.get("channel_id"),
             message_ts: row.get("message_ts"),
             user_id: row.get("user_id"),
@@ -254,7 +272,6 @@ async fn load_thread_reactions(
 
 async fn load_thread_files(
     tx: &mut Transaction<'_, sqlx::Postgres>,
-    workspace_id: &str,
     channel_id: &str,
     root_ts: &str,
 ) -> Result<Vec<File>, StoreError> {
@@ -292,7 +309,6 @@ async fn load_thread_files(
             let permalink: Option<String> = row.get("permalink");
             File {
                 id: row.get("id"),
-                team_id: workspace_id.to_owned(),
                 channel_id: row.get("channel_id"),
                 message_ts: row.get("message_ts"),
                 name: row.get("name"),

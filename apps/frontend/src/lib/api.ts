@@ -8,7 +8,6 @@ export interface ApiHealth {
 
 export interface CurrentUser {
 	slack_user_id: string;
-	team_id: string;
 	email: string | null;
 	display_name: string | null;
 	avatar_url: string | null;

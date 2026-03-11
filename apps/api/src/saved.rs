@@ -57,7 +57,7 @@ pub(crate) async fn list_saved_items(
     let channel_names = channel_names(state.store.channels().await.map_err(store_failed)?);
     let items = state
         .saved_store
-        .list_items(&claims.team_id, &claims.slack_user_id)
+        .list_items(&claims.slack_user_id)
         .await
         .into_iter()
         .map(|item| saved_item_response(item, &channel_names))
@@ -84,11 +84,7 @@ pub(crate) async fn save_item(
         .await
         .map_err(store_failed)?
         .into_iter()
-        .find(|summary| {
-            summary.team_id == claims.team_id
-                && summary.channel_id == channel_id
-                && summary.root_ts == root_ts
-        })
+        .find(|summary| summary.channel_id == channel_id && summary.root_ts == root_ts)
         .ok_or((
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -99,7 +95,6 @@ pub(crate) async fn save_item(
     let saved_item = state
         .saved_store
         .upsert_item(SavedItemRecord {
-            team_id: claims.team_id.clone(),
             slack_user_id: claims.slack_user_id.clone(),
             thread_id: thread_id.to_owned(),
             channel_id: channel_id.to_owned(),
@@ -134,7 +129,7 @@ pub(crate) async fn delete_saved_item(
 
     let removed = state
         .saved_store
-        .remove_item(&claims.team_id, &claims.slack_user_id, &id)
+        .remove_item(&claims.slack_user_id, &id)
         .await
         .map_err(saved_store_error)?;
     if !removed {

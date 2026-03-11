@@ -6,13 +6,8 @@ use std::collections::{HashMap, HashSet};
 fn rebuild_thread_summaries_rolls_up_thread_activity() {
     let mut messages = HashMap::new();
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000001".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000001".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000001".to_owned(),
             thread_ts: None,
@@ -21,13 +16,8 @@ fn rebuild_thread_summaries_rolls_up_thread_activity() {
         },
     );
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000002".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000002".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000002".to_owned(),
             thread_ts: Some("1700000000.000001".to_owned()),
@@ -36,17 +26,19 @@ fn rebuild_thread_summaries_rolls_up_thread_activity() {
         },
     );
     let reactions = HashSet::from([(
-        "T123".to_owned(),
         "C123".to_owned(),
         "1700000000.000002".to_owned(),
         "U789".to_owned(),
         "eyes".to_owned(),
     )]);
     let files = HashMap::from([(
-        ("T123".to_owned(), "F123".to_owned()),
+        (
+            "C123".to_owned(),
+            "1700000000.000002".to_owned(),
+            "F123".to_owned(),
+        ),
         File {
             id: "F123".to_owned(),
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             message_ts: "1700000000.000002".to_owned(),
             name: "brief.pdf".to_owned(),
@@ -58,11 +50,7 @@ fn rebuild_thread_summaries_rolls_up_thread_activity() {
     let thread_summaries = build_thread_summaries(&messages, &reactions, &files);
 
     let summary = thread_summaries
-        .get(&(
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000001".to_owned(),
-        ))
+        .get(&("C123".to_owned(), "1700000000.000001".to_owned()))
         .expect("summary");
     assert_eq!(summary.title, "root summary");
     assert_eq!(summary.reply_count, 1);
@@ -73,51 +61,36 @@ fn rebuild_thread_summaries_rolls_up_thread_activity() {
 }
 
 #[test]
-fn rebuild_thread_summaries_keeps_same_channel_threads_separated_by_team() {
+fn rebuild_thread_summaries_keeps_channel_threads_separated() {
     let mut messages = HashMap::new();
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000001".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000001".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000001".to_owned(),
             thread_ts: None,
             user_id: Some("U123".to_owned()),
-            text: "team one root".to_owned(),
+            text: "channel one root".to_owned(),
         },
     );
     messages.insert(
-        (
-            "T999".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000001".to_owned(),
-        ),
+        ("C999".to_owned(), "1700000000.000001".to_owned()),
         Message {
-            team_id: "T999".to_owned(),
-            channel_id: "C123".to_owned(),
+            channel_id: "C999".to_owned(),
             ts: "1700000000.000001".to_owned(),
             thread_ts: None,
             user_id: Some("U999".to_owned()),
-            text: "team two root".to_owned(),
+            text: "channel two root".to_owned(),
         },
     );
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000002".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000002".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000002".to_owned(),
             thread_ts: Some("1700000000.000001".to_owned()),
             user_id: Some("U456".to_owned()),
-            text: "team one reply".to_owned(),
+            text: "channel one reply".to_owned(),
         },
     );
 
@@ -126,21 +99,13 @@ fn rebuild_thread_summaries_keeps_same_channel_threads_separated_by_team() {
     assert_eq!(thread_summaries.len(), 2);
     assert_eq!(
         thread_summaries
-            .get(&(
-                "T123".to_owned(),
-                "C123".to_owned(),
-                "1700000000.000001".to_owned()
-            ))
+            .get(&("C123".to_owned(), "1700000000.000001".to_owned()))
             .map(|summary| summary.reply_count),
         Some(1)
     );
     assert_eq!(
         thread_summaries
-            .get(&(
-                "T999".to_owned(),
-                "C123".to_owned(),
-                "1700000000.000001".to_owned()
-            ))
+            .get(&("C999".to_owned(), "1700000000.000001".to_owned()))
             .map(|summary| summary.reply_count),
         Some(0)
     );

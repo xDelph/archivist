@@ -58,8 +58,7 @@ pub const fn search_rank_expression() -> &'static str {
 
 pub const fn ranked_search_query() -> &'static str {
     r#"
-SELECT team_id,
-       channel_id,
+SELECT channel_id,
        message_ts,
        title,
        body,

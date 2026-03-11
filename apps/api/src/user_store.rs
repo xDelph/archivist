@@ -10,7 +10,6 @@ use tokio::{fs, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct SyncedUserRecord {
-    pub(crate) team_id: String,
     pub(crate) slack_user_id: String,
     pub(crate) display_name: Option<String>,
     pub(crate) avatar_url: Option<String>,
@@ -64,28 +63,23 @@ impl LocalUserStore {
     #[cfg(test)]
     pub(crate) async fn upsert_user(&self, user: SyncedUserRecord) -> Result<(), UserStoreError> {
         let mut state = self.state.lock().await;
-        match state.iter_mut().find(|existing| {
-            existing.team_id == user.team_id && existing.slack_user_id == user.slack_user_id
-        }) {
+        match state
+            .iter_mut()
+            .find(|existing| existing.slack_user_id == user.slack_user_id)
+        {
             Some(existing) => *existing = user,
             None => state.push(user),
         }
-        state.sort_by(|left, right| {
-            (&left.team_id, &left.slack_user_id).cmp(&(&right.team_id, &right.slack_user_id))
-        });
+        state.sort_by(|left, right| left.slack_user_id.cmp(&right.slack_user_id));
         persist_state(&self.path, &state).await
     }
 
-    pub(crate) async fn find_user(
-        &self,
-        team_id: &str,
-        slack_user_id: &str,
-    ) -> Option<SyncedUserRecord> {
+    pub(crate) async fn find_user(&self, slack_user_id: &str) -> Option<SyncedUserRecord> {
         self.state
             .lock()
             .await
             .iter()
-            .find(|user| user.team_id == team_id && user.slack_user_id == slack_user_id)
+            .find(|user| user.slack_user_id == slack_user_id)
             .cloned()
     }
 
@@ -103,13 +97,9 @@ impl PostgresUserStore {
 }
 
 impl UserStore {
-    pub(crate) async fn find_user(
-        &self,
-        team_id: &str,
-        slack_user_id: &str,
-    ) -> Option<SyncedUserRecord> {
+    pub(crate) async fn find_user(&self, slack_user_id: &str) -> Option<SyncedUserRecord> {
         match self {
-            Self::Local(store) => store.find_user(team_id, slack_user_id).await,
+            Self::Local(store) => store.find_user(slack_user_id).await,
             Self::Postgres(store) => sqlx::query(
                 r#"
                 SELECT id, display_name, avatar_url, is_active
@@ -123,7 +113,6 @@ impl UserStore {
             .ok()
             .flatten()
             .map(|row| SyncedUserRecord {
-                team_id: team_id.to_owned(),
                 slack_user_id: row.get("id"),
                 display_name: row.get("display_name"),
                 avatar_url: row.get("avatar_url"),

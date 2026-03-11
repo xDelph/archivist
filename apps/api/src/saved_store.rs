@@ -12,7 +12,6 @@ use tokio::{fs, sync::Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SavedItemRecord {
-    pub(crate) team_id: String,
     pub(crate) slack_user_id: String,
     pub(crate) thread_id: String,
     pub(crate) channel_id: String,
@@ -40,7 +39,7 @@ pub(crate) enum SavedItemStore {
     Postgres(PostgresSavedItemStore),
 }
 
-type SavedItemKey = (String, String, String);
+type SavedItemKey = (String, String);
 type SavedItemMap = HashMap<SavedItemKey, SavedItemRecord>;
 type SharedSavedItemState = Arc<Mutex<SavedItemMap>>;
 
@@ -75,26 +74,18 @@ impl LocalSavedItemStore {
     ) -> Result<SavedItemRecord, SavedItemStoreError> {
         let mut state = self.state.lock().await;
         state.insert(
-            (
-                item.team_id.clone(),
-                item.slack_user_id.clone(),
-                item.thread_id.clone(),
-            ),
+            (item.slack_user_id.clone(), item.thread_id.clone()),
             item.clone(),
         );
         persist_state(&self.path, &state).await?;
         Ok(item)
     }
 
-    pub(crate) async fn list_items(
-        &self,
-        team_id: &str,
-        slack_user_id: &str,
-    ) -> Vec<SavedItemRecord> {
+    pub(crate) async fn list_items(&self, slack_user_id: &str) -> Vec<SavedItemRecord> {
         let state = self.state.lock().await;
         let mut items = state
             .values()
-            .filter(|item| item.team_id == team_id && item.slack_user_id == slack_user_id)
+            .filter(|item| item.slack_user_id == slack_user_id)
             .cloned()
             .collect::<Vec<_>>();
         items.sort_by(|left, right| {
@@ -105,17 +96,12 @@ impl LocalSavedItemStore {
 
     pub(crate) async fn remove_item(
         &self,
-        team_id: &str,
         slack_user_id: &str,
         thread_id: &str,
     ) -> Result<bool, SavedItemStoreError> {
         let mut state = self.state.lock().await;
         let removed = state
-            .remove(&(
-                team_id.to_owned(),
-                slack_user_id.to_owned(),
-                thread_id.to_owned(),
-            ))
+            .remove(&(slack_user_id.to_owned(), thread_id.to_owned()))
             .is_some();
         if removed {
             persist_state(&self.path, &state).await?;
@@ -159,13 +145,9 @@ impl SavedItemStore {
         }
     }
 
-    pub(crate) async fn list_items(
-        &self,
-        team_id: &str,
-        slack_user_id: &str,
-    ) -> Vec<SavedItemRecord> {
+    pub(crate) async fn list_items(&self, slack_user_id: &str) -> Vec<SavedItemRecord> {
         match self {
-            Self::Local(store) => store.list_items(team_id, slack_user_id).await,
+            Self::Local(store) => store.list_items(slack_user_id).await,
             Self::Postgres(store) => sqlx::query(
                 r#"
                 SELECT
@@ -197,7 +179,6 @@ impl SavedItemStore {
                         let channel_id: String = row.get("channel_id");
                         let root_ts: String = row.get("root_ts");
                         SavedItemRecord {
-                            team_id: team_id.to_owned(),
                             slack_user_id: row.get("user_id"),
                             thread_id: format!("{channel_id}:{root_ts}"),
                             channel_id,
@@ -216,12 +197,11 @@ impl SavedItemStore {
 
     pub(crate) async fn remove_item(
         &self,
-        team_id: &str,
         slack_user_id: &str,
         thread_id: &str,
     ) -> Result<bool, SavedItemStoreError> {
         match self {
-            Self::Local(store) => store.remove_item(team_id, slack_user_id, thread_id).await,
+            Self::Local(store) => store.remove_item(slack_user_id, thread_id).await,
             Self::Postgres(store) => {
                 let Some((channel_id, root_ts)) = thread_id.split_once(':') else {
                     return Ok(false);
@@ -275,16 +255,7 @@ async fn load_state(path: &Path) -> Result<SavedItemMap, SavedItemStoreError> {
     let items: Vec<SavedItemRecord> = serde_json::from_slice(&contents)?;
     Ok(items
         .into_iter()
-        .map(|item| {
-            (
-                (
-                    item.team_id.clone(),
-                    item.slack_user_id.clone(),
-                    item.thread_id.clone(),
-                ),
-                item,
-            )
-        })
+        .map(|item| ((item.slack_user_id.clone(), item.thread_id.clone()), item))
         .collect())
 }
 
@@ -297,11 +268,7 @@ async fn persist_state(path: &Path, state: &SavedItemMap) -> Result<(), SavedIte
 
     let mut items = state.values().cloned().collect::<Vec<_>>();
     items.sort_by(|left, right| {
-        (&left.team_id, &left.slack_user_id, &left.thread_id).cmp(&(
-            &right.team_id,
-            &right.slack_user_id,
-            &right.thread_id,
-        ))
+        (&left.slack_user_id, &left.thread_id).cmp(&(&right.slack_user_id, &right.thread_id))
     });
     let payload = serde_json::to_vec_pretty(&items)?;
     fs::write(path, payload)

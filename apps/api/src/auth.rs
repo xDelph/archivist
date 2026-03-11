@@ -30,7 +30,6 @@ pub(crate) struct SlackAuthConfig {
     pub(crate) client_id: Option<String>,
     pub(crate) client_secret: Option<String>,
     pub(crate) redirect_uri: Option<String>,
-    pub(crate) workspace_id: Option<String>,
     pub(crate) token_url: Option<String>,
 }
 
@@ -40,7 +39,6 @@ impl SlackAuthConfig {
             client_id: config.slack_client_id.clone(),
             client_secret: config.slack_client_secret.clone(),
             redirect_uri: config.slack_redirect_uri.clone(),
-            workspace_id: config.slack_workspace_id.clone(),
             token_url: config.slack_token_url.clone(),
         }
     }
@@ -61,7 +59,6 @@ pub(crate) struct SlackCallbackQuery {
 pub(crate) struct SlackIdentityResponse {
     pub(crate) ok: bool,
     pub(crate) slack_user_id: String,
-    pub(crate) team_id: String,
     pub(crate) email: Option<String>,
     pub(crate) display_name: Option<String>,
     pub(crate) avatar_url: Option<String>,
@@ -81,7 +78,6 @@ pub(crate) struct LogoutResponse {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 struct SessionUserResponse {
     slack_user_id: String,
-    team_id: String,
     email: Option<String>,
     display_name: Option<String>,
     avatar_url: Option<String>,
@@ -100,8 +96,6 @@ struct SlackIdentityClaims {
     exp: i64,
     #[serde(rename = "https://slack.com/user_id")]
     slack_user_id: String,
-    #[serde(rename = "https://slack.com/team_id")]
-    team_id: String,
     email: Option<String>,
     name: Option<String>,
     picture: Option<String>,
@@ -149,7 +143,7 @@ pub(crate) async fn slack_callback(
         .map_err(callback_error_response)?;
     let synced_user = state
         .user_store
-        .find_user(&identity.team_id, &identity.slack_user_id)
+        .find_user(&identity.slack_user_id)
         .await
         .ok_or_else(|| callback_error_response(CallbackError::UserNotSynced))?;
     if !synced_user.is_active {
@@ -177,7 +171,6 @@ pub(crate) async fn slack_callback(
         session_secret,
         &session_claims(
             identity.slack_user_id.clone(),
-            identity.team_id.clone(),
             identity.email.clone(),
             identity.display_name.clone(),
             identity.avatar_url.clone(),
@@ -227,7 +220,6 @@ pub(crate) async fn me(
         ok: true,
         user: SessionUserResponse {
             slack_user_id: claims.slack_user_id,
-            team_id: claims.team_id,
             email: claims.email,
             display_name: claims.display_name,
             avatar_url: claims.avatar_url,
@@ -277,7 +269,7 @@ pub(crate) fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {
         return None;
     }
 
-    let mut query = vec![
+    let query = vec![
         ("response_type", "code".to_owned()),
         ("client_id", urlencoding::encode(client_id).into_owned()),
         ("scope", urlencoding::encode(SLACK_OIDC_SCOPE).into_owned()),
@@ -286,15 +278,6 @@ pub(crate) fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {
             urlencoding::encode(redirect_uri).into_owned(),
         ),
     ];
-
-    if let Some(workspace_id) = config
-        .workspace_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|workspace_id| !workspace_id.is_empty())
-    {
-        query.push(("team", urlencoding::encode(workspace_id).into_owned()));
-    }
 
     Some(format!(
         "{SLACK_AUTHORIZE_URL}?{}",
@@ -378,20 +361,9 @@ pub(crate) fn validate_identity_token(
     {
         return Err(CallbackError::InvalidIdentityToken);
     }
-    if let Some(workspace_id) = config
-        .workspace_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        && claims.team_id != workspace_id
-    {
-        return Err(CallbackError::WorkspaceMismatch);
-    }
-
     Ok(SlackIdentityResponse {
         ok: true,
         slack_user_id: claims.slack_user_id,
-        team_id: claims.team_id,
         email: claims.email,
         display_name: claims.name,
         avatar_url: claims.picture,
@@ -427,12 +399,6 @@ fn callback_error_response(error: CallbackError) -> (StatusCode, Json<ErrorRespo
             StatusCode::UNAUTHORIZED,
             Json(ErrorResponse {
                 error: "invalid_identity_token",
-            }),
-        ),
-        CallbackError::WorkspaceMismatch => (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "workspace_mismatch",
             }),
         ),
         CallbackError::UserNotSynced => (
@@ -478,7 +444,6 @@ pub(crate) enum CallbackError {
     MissingConfig,
     TokenExchangeFailed,
     InvalidIdentityToken,
-    WorkspaceMismatch,
     UserNotSynced,
     UserInactive,
 }

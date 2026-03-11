@@ -11,7 +11,6 @@ const SESSION_TTL_SECONDS: i64 = 60 * 60 * 24 * 7;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SessionClaims {
     pub(crate) slack_user_id: String,
-    pub(crate) team_id: String,
     pub(crate) email: Option<String>,
     pub(crate) display_name: Option<String>,
     pub(crate) avatar_url: Option<String>,
@@ -26,14 +25,12 @@ pub(crate) enum SessionError {
 
 pub(crate) fn session_claims(
     slack_user_id: String,
-    team_id: String,
     email: Option<String>,
     display_name: Option<String>,
     avatar_url: Option<String>,
 ) -> SessionClaims {
     SessionClaims {
         slack_user_id,
-        team_id,
         email,
         display_name,
         avatar_url,

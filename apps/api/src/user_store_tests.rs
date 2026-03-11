@@ -9,7 +9,6 @@ async fn local_user_store_upserts_and_reloads_users() {
 
     store
         .upsert_user(SyncedUserRecord {
-            team_id: "T123".to_owned(),
             slack_user_id: "U123".to_owned(),
             display_name: Some("Thomas".to_owned()),
             avatar_url: Some("https://images.example.com/avatar.png".to_owned()),
@@ -19,7 +18,6 @@ async fn local_user_store_upserts_and_reloads_users() {
         .expect("first upsert");
     store
         .upsert_user(SyncedUserRecord {
-            team_id: "T123".to_owned(),
             slack_user_id: "U123".to_owned(),
             display_name: Some("Tom".to_owned()),
             avatar_url: Some("https://images.example.com/avatar-2.png".to_owned()),

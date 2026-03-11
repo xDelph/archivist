@@ -43,7 +43,6 @@ async fn save_and_list_routes_persist_saved_threads() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_root".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 1,
             received_at: 2,
             channel_id: "C123".to_owned(),
@@ -58,7 +57,6 @@ async fn save_and_list_routes_persist_saved_threads() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_message".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 3,
             received_at: 4,
             channel_id: "C123".to_owned(),
@@ -79,7 +77,6 @@ async fn save_and_list_routes_persist_saved_threads() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: Some("thomas@example.com".to_owned()),
             display_name: Some("Thomas".to_owned()),
             avatar_url: Some("https://example.com/avatar.png".to_owned()),
@@ -167,7 +164,6 @@ async fn delete_route_removes_saved_items() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_message".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 3,
             received_at: 4,
             channel_id: "C123".to_owned(),
@@ -247,7 +243,6 @@ fn config_with_defaults(tempdir: &tempfile::TempDir) -> ApiConfig {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -268,7 +263,6 @@ fn valid_session_token() -> String {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: Some("thomas@example.com".to_owned()),
             display_name: Some("Thomas".to_owned()),
             avatar_url: Some("https://example.com/avatar.png".to_owned()),

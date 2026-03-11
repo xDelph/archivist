@@ -56,6 +56,10 @@ impl R2Config {
             _ => None,
         }
     }
+
+    pub(crate) fn public_url(&self, key: &str) -> String {
+        format!("{}/{}", self.public_url.trim_end_matches('/'), key)
+    }
 }
 
 impl R2Client {

@@ -15,13 +15,14 @@ fn config_uses_local_defaults() {
     assert_eq!(config.event_log_path, "logs/process-events.jsonl");
     assert_eq!(config.worker_base_url, "http://127.0.0.1:4002");
     assert_eq!(config.slack_api_base_url, "https://slack.com/api");
-    assert_eq!(config.slack_bot_token, None);
+    assert_eq!(config.slack_user_token, None);
     assert_eq!(config.r2_account_id, None);
     assert_eq!(config.r2_access_key_id, None);
     assert_eq!(config.r2_secret_access_key, None);
     assert_eq!(config.r2_bucket, None);
     assert_eq!(config.r2_public_url, None);
     assert_eq!(config.r2_endpoint_url, None);
+    assert_eq!(config.r2_key_prefix, None);
     assert_eq!(config.current_signing_key, None);
     assert_eq!(config.next_signing_key, None);
 }
@@ -39,13 +40,14 @@ async fn duplicate_events_are_acknowledged() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
-            slack_bot_token: None,
+            slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_bucket: None,
             r2_public_url: None,
             r2_endpoint_url: None,
+            r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -53,7 +55,6 @@ async fn duplicate_events_are_acknowledged() {
     .expect("router");
     let payload = ProcessEventJob {
         event_id: "evt_1".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -134,13 +135,14 @@ async fn reaction_events_are_counted_in_health() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
-            slack_bot_token: None,
+            slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_bucket: None,
             r2_public_url: None,
             r2_endpoint_url: None,
+            r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -148,7 +150,6 @@ async fn reaction_events_are_counted_in_health() {
     .expect("router");
     let payload = ProcessEventJob {
         event_id: "evt_reaction".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -208,13 +209,14 @@ async fn file_share_messages_are_counted_in_health() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
-            slack_bot_token: None,
+            slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_bucket: None,
             r2_public_url: None,
             r2_endpoint_url: None,
+            r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -222,7 +224,6 @@ async fn file_share_messages_are_counted_in_health() {
     .expect("router");
     let payload = ProcessEventJob {
         event_id: "evt_file".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -284,7 +285,6 @@ async fn refresh_thread_summaries_job_reports_refreshed_threads() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_root".to_owned(),
-            team_id: "team_1".to_owned(),
             event_time: 1,
             received_at: 2,
             channel_id: "C123".to_owned(),
@@ -307,13 +307,14 @@ async fn refresh_thread_summaries_job_reports_refreshed_threads() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
-            slack_bot_token: None,
+            slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_bucket: None,
             r2_public_url: None,
             r2_endpoint_url: None,
+            r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
         },

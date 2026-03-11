@@ -58,7 +58,6 @@ impl ChannelKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Message {
-    pub team_id: String,
     pub channel_id: String,
     pub ts: String,
     pub thread_ts: Option<String>,
@@ -68,7 +67,6 @@ pub struct Message {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reaction {
-    pub team_id: String,
     pub channel_id: String,
     pub message_ts: String,
     pub user_id: String,
@@ -78,7 +76,6 @@ pub struct Reaction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct File {
     pub id: String,
-    pub team_id: String,
     pub channel_id: String,
     pub message_ts: String,
     pub name: String,
@@ -104,7 +101,6 @@ pub struct Thread {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Channel {
-    pub team_id: String,
     pub id: String,
     pub kind: ChannelKind,
     pub name: Option<String>,
@@ -113,7 +109,6 @@ pub struct Channel {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
-    pub team_id: String,
     pub id: String,
     pub display_name: Option<String>,
     pub is_active: bool,
@@ -143,7 +138,6 @@ pub enum EventPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessEventJob {
     pub event_id: String,
-    pub team_id: String,
     pub event_time: i64,
     pub received_at: i64,
     pub channel_id: String,

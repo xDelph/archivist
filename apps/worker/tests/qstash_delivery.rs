@@ -125,7 +125,6 @@ async fn heartbeat_accepts_next_signing_key() {
 fn sample_job() -> ProcessEventJob {
     ProcessEventJob {
         event_id: "evt_signed".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -147,13 +146,14 @@ fn signed_worker_config(log_path: &std::path::Path) -> WorkerConfig {
         event_log_path: log_path.display().to_string(),
         worker_base_url: WORKER_BASE_URL.to_owned(),
         slack_api_base_url: "https://slack.com/api".to_owned(),
-        slack_bot_token: None,
+        slack_user_token: None,
         r2_account_id: None,
         r2_access_key_id: None,
         r2_secret_access_key: None,
         r2_bucket: None,
         r2_public_url: None,
         r2_endpoint_url: None,
+        r2_key_prefix: None,
         current_signing_key: Some(CURRENT_SIGNING_KEY.to_owned()),
         next_signing_key: Some(NEXT_SIGNING_KEY.to_owned()),
     }

@@ -1,7 +1,5 @@
 use super::*;
-use crate::auth::{
-    CallbackError, SlackAuthConfig, current_unix_timestamp, exchange_code_for_identity,
-};
+use crate::auth::{SlackAuthConfig, current_unix_timestamp, exchange_code_for_identity};
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -29,7 +27,6 @@ async fn slack_callback_rejects_missing_code() {
 async fn slack_callback_exchanges_code_and_validates_identity() {
     let token_server = spawn_token_server(sample_id_token(
         "client_123",
-        "T123",
         "U123",
         current_unix_timestamp() + 60,
     ))
@@ -39,7 +36,6 @@ async fn slack_callback_exchanges_code_and_validates_identity() {
             client_id: Some("client_123".to_owned()),
             client_secret: Some("secret".to_owned()),
             redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-            workspace_id: Some("T123".to_owned()),
             token_url: Some(format!("{}/token", token_server.0)),
         },
         "code_123",
@@ -50,7 +46,6 @@ async fn slack_callback_exchanges_code_and_validates_identity() {
     token_server.1.abort();
 
     assert_eq!(identity.slack_user_id, "U123");
-    assert_eq!(identity.team_id, "T123");
     assert_eq!(identity.display_name.as_deref(), Some("Thomas"));
 }
 
@@ -61,7 +56,6 @@ async fn slack_callback_persists_identity_to_the_local_store() {
     let auth_store_path = tempdir.path().join("auth-identities.json");
     let token_server = spawn_token_server(sample_id_token(
         "client_123",
-        "T123",
         "U123",
         current_unix_timestamp() + 60,
     ))
@@ -101,7 +95,6 @@ async fn slack_callback_persists_identity_to_the_local_store() {
 
     assert_eq!(identities.len(), 1);
     assert_eq!(identities[0].slack_user_id, "U123");
-    assert_eq!(identities[0].team_id, "T123");
     assert_eq!(identities[0].display_name.as_deref(), Some("Thomas"));
 }
 
@@ -111,7 +104,6 @@ async fn slack_callback_redirects_html_clients_back_to_the_app() {
     seed_synced_user(&tempdir, "U123", true).await;
     let token_server = spawn_token_server(sample_id_token(
         "client_123",
-        "T123",
         "U123",
         current_unix_timestamp() + 60,
     ))
@@ -156,7 +148,6 @@ async fn slack_callback_rejects_users_missing_from_the_synced_store() {
     let tempdir = tempdir().expect("tempdir");
     let token_server = spawn_token_server(sample_id_token(
         "client_123",
-        "T123",
         "U123",
         current_unix_timestamp() + 60,
     ))
@@ -187,7 +178,6 @@ async fn slack_callback_rejects_inactive_synced_users() {
     seed_synced_user(&tempdir, "U123", false).await;
     let token_server = spawn_token_server(sample_id_token(
         "client_123",
-        "T123",
         "U123",
         current_unix_timestamp() + 60,
     ))
@@ -218,7 +208,6 @@ async fn slack_callback_requires_session_config_to_complete_sign_in() {
     seed_synced_user(&tempdir, "U123", true).await;
     let token_server = spawn_token_server(sample_id_token(
         "client_123",
-        "T123",
         "U123",
         current_unix_timestamp() + 60,
     ))
@@ -241,30 +230,4 @@ async fn slack_callback_requires_session_config_to_complete_sign_in() {
     token_server.1.abort();
 
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-}
-
-#[tokio::test]
-async fn slack_callback_rejects_workspace_mismatch() {
-    let token_server = spawn_token_server(sample_id_token(
-        "client_123",
-        "T999",
-        "U123",
-        current_unix_timestamp() + 60,
-    ))
-    .await;
-    let result = exchange_code_for_identity(
-        &SlackAuthConfig {
-            client_id: Some("client_123".to_owned()),
-            client_secret: Some("secret".to_owned()),
-            redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-            workspace_id: Some("T123".to_owned()),
-            token_url: Some(format!("{}/token", token_server.0)),
-        },
-        "code_123",
-    )
-    .await;
-
-    token_server.1.abort();
-
-    assert!(matches!(result, Err(CallbackError::WorkspaceMismatch)));
 }

@@ -15,7 +15,6 @@ use tokio::{fs, sync::Mutex};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct AuthIdentity {
     pub(crate) slack_user_id: String,
-    pub(crate) team_id: String,
     pub(crate) display_name: Option<String>,
     pub(crate) avatar_url: Option<String>,
 }
@@ -23,7 +22,7 @@ pub(crate) struct AuthIdentity {
 #[derive(Debug, Clone)]
 pub(crate) struct LocalAuthStore {
     path: Arc<PathBuf>,
-    state: Arc<Mutex<HashMap<(String, String), AuthIdentity>>>,
+    state: Arc<Mutex<HashMap<String, AuthIdentity>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,10 +67,9 @@ impl LocalAuthStore {
     ) -> Result<(), AuthStoreError> {
         let mut state = self.state.lock().await;
         state.insert(
-            (identity.team_id.clone(), identity.slack_user_id.clone()),
+            identity.slack_user_id.clone(),
             AuthIdentity {
                 slack_user_id: identity.slack_user_id.clone(),
-                team_id: identity.team_id.clone(),
                 display_name: identity.display_name.clone(),
                 avatar_url: identity.avatar_url.clone(),
             },
@@ -83,9 +81,7 @@ impl LocalAuthStore {
     pub(crate) async fn identities(&self) -> Vec<AuthIdentity> {
         let state = self.state.lock().await;
         let mut identities = state.values().cloned().collect::<Vec<_>>();
-        identities.sort_by(|left, right| {
-            (&left.team_id, &left.slack_user_id).cmp(&(&right.team_id, &right.slack_user_id))
-        });
+        identities.sort_by(|left, right| left.slack_user_id.cmp(&right.slack_user_id));
         identities
     }
 }
@@ -148,9 +144,7 @@ impl From<PostgresAuthStore> for AuthStore {
     }
 }
 
-async fn load_state(
-    path: &Path,
-) -> Result<HashMap<(String, String), AuthIdentity>, AuthStoreError> {
+async fn load_state(path: &Path) -> Result<HashMap<String, AuthIdentity>, AuthStoreError> {
     if !fs::try_exists(path).await.map_err(AuthStoreError::Read)? {
         return Ok(HashMap::new());
     }
@@ -163,18 +157,13 @@ async fn load_state(
     let identities: Vec<AuthIdentity> = serde_json::from_slice(&contents)?;
     Ok(identities
         .into_iter()
-        .map(|identity| {
-            (
-                (identity.team_id.clone(), identity.slack_user_id.clone()),
-                identity,
-            )
-        })
+        .map(|identity| (identity.slack_user_id.clone(), identity))
         .collect())
 }
 
 async fn persist_state(
     path: &Path,
-    state: &HashMap<(String, String), AuthIdentity>,
+    state: &HashMap<String, AuthIdentity>,
 ) -> Result<(), AuthStoreError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -183,9 +172,7 @@ async fn persist_state(
     }
 
     let mut identities = state.values().cloned().collect::<Vec<_>>();
-    identities.sort_by(|left, right| {
-        (&left.team_id, &left.slack_user_id).cmp(&(&right.team_id, &right.slack_user_id))
-    });
+    identities.sort_by(|left, right| left.slack_user_id.cmp(&right.slack_user_id));
     let payload = serde_json::to_vec_pretty(&identities)?;
     fs::write(path, payload)
         .await

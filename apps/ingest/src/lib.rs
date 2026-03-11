@@ -125,15 +125,28 @@ async fn slack_events(
     let envelope: SlackEnvelope = serde_json::from_slice(&body).map_err(|_| invalid_payload())?;
     match envelope {
         SlackEnvelope::UrlVerification(challenge) => {
+            tracing::info!("responding to slack url verification");
             Ok((StatusCode::OK, Json(challenge)).into_response())
         }
         SlackEnvelope::EventCallback(callback) => {
             if let Some(job) = callback.into_job(current_unix_timestamp()) {
+                tracing::info!(
+                    event_id = %job.event_id,
+                    channel_id = %job.channel_id,
+                    queue_mode = %state.queue.mode().as_str(),
+                    "received slack event callback"
+                );
                 state
                     .queue
                     .publish_process_event(&job)
                     .await
                     .map_err(queue_failed)?;
+                tracing::info!(
+                    event_id = %job.event_id,
+                    channel_id = %job.channel_id,
+                    queue_mode = %state.queue.mode().as_str(),
+                    "enqueued slack event"
+                );
 
                 Ok((
                     StatusCode::OK,
@@ -145,6 +158,7 @@ async fn slack_events(
                 )
                     .into_response())
             } else {
+                tracing::info!("ignored unsupported or non-public slack event");
                 Ok((
                     StatusCode::OK,
                     Json(EventAck {
@@ -156,15 +170,18 @@ async fn slack_events(
                     .into_response())
             }
         }
-        SlackEnvelope::Unknown => Ok((
-            StatusCode::OK,
-            Json(EventAck {
-                ok: true,
-                enqueued: false,
-                reason: "unknown_event",
-            }),
-        )
-            .into_response()),
+        SlackEnvelope::Unknown => {
+            tracing::info!("received unknown slack envelope");
+            Ok((
+                StatusCode::OK,
+                Json(EventAck {
+                    ok: true,
+                    enqueued: false,
+                    reason: "unknown_event",
+                }),
+            )
+                .into_response())
+        }
     }
 }
 
@@ -187,6 +204,13 @@ async fn slack_command(
     if payload.command != command_name {
         return Err(invalid_command_payload());
     }
+
+    tracing::info!(
+        command = command_name,
+        channel_id = payload.channel_id.as_deref().unwrap_or(""),
+        user_id = payload.user_id.as_deref().unwrap_or(""),
+        "received slack slash command"
+    );
 
     Ok(Json(SlashCommandResponse {
         ok: true,
@@ -223,6 +247,7 @@ fn validate_signature(
     })?;
 
     verify_signature(signing_secret, timestamp, body, signature).map_err(|_| {
+        tracing::warn!("rejecting slack request with invalid signature");
         (
             StatusCode::UNAUTHORIZED,
             Json(ErrorResponse {
@@ -254,7 +279,8 @@ fn invalid_command_payload() -> (StatusCode, Json<ErrorResponse>) {
     )
 }
 
-fn queue_failed(_: QueueError) -> (StatusCode, Json<ErrorResponse>) {
+fn queue_failed(error: QueueError) -> (StatusCode, Json<ErrorResponse>) {
+    tracing::error!(?error, "failed to publish event to queue");
     (
         StatusCode::BAD_GATEWAY,
         Json(ErrorResponse {

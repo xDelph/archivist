@@ -41,6 +41,7 @@ pub struct ChannelRow {
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
 pub struct UserRow {
     pub id: String,
+    pub email: Option<String>,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub is_active: bool,
@@ -48,7 +49,6 @@ pub struct UserRow {
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
 pub struct SearchDocumentRow {
-    pub team_id: String,
     pub channel_id: String,
     pub root_ts: String,
     pub message_ts: String,
@@ -59,7 +59,6 @@ pub struct SearchDocumentRow {
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
 pub struct ThreadSummaryRow {
-    pub team_id: String,
     pub channel_id: String,
     pub root_ts: String,
     pub title: String,

@@ -17,7 +17,6 @@ pub struct UrlVerification {
 
 #[derive(Debug, Deserialize)]
 pub struct EventCallback {
-    pub team_id: String,
     pub event_id: String,
     pub event_time: i64,
     pub event: SlackEvent,
@@ -35,7 +34,6 @@ impl EventCallback {
 
                 Some(ProcessEventJob {
                     event_id: self.event_id,
-                    team_id: self.team_id,
                     event_time: self.event_time,
                     received_at,
                     channel_id: message.channel,
@@ -57,7 +55,6 @@ impl EventCallback {
 
                 Some(ProcessEventJob {
                     event_id: self.event_id,
-                    team_id: self.team_id,
                     event_time: self.event_time,
                     received_at,
                     channel_id: reaction.item.channel,
@@ -71,7 +68,6 @@ impl EventCallback {
             }
             SlackEvent::ChannelRename(rename) => Some(ProcessEventJob {
                 event_id: self.event_id,
-                team_id: self.team_id,
                 event_time: self.event_time,
                 received_at,
                 channel_id: rename.channel.id,
@@ -83,7 +79,6 @@ impl EventCallback {
             }),
             SlackEvent::ChannelArchive(archive) => Some(ProcessEventJob {
                 event_id: self.event_id,
-                team_id: self.team_id,
                 event_time: self.event_time,
                 received_at,
                 channel_id: archive.channel,
@@ -95,7 +90,6 @@ impl EventCallback {
             }),
             SlackEvent::ChannelUnarchive(unarchive) => Some(ProcessEventJob {
                 event_id: self.event_id,
-                team_id: self.team_id,
                 event_time: self.event_time,
                 received_at,
                 channel_id: unarchive.channel,

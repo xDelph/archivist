@@ -1,23 +1,27 @@
 use crate::{
-    RepositoryHealth, SearchDocumentRow, StoreOutcome, ThreadSummaryRow,
+    RepositoryHealth, SearchDocumentRow, StoreError, StoreOutcome, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
     thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 
 type FileKey = (String, String, String);
 type ReactionKey = (String, String, String, String);
 
-#[derive(Debug, Clone, Default)]
-pub struct InMemoryEventStore {
-    state: Arc<Mutex<InMemoryState>>,
+#[derive(Debug, Clone)]
+pub struct JsonlEventStore {
+    path: Arc<PathBuf>,
+    state: Arc<Mutex<StoreState>>,
 }
 
 #[derive(Debug, Default)]
-struct InMemoryState {
+struct StoreState {
     seen_events: HashSet<String>,
     messages: MessageMap,
     files: HashMap<FileKey, File>,
@@ -27,9 +31,15 @@ struct InMemoryState {
     thread_summaries: ThreadSummaryMap,
 }
 
-impl InMemoryEventStore {
-    pub fn new() -> Self {
-        Self::default()
+impl JsonlEventStore {
+    pub async fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+        let path = path.as_ref().to_path_buf();
+        let state = load_state(&path).await?;
+
+        Ok(Self {
+            path: Arc::new(path),
+            state: Arc::new(Mutex::new(state)),
+        })
     }
 
     pub async fn health(&self) -> RepositoryHealth {
@@ -44,18 +54,22 @@ impl InMemoryEventStore {
         }
     }
 
-    pub async fn record_process_event(&self, job: &ProcessEventJob) -> StoreOutcome {
+    pub async fn record_process_event(
+        &self,
+        job: &ProcessEventJob,
+    ) -> Result<StoreOutcome, StoreError> {
         let mut state = self.state.lock().await;
         if state.seen_events.contains(&job.event_id) {
-            return StoreOutcome::Duplicate;
+            return Ok(StoreOutcome::Duplicate);
         }
 
+        append_job(&self.path, job).await?;
         state.seen_events.insert(job.event_id.clone());
         state.apply_job(job);
         state.thread_summaries =
             build_thread_summaries(&state.messages, &state.reactions, &state.files);
 
-        StoreOutcome::Inserted
+        Ok(StoreOutcome::Inserted)
     }
 
     pub async fn messages(&self) -> Vec<Message> {
@@ -135,9 +149,36 @@ impl InMemoryEventStore {
         });
         thread_summaries
     }
+
+    pub async fn refresh_thread_summaries(&self) -> usize {
+        let mut state = self.state.lock().await;
+        state.thread_summaries =
+            build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_summaries.len()
+    }
+
+    pub async fn upsert_user_profile(
+        &self,
+        _user_id: &str,
+        _email: Option<&str>,
+        _display_name: Option<&str>,
+        _avatar_url: Option<&str>,
+        _is_active: bool,
+    ) {
+    }
+
+    pub async fn set_file_archive(&self, file_id: &str, storage_key: &str, storage_url: &str) {
+        let mut state = self.state.lock().await;
+        for file in state.files.values_mut() {
+            if file.id == file_id {
+                file.permalink = Some(storage_url.to_owned());
+                tracing::debug!(%file_id, %storage_key, "updated local file archive metadata");
+            }
+        }
+    }
 }
 
-impl InMemoryState {
+impl StoreState {
     fn apply_job(&mut self, job: &ProcessEventJob) {
         match &job.payload {
             EventPayload::Message {
@@ -213,6 +254,50 @@ impl InMemoryState {
     }
 }
 
-#[cfg(test)]
-#[path = "memory_tests.rs"]
-mod tests;
+async fn load_state(path: &Path) -> Result<StoreState, StoreError> {
+    if !fs::try_exists(path).await.map_err(StoreError::Read)? {
+        return Ok(StoreState::default());
+    }
+
+    let contents = fs::read_to_string(path).await.map_err(StoreError::Read)?;
+    let mut state = StoreState::default();
+
+    for line in contents.lines().filter(|line| !line.trim().is_empty()) {
+        let job: ProcessEventJob = serde_json::from_str(line)?;
+        state.seen_events.insert(job.event_id.clone());
+        state.apply_job(&job);
+    }
+    state.thread_summaries =
+        build_thread_summaries(&state.messages, &state.reactions, &state.files);
+
+    Ok(state)
+}
+
+async fn append_job(path: &Path, job: &ProcessEventJob) -> Result<(), StoreError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(StoreError::CreateDirectory)?;
+    }
+
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .await
+        .map_err(StoreError::Append)?;
+    let mut payload = serde_json::to_vec(job)?;
+    payload.push(b'\n');
+
+    file.write_all(&payload).await.map_err(StoreError::Append)
+}
+
+#[cfg(not(test))]
+pub(crate) fn runtime_database_url() -> Result<String, StoreError> {
+    std::env::var("POSTGRES_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .ok_or(StoreError::MissingDatabaseUrl)
+}

@@ -28,7 +28,6 @@ fn authorize_url_omits_team_when_workspace_is_not_configured() {
         client_id: Some("client_123".to_owned()),
         client_secret: None,
         redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-        workspace_id: None,
         token_url: None,
     })
     .expect("authorize url");
@@ -50,7 +49,6 @@ fn authorize_url_requires_client_id_and_redirect_uri() {
             client_id: None,
             client_secret: None,
             redirect_uri: Some("https://archivist.dev/callback".to_owned()),
-            workspace_id: None,
             token_url: None,
         }),
         None
@@ -60,7 +58,6 @@ fn authorize_url_requires_client_id_and_redirect_uri() {
             client_id: Some("client_123".to_owned()),
             client_secret: None,
             redirect_uri: Some("   ".to_owned()),
-            workspace_id: None,
             token_url: None,
         }),
         None
@@ -69,12 +66,11 @@ fn authorize_url_requires_client_id_and_redirect_uri() {
 
 #[test]
 fn parse_identity_claims_reads_slack_claims() {
-    let token = sample_id_token("client_123", "T123", "U123", current_unix_timestamp() + 60);
+    let token = sample_id_token("client_123", "U123", current_unix_timestamp() + 60);
     let claims = parse_identity_claims(&token).expect("claims");
 
     assert_eq!(claims.iss, SLACK_ISSUER);
     assert_eq!(claims.aud, "client_123");
-    assert_eq!(claims.team_id, "T123");
     assert_eq!(claims.slack_user_id, "U123");
 }
 
@@ -103,7 +99,7 @@ async fn slack_start_redirects_to_slack_oidc() {
     assert!(location.contains("response_type=code"));
     assert!(location.contains("client_id=client_123"));
     assert!(location.contains("scope=openid%20profile%20email"));
-    assert!(location.contains("team=T123"));
+    assert!(!location.contains("&team="));
 }
 
 #[tokio::test]
@@ -113,8 +109,6 @@ async fn slack_start_rejects_missing_config() {
     config.slack_client_id = None;
     config.slack_client_secret = None;
     config.slack_redirect_uri = None;
-    config.slack_workspace_id = None;
-
     let response = crate::build_router(config)
         .await
         .expect("router")
@@ -138,7 +132,6 @@ fn config_with_defaults(tempdir: &TempDir) -> ApiConfig {
         slack_client_id: Some("client_123".to_owned()),
         slack_client_secret: Some("secret".to_owned()),
         slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
-        slack_workspace_id: Some("T123".to_owned()),
         slack_token_url: None,
         session_secret: None,
         auth_store_path: tempdir
@@ -159,7 +152,6 @@ async fn seed_synced_user(tempdir: &TempDir, user_id: &str, is_active: bool) {
         .await
         .expect("user store")
         .upsert_user(crate::user_store::SyncedUserRecord {
-            team_id: "T123".to_owned(),
             slack_user_id: user_id.to_owned(),
             display_name: Some("Thomas".to_owned()),
             avatar_url: Some("https://images.example.com/avatar.png".to_owned()),
@@ -169,7 +161,7 @@ async fn seed_synced_user(tempdir: &TempDir, user_id: &str, is_active: bool) {
         .expect("seed synced user");
 }
 
-fn sample_id_token(client_id: &str, team_id: &str, user_id: &str, exp: i64) -> String {
+fn sample_id_token(client_id: &str, user_id: &str, exp: i64) -> String {
     let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
     let claims = URL_SAFE_NO_PAD.encode(
         json!({
@@ -177,7 +169,6 @@ fn sample_id_token(client_id: &str, team_id: &str, user_id: &str, exp: i64) -> S
             "aud": client_id,
             "exp": exp,
             "https://slack.com/user_id": user_id,
-            "https://slack.com/team_id": team_id,
             "email": "thomas@example.com",
             "name": "Thomas",
             "picture": "https://images.example.com/avatar.png"

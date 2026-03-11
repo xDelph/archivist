@@ -11,12 +11,11 @@ pub(crate) async fn count_rows(pool: &PgPool, table: &str) -> Result<usize, Stor
     Ok(count.max(0) as usize)
 }
 
-pub(crate) fn map_message_row(workspace_id: &str, row: PgRow) -> Message {
+pub(crate) fn map_message_row(row: PgRow) -> Message {
     let ts: String = row.get("ts");
     let root_ts: String = row.get("root_ts");
 
     Message {
-        team_id: workspace_id.to_owned(),
         channel_id: row.get("channel_id"),
         ts: ts.clone(),
         thread_ts: (root_ts != ts).then_some(root_ts),

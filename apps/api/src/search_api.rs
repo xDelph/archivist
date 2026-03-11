@@ -73,30 +73,9 @@ pub(crate) async fn search(
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let search_query = parse_search_query(&query)?;
     let items = build_search_results(
-        state
-            .store
-            .channels()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|channel| channel.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .messages()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|message| message.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .search_documents()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|document| document.team_id == claims.team_id)
-            .collect(),
+        state.store.channels().await.map_err(store_failed)?,
+        state.store.messages().await.map_err(store_failed)?,
+        state.store.search_documents().await.map_err(store_failed)?,
         &search_query,
     );
     let page = items

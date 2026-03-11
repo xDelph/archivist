@@ -18,7 +18,6 @@ async fn channels_route_requires_authenticated_session() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -55,7 +54,6 @@ async fn channels_route_reports_activity_and_channel_metadata() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_message".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 1,
             received_at: 2,
             channel_id: "C123".to_owned(),
@@ -79,7 +77,6 @@ async fn channels_route_reports_activity_and_channel_metadata() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_reaction".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 3,
             received_at: 4,
             channel_id: "C123".to_owned(),
@@ -95,7 +92,6 @@ async fn channels_route_reports_activity_and_channel_metadata() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_channel".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 5,
             received_at: 6,
             channel_id: "C123".to_owned(),
@@ -110,7 +106,6 @@ async fn channels_route_reports_activity_and_channel_metadata() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_message_2".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 7,
             received_at: 8,
             channel_id: "C999".to_owned(),
@@ -129,7 +124,6 @@ async fn channels_route_reports_activity_and_channel_metadata() {
         "session_secret",
         &crate::auth::SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
@@ -145,7 +139,6 @@ async fn channels_route_reports_activity_and_channel_metadata() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -192,19 +185,18 @@ async fn channels_route_reports_activity_and_channel_metadata() {
 }
 
 #[tokio::test]
-async fn channels_route_only_returns_channels_for_the_session_team() {
+async fn channels_route_merges_single_workspace_channel_activity() {
     let tempdir = tempdir().expect("tempdir");
     let path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&path).await.expect("store");
 
-    for (event_id, team_id, channel_id, text) in [
-        ("evt_t123", "T123", "C123", "team one"),
-        ("evt_t999", "T999", "C123", "team two"),
+    for (event_id, channel_id, ts, text) in [
+        ("evt_1", "C123", "1700000000.000001", "first thread"),
+        ("evt_2", "C123", "1700000000.000002", "second thread"),
     ] {
         store
             .record_process_event(&ProcessEventJob {
                 event_id: event_id.to_owned(),
-                team_id: team_id.to_owned(),
                 event_time: 1,
                 received_at: 2,
                 channel_id: channel_id.to_owned(),
@@ -212,7 +204,7 @@ async fn channels_route_only_returns_channels_for_the_session_team() {
                 payload: EventPayload::Message {
                     user_id: Some("U123".to_owned()),
                     text: Some(text.to_owned()),
-                    ts: "1700000000.000001".to_owned(),
+                    ts: ts.to_owned(),
                     thread_ts: None,
                     files: vec![],
                 },
@@ -224,7 +216,6 @@ async fn channels_route_only_returns_channels_for_the_session_team() {
         "session_secret",
         &crate::auth::SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
@@ -240,7 +231,6 @@ async fn channels_route_only_returns_channels_for_the_session_team() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -274,5 +264,5 @@ async fn channels_route_only_returns_channels_for_the_session_team() {
 
     assert_eq!(payload.as_array().map(Vec::len), Some(1));
     assert_eq!(payload[0]["id"], "C123");
-    assert_eq!(payload[0]["message_count"], 1);
+    assert_eq!(payload[0]["message_count"], 2);
 }

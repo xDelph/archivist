@@ -9,7 +9,6 @@ async fn local_saved_item_store_upserts_lists_and_removes_items() {
 
     store
         .upsert_item(SavedItemRecord {
-            team_id: "T123".to_owned(),
             slack_user_id: "U123".to_owned(),
             thread_id: "C123:1700000000.000001".to_owned(),
             channel_id: "C123".to_owned(),
@@ -23,7 +22,6 @@ async fn local_saved_item_store_upserts_lists_and_removes_items() {
         .expect("first save");
     store
         .upsert_item(SavedItemRecord {
-            team_id: "T123".to_owned(),
             slack_user_id: "U123".to_owned(),
             thread_id: "C456:1700000000.000002".to_owned(),
             channel_id: "C456".to_owned(),
@@ -37,16 +35,16 @@ async fn local_saved_item_store_upserts_lists_and_removes_items() {
         .expect("second save");
 
     let reopened = LocalSavedItemStore::open(&path).await.expect("reopened");
-    let items = reopened.list_items("T123", "U123").await;
+    let items = reopened.list_items("U123").await;
 
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].thread_id, "C456:1700000000.000002");
 
     assert!(
         reopened
-            .remove_item("T123", "U123", "C456:1700000000.000002")
+            .remove_item("U123", "C456:1700000000.000002")
             .await
             .expect("remove")
     );
-    assert_eq!(reopened.list_items("T123", "U123").await.len(), 1);
+    assert_eq!(reopened.list_items("U123").await.len(), 1);
 }

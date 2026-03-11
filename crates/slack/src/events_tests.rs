@@ -5,7 +5,6 @@ use domain::{ChannelKind, EventPayload, SharedFile};
 fn public_messages_become_jobs() {
     let callback: EventCallback = serde_json::from_str(
         r#"{
-            "team_id": "T123",
             "event_id": "Ev123",
             "event_time": 1700000000,
             "event": {
@@ -41,7 +40,6 @@ fn public_messages_become_jobs() {
 fn public_file_share_messages_become_jobs_with_files() {
     let callback: EventCallback = serde_json::from_str(
         r#"{
-            "team_id": "T123",
             "event_id": "Ev321",
             "event_time": 1700000300,
             "event": {
@@ -92,7 +90,6 @@ fn public_file_share_messages_become_jobs_with_files() {
 fn public_reactions_become_jobs() {
     let callback: EventCallback = serde_json::from_str(
         r#"{
-            "team_id": "T123",
             "event_id": "Ev456",
             "event_time": 1700000100,
             "event": {
@@ -125,7 +122,6 @@ fn public_reactions_become_jobs() {
 fn public_channel_rename_becomes_job() {
     let callback: EventCallback = serde_json::from_str(
         r#"{
-            "team_id": "T123",
             "event_id": "Ev654",
             "event_time": 1700000400,
             "event": {
@@ -155,7 +151,6 @@ fn public_channel_rename_becomes_job() {
 fn public_channel_archive_becomes_job() {
     let callback: EventCallback = serde_json::from_str(
         r#"{
-            "team_id": "T123",
             "event_id": "Ev655",
             "event_time": 1700000500,
             "event": {
@@ -182,7 +177,6 @@ fn public_channel_archive_becomes_job() {
 fn non_public_messages_are_ignored() {
     let callback: EventCallback = serde_json::from_str(
         r#"{
-            "team_id": "T123",
             "event_id": "Ev789",
             "event_time": 1700000200,
             "event": {

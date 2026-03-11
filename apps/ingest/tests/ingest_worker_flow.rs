@@ -29,13 +29,14 @@ async fn slack_event_flows_from_ingest_to_worker() {
             event_log_path: event_log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
-            slack_bot_token: None,
+            slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_bucket: None,
             r2_public_url: None,
             r2_endpoint_url: None,
+            r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -59,7 +60,6 @@ async fn slack_event_flows_from_ingest_to_worker() {
         .post(format!("{ingest_base_url}/api/slack/events"))
         .json(&json!({
             "type": "event_callback",
-            "team_id": "T123",
             "event_id": "Ev123",
             "event_time": 1700000000,
             "event": {
@@ -118,13 +118,14 @@ async fn channel_rename_flows_from_ingest_to_worker() {
             event_log_path: event_log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
-            slack_bot_token: None,
+            slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_bucket: None,
             r2_public_url: None,
             r2_endpoint_url: None,
+            r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -148,7 +149,6 @@ async fn channel_rename_flows_from_ingest_to_worker() {
         .post(format!("{ingest_base_url}/api/slack/events"))
         .json(&json!({
             "type": "event_callback",
-            "team_id": "T123",
             "event_id": "EvChannel123",
             "event_time": 1700000600,
             "event": {
@@ -199,13 +199,14 @@ async fn slack_event_flows_from_ingest_to_worker_through_qstash_mock() {
             event_log_path: event_log_path.display().to_string(),
             worker_base_url: worker_base_url.clone(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
-            slack_bot_token: None,
+            slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
             r2_secret_access_key: None,
             r2_bucket: None,
             r2_public_url: None,
             r2_endpoint_url: None,
+            r2_key_prefix: None,
             current_signing_key: Some(CURRENT_SIGNING_KEY.to_owned()),
             next_signing_key: None,
         },
@@ -238,7 +239,6 @@ async fn slack_event_flows_from_ingest_to_worker_through_qstash_mock() {
         .post(format!("{ingest_base_url}/api/slack/events"))
         .json(&json!({
             "type": "event_callback",
-            "team_id": "T123",
             "event_id": "EvQstash123",
             "event_time": 1700000000,
             "event": {

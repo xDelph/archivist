@@ -85,7 +85,6 @@ async fn qstash_publish_posts_to_publish_endpoint() {
     .expect("queue");
     let job = ProcessEventJob {
         event_id: "evt_1".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),

@@ -5,7 +5,6 @@ use tempfile::tempdir;
 fn sample_job(event_id: &str) -> ProcessEventJob {
     ProcessEventJob {
         event_id: event_id.to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -100,7 +99,6 @@ async fn reaction_jobs_are_tracked_separately() {
     let store = JsonlEventStore::open(&path).await.expect("store");
     let reaction_job = ProcessEventJob {
         event_id: "evt_reaction".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 3,
         received_at: 4,
         channel_id: "C123".to_owned(),
@@ -132,7 +130,6 @@ async fn file_share_messages_track_attached_files() {
     let store = JsonlEventStore::open(&path).await.expect("store");
     let file_job = ProcessEventJob {
         event_id: "evt_file".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 5,
         received_at: 6,
         channel_id: "C123".to_owned(),
@@ -172,7 +169,6 @@ async fn channel_update_jobs_preserve_latest_name_and_archive_state() {
     let store = JsonlEventStore::open(&path).await.expect("store");
     let rename_job = ProcessEventJob {
         event_id: "evt_channel_rename".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 7,
         received_at: 8,
         channel_id: "C123".to_owned(),
@@ -218,7 +214,6 @@ async fn message_jobs_refresh_search_documents_for_full_threads() {
     let store = JsonlEventStore::open(&path).await.expect("store");
     let reply_job = ProcessEventJob {
         event_id: "evt_reply".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 11,
         received_at: 12,
         channel_id: "C123".to_owned(),
@@ -233,7 +228,6 @@ async fn message_jobs_refresh_search_documents_for_full_threads() {
     };
     let root_job = ProcessEventJob {
         event_id: "evt_root".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 13,
         received_at: 14,
         channel_id: "C123".to_owned(),
@@ -281,7 +275,6 @@ async fn message_jobs_refresh_thread_summaries_for_full_threads() {
     let store = JsonlEventStore::open(&path).await.expect("store");
     let reply_job = ProcessEventJob {
         event_id: "evt_reply".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 11,
         received_at: 12,
         channel_id: "C123".to_owned(),
@@ -302,7 +295,6 @@ async fn message_jobs_refresh_thread_summaries_for_full_threads() {
     };
     let root_job = ProcessEventJob {
         event_id: "evt_root".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 13,
         received_at: 14,
         channel_id: "C123".to_owned(),
@@ -317,7 +309,6 @@ async fn message_jobs_refresh_thread_summaries_for_full_threads() {
     };
     let reaction_job = ProcessEventJob {
         event_id: "evt_reaction".to_owned(),
-        team_id: "team_1".to_owned(),
         event_time: 15,
         received_at: 16,
         channel_id: "C123".to_owned(),

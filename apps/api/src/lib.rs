@@ -40,7 +40,6 @@ pub struct ApiConfig {
     pub slack_client_id: Option<String>,
     pub slack_client_secret: Option<String>,
     pub slack_redirect_uri: Option<String>,
-    pub slack_workspace_id: Option<String>,
     pub slack_token_url: Option<String>,
     pub session_secret: Option<String>,
     pub auth_store_path: String,
@@ -57,7 +56,6 @@ impl ApiConfig {
             slack_client_id: std::env::var("SLACK_CLIENT_ID").ok(),
             slack_client_secret: std::env::var("SLACK_CLIENT_SECRET").ok(),
             slack_redirect_uri: std::env::var("SLACK_REDIRECT_URI").ok(),
-            slack_workspace_id: std::env::var("SLACK_WORKSPACE_ID").ok(),
             slack_token_url: std::env::var("SLACK_OIDC_TOKEN_URL").ok(),
             session_secret: std::env::var("ARCHIVIST_SESSION_SECRET").ok(),
             auth_store_path: std::env::var("ARCHIVIST_AUTH_STORE_PATH")

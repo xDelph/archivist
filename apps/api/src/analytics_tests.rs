@@ -31,7 +31,6 @@ async fn test_state() -> AppState {
             client_id: None,
             client_secret: None,
             redirect_uri: None,
-            workspace_id: None,
             token_url: None,
         },
         session_secret: None,

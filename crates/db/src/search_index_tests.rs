@@ -5,13 +5,8 @@ use domain::Message;
 fn refresh_search_documents_uses_root_titles_for_entire_threads() {
     let mut messages = MessageMap::new();
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000001".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000001".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000001".to_owned(),
             thread_ts: None,
@@ -20,13 +15,8 @@ fn refresh_search_documents_uses_root_titles_for_entire_threads() {
         },
     );
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000002".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000002".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000002".to_owned(),
             thread_ts: Some("1700000000.000001".to_owned()),
@@ -39,7 +29,6 @@ fn refresh_search_documents_uses_root_titles_for_entire_threads() {
     refresh_search_documents(
         &mut search_documents,
         &messages,
-        "T123",
         "C123",
         "1700000000.000001",
     );
@@ -47,27 +36,18 @@ fn refresh_search_documents_uses_root_titles_for_entire_threads() {
     assert_eq!(search_documents.len(), 2);
     assert_eq!(
         search_documents
-            .get(&(
-                "T123".to_owned(),
-                "C123".to_owned(),
-                "1700000000.000002".to_owned()
-            ))
+            .get(&("C123".to_owned(), "1700000000.000002".to_owned()))
             .and_then(|document| document.title.as_deref()),
         Some("root summary")
     );
 }
 
 #[test]
-fn refresh_search_documents_keeps_team_roots_isolated() {
+fn refresh_search_documents_keeps_channel_roots_isolated() {
     let mut messages = MessageMap::new();
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000001".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000001".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000001".to_owned(),
             thread_ts: None,
@@ -76,33 +56,23 @@ fn refresh_search_documents_keeps_team_roots_isolated() {
         },
     );
     messages.insert(
-        (
-            "T999".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000001".to_owned(),
-        ),
+        ("C999".to_owned(), "1700000000.000001".to_owned()),
         Message {
-            team_id: "T999".to_owned(),
-            channel_id: "C123".to_owned(),
+            channel_id: "C999".to_owned(),
             ts: "1700000000.000001".to_owned(),
             thread_ts: None,
             user_id: Some("U999".to_owned()),
-            text: "team two root".to_owned(),
+            text: "other channel root".to_owned(),
         },
     );
     messages.insert(
-        (
-            "T123".to_owned(),
-            "C123".to_owned(),
-            "1700000000.000002".to_owned(),
-        ),
+        ("C123".to_owned(), "1700000000.000002".to_owned()),
         Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000002".to_owned(),
             thread_ts: Some("1700000000.000001".to_owned()),
             user_id: Some("U456".to_owned()),
-            text: "team one reply".to_owned(),
+            text: "channel one reply".to_owned(),
         },
     );
     let mut search_documents = SearchDocumentMap::new();
@@ -110,24 +80,15 @@ fn refresh_search_documents_keeps_team_roots_isolated() {
     refresh_search_documents(
         &mut search_documents,
         &messages,
-        "T123",
         "C123",
         "1700000000.000001",
     );
 
     assert_eq!(
         search_documents
-            .get(&(
-                "T123".to_owned(),
-                "C123".to_owned(),
-                "1700000000.000002".to_owned()
-            ))
+            .get(&("C123".to_owned(), "1700000000.000002".to_owned()))
             .and_then(|document| document.title.as_deref()),
         Some("team one root")
     );
-    assert!(!search_documents.contains_key(&(
-        "T999".to_owned(),
-        "C123".to_owned(),
-        "1700000000.000001".to_owned()
-    )));
+    assert!(!search_documents.contains_key(&("C999".to_owned(), "1700000000.000001".to_owned())));
 }

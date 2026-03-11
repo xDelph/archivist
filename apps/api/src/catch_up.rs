@@ -93,22 +93,8 @@ pub(crate) async fn catch_up(
         }),
     ))?;
     let channels = build_catch_up(
-        state
-            .store
-            .channels()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|channel| channel.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .thread_summaries()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|summary| summary.team_id == claims.team_id)
-            .collect(),
+        state.store.channels().await.map_err(store_failed)?,
+        state.store.thread_summaries().await.map_err(store_failed)?,
         window,
         current_unix_timestamp(),
     );

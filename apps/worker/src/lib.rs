@@ -1,5 +1,6 @@
 mod archive;
 mod backfill;
+mod backfill_slack;
 mod storage;
 mod summaries;
 
@@ -17,6 +18,7 @@ use queue::{
     build_process_event_endpoint, build_refresh_thread_summaries_endpoint, verify_qstash_signature,
 };
 use serde::Serialize;
+use tokio::sync::OnceCell;
 use tower_http::trace::TraceLayer;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
@@ -32,13 +34,14 @@ pub struct WorkerConfig {
     pub event_log_path: String,
     pub worker_base_url: String,
     pub slack_api_base_url: String,
-    pub slack_bot_token: Option<String>,
+    pub slack_user_token: Option<String>,
     pub r2_account_id: Option<String>,
     pub r2_access_key_id: Option<String>,
     pub r2_secret_access_key: Option<String>,
     pub r2_bucket: Option<String>,
     pub r2_public_url: Option<String>,
     pub r2_endpoint_url: Option<String>,
+    pub r2_key_prefix: Option<String>,
     pub current_signing_key: Option<String>,
     pub next_signing_key: Option<String>,
 }
@@ -55,13 +58,14 @@ impl WorkerConfig {
                 .unwrap_or_else(|_| DEFAULT_WORKER_BASE_URL.to_owned()),
             slack_api_base_url: std::env::var("SLACK_API_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_SLACK_API_BASE_URL.to_owned()),
-            slack_bot_token: std::env::var("SLACK_BOT_TOKEN").ok(),
+            slack_user_token: std::env::var("SLACK_USER_TOKEN").ok(),
             r2_account_id: std::env::var("CLOUDFLARE_R2_ACCOUNT_ID").ok(),
             r2_access_key_id: std::env::var("CLOUDFLARE_R2_ACCESS_KEY_ID").ok(),
             r2_secret_access_key: std::env::var("CLOUDFLARE_R2_SECRET_ACCESS_KEY").ok(),
             r2_bucket: std::env::var("CLOUDFLARE_R2_BUCKET").ok(),
             r2_public_url: std::env::var("CLOUDFLARE_R2_PUBLIC_URL").ok(),
             r2_endpoint_url: std::env::var("CLOUDFLARE_R2_ENDPOINT_URL").ok(),
+            r2_key_prefix: std::env::var("ARCHIVIST_R2_KEY_PREFIX").ok(),
             current_signing_key: std::env::var("UPSTASH_QSTASH_CURRENT_SIGNING_KEY").ok(),
             next_signing_key: std::env::var("UPSTASH_QSTASH_NEXT_SIGNING_KEY").ok(),
         }
@@ -80,8 +84,10 @@ struct AppState {
     heartbeat_url: String,
     refresh_thread_summaries_url: String,
     slack_api_base_url: String,
-    slack_bot_token: Option<String>,
+    slack_user_token: Option<String>,
     r2_config: Option<storage::R2Config>,
+    r2_key_prefix: Option<String>,
+    slack_workspace_prefix: std::sync::Arc<OnceCell<Option<String>>>,
     current_signing_key: Option<String>,
     next_signing_key: Option<String>,
 }
@@ -142,7 +148,7 @@ pub fn build_router(
             heartbeat_url,
             refresh_thread_summaries_url,
             slack_api_base_url: config.slack_api_base_url,
-            slack_bot_token: config.slack_bot_token,
+            slack_user_token: config.slack_user_token,
             r2_config: storage::R2Config::from_options(
                 config.r2_account_id,
                 config.r2_access_key_id,
@@ -151,6 +157,10 @@ pub fn build_router(
                 config.r2_public_url,
                 config.r2_endpoint_url,
             ),
+            r2_key_prefix: config
+                .r2_key_prefix
+                .and_then(|value| (!value.trim().is_empty()).then_some(value)),
+            slack_workspace_prefix: std::sync::Arc::new(OnceCell::new()),
             current_signing_key: config.current_signing_key,
             next_signing_key: config.next_signing_key,
         })
@@ -192,12 +202,24 @@ async fn process_event(
     )?;
 
     let job: ProcessEventJob = serde_json::from_slice(&body).map_err(|_| invalid_payload())?;
+    tracing::info!(
+        event_id = %job.event_id,
+        channel_id = %job.channel_id,
+        event_kind = payload_kind(&job),
+        "processing worker event"
+    );
     let outcome = state
         .store
         .record_process_event(&job)
         .await
         .map_err(store_failed)?;
     let duplicate = matches!(outcome, StoreOutcome::Duplicate);
+    tracing::info!(
+        event_id = %job.event_id,
+        channel_id = %job.channel_id,
+        duplicate,
+        "processed worker event"
+    );
 
     Ok(Json(ProcessEventResponse {
         ok: true,
@@ -217,6 +239,7 @@ async fn heartbeat(
         state.current_signing_key.as_deref(),
         state.next_signing_key.as_deref(),
     )?;
+    tracing::debug!("worker heartbeat accepted");
 
     Ok(Json(HeartbeatResponse {
         ok: true,
@@ -296,6 +319,7 @@ fn invalid_payload() -> (StatusCode, Json<ErrorResponse>) {
 }
 
 fn qstash_signature_failed(error: SignatureError) -> (StatusCode, Json<ErrorResponse>) {
+    tracing::warn!(?error, "worker rejected qstash delivery");
     let error = match error {
         SignatureError::MissingSignatureHeader => "missing_qstash_signature",
         _ => "invalid_qstash_signature",
@@ -309,6 +333,14 @@ fn read_port(key: &str, fallback: u16) -> u16 {
         .ok()
         .and_then(|raw| raw.parse().ok())
         .unwrap_or(fallback)
+}
+
+fn payload_kind(job: &ProcessEventJob) -> &'static str {
+    match &job.payload {
+        domain::EventPayload::Message { .. } => "message",
+        domain::EventPayload::ReactionAdded { .. } => "reaction_added",
+        domain::EventPayload::ChannelUpdated { .. } => "channel_updated",
+    }
 }
 
 #[cfg(test)]

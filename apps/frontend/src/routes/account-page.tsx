@@ -55,7 +55,6 @@ export function AccountPage() {
 						label="Slack user"
 						value={user?.slack_user_id || "Unknown"}
 					/>
-					<AccountRow label="Workspace" value={user?.team_id || "Unknown"} />
 					<AccountRow label="Email" value={user?.email || "Not available"} />
 					<AccountRow
 						label="Last checked"

@@ -63,30 +63,9 @@ pub(crate) async fn thread_detail(
         &id,
         channel_id,
         root_ts,
-        state
-            .store
-            .messages()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|message| message.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .reactions()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|reaction| reaction.team_id == claims.team_id)
-            .collect(),
-        state
-            .store
-            .files()
-            .await
-            .map_err(store_failed)?
-            .into_iter()
-            .filter(|file| file.team_id == claims.team_id)
-            .collect(),
+        state.store.messages().await.map_err(store_failed)?,
+        state.store.reactions().await.map_err(store_failed)?,
+        state.store.files().await.map_err(store_failed)?,
     )
     .ok_or((
         StatusCode::NOT_FOUND,

@@ -51,10 +51,11 @@ SET kind = EXCLUDED.kind,
 
 pub const fn upsert_user_query() -> &'static str {
     r#"
-INSERT INTO users (id, display_name, avatar_url, is_active)
-VALUES ($1, $2, $3, $4)
+INSERT INTO users (id, email, display_name, avatar_url, is_active)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (id) DO UPDATE
-SET display_name = EXCLUDED.display_name,
+SET email = EXCLUDED.email,
+    display_name = EXCLUDED.display_name,
     avatar_url = EXCLUDED.avatar_url,
     is_active = EXCLUDED.is_active
 "#

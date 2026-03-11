@@ -30,7 +30,6 @@ fn build_thread_detail_requires_a_root_message() {
         "C123",
         "1700000000.000001",
         vec![Message {
-            team_id: "T123".to_owned(),
             channel_id: "C123".to_owned(),
             ts: "1700000000.000002".to_owned(),
             thread_ts: Some("1700000000.000001".to_owned()),
@@ -54,7 +53,6 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_root".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 1,
             received_at: 2,
             channel_id: "C123".to_owned(),
@@ -78,7 +76,6 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_reply".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 3,
             received_at: 4,
             channel_id: "C123".to_owned(),
@@ -96,7 +93,6 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_reaction".to_owned(),
-            team_id: "T123".to_owned(),
             event_time: 5,
             received_at: 6,
             channel_id: "C123".to_owned(),
@@ -113,7 +109,6 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
@@ -129,7 +124,6 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -181,7 +175,6 @@ async fn thread_detail_route_requires_authenticated_session() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -217,7 +210,6 @@ async fn thread_detail_route_rejects_invalid_ids() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
@@ -233,7 +225,6 @@ async fn thread_detail_route_rejects_invalid_ids() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -263,7 +254,7 @@ async fn thread_detail_route_rejects_invalid_ids() {
 }
 
 #[tokio::test]
-async fn thread_detail_route_hides_threads_from_other_teams() {
+async fn thread_detail_route_resolves_single_workspace_threads() {
     let tempdir = tempdir().expect("tempdir");
     let path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&path).await.expect("store");
@@ -271,7 +262,6 @@ async fn thread_detail_route_hides_threads_from_other_teams() {
     store
         .record_process_event(&ProcessEventJob {
             event_id: "evt_other_team_root".to_owned(),
-            team_id: "T999".to_owned(),
             event_time: 1,
             received_at: 2,
             channel_id: "C123".to_owned(),
@@ -290,7 +280,6 @@ async fn thread_detail_route_hides_threads_from_other_teams() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
@@ -306,7 +295,6 @@ async fn thread_detail_route_hides_threads_from_other_teams() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
-        slack_workspace_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -332,5 +320,5 @@ async fn thread_detail_route_hides_threads_from_other_teams() {
     .await
     .expect("response");
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::OK);
 }

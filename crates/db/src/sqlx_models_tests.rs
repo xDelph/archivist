@@ -37,12 +37,12 @@ fn sqlx_rows_cover_core_entities() {
     };
     let user = UserRow {
         id: "U123".to_owned(),
+        email: Some("thomas@example.com".to_owned()),
         display_name: Some("Thomas".to_owned()),
         avatar_url: Some("https://example.com/avatar.png".to_owned()),
         is_active: true,
     };
     let search_document = SearchDocumentRow {
-        team_id: "T123".to_owned(),
         channel_id: "C123".to_owned(),
         root_ts: message.ts.clone(),
         message_ts: message.ts.clone(),
@@ -63,7 +63,6 @@ fn sqlx_rows_cover_core_entities() {
         saved_at: "2026-03-09T12:00:00Z".to_owned(),
     };
     let thread_summary = ThreadSummaryRow {
-        team_id: "T123".to_owned(),
         channel_id: "C123".to_owned(),
         root_ts: message.ts.clone(),
         title: "General".to_owned(),
@@ -79,6 +78,7 @@ fn sqlx_rows_cover_core_entities() {
     assert_eq!(reaction.name, "thumbsup");
     assert_eq!(file.name, "brief.pdf");
     assert_eq!(channel.name.as_deref(), Some("general"));
+    assert_eq!(user.email.as_deref(), Some("thomas@example.com"));
     assert!(user.is_active);
     assert_eq!(search_document.body, "hello");
     assert_eq!(saved_item.user_id, "U123");

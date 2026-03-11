@@ -7,7 +7,6 @@ async fn in_memory_store_deduplicates_and_tracks_entities() {
     let store = InMemoryEventStore::new();
     let rename = ProcessEventJob {
         event_id: "evt_channel".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -19,7 +18,6 @@ async fn in_memory_store_deduplicates_and_tracks_entities() {
     };
     let message = ProcessEventJob {
         event_id: "evt_message".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 3,
         received_at: 4,
         channel_id: "C123".to_owned(),
@@ -69,7 +67,6 @@ async fn in_memory_store_tracks_reactions() {
     let store = InMemoryEventStore::new();
     let reaction = ProcessEventJob {
         event_id: "evt_reaction".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 1,
         received_at: 2,
         channel_id: "C123".to_owned(),
@@ -99,7 +96,6 @@ async fn in_memory_store_refreshes_search_documents_for_threads() {
     let store = InMemoryEventStore::new();
     let reply = ProcessEventJob {
         event_id: "evt_reply".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 5,
         received_at: 6,
         channel_id: "C123".to_owned(),
@@ -114,7 +110,6 @@ async fn in_memory_store_refreshes_search_documents_for_threads() {
     };
     let root = ProcessEventJob {
         event_id: "evt_root".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 7,
         received_at: 8,
         channel_id: "C123".to_owned(),
@@ -152,7 +147,6 @@ async fn in_memory_store_refreshes_thread_summaries_for_threads() {
     let store = InMemoryEventStore::new();
     let reply = ProcessEventJob {
         event_id: "evt_reply".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 5,
         received_at: 6,
         channel_id: "C123".to_owned(),
@@ -173,7 +167,6 @@ async fn in_memory_store_refreshes_thread_summaries_for_threads() {
     };
     let root = ProcessEventJob {
         event_id: "evt_root".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 7,
         received_at: 8,
         channel_id: "C123".to_owned(),
@@ -188,7 +181,6 @@ async fn in_memory_store_refreshes_thread_summaries_for_threads() {
     };
     let reaction = ProcessEventJob {
         event_id: "evt_reaction".to_owned(),
-        team_id: "T123".to_owned(),
         event_time: 9,
         received_at: 10,
         channel_id: "C123".to_owned(),

@@ -16,7 +16,6 @@ async fn me_returns_the_current_user_from_a_valid_session_cookie() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: Some("thomas@example.com".to_owned()),
             display_name: Some("Thomas".to_owned()),
             avatar_url: Some("https://images.example.com/avatar.png".to_owned()),
@@ -54,7 +53,6 @@ async fn me_rejects_missing_sessions() {
             client_id: None,
             client_secret: None,
             redirect_uri: None,
-            workspace_id: None,
             token_url: None,
         },
         session_secret: Some("session_secret".to_owned()),
@@ -96,7 +94,6 @@ async fn me_rejects_expired_sessions() {
         "session_secret",
         &SessionClaims {
             slack_user_id: "U123".to_owned(),
-            team_id: "T123".to_owned(),
             email: None,
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
