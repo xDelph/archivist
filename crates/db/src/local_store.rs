@@ -1,5 +1,6 @@
 use crate::{
-    RepositoryHealth, SearchDocumentRow, StoreError, StoreOutcome, ThreadSummaryRow,
+    BackfillBatchStats, RepositoryHealth, SearchDocumentRow, StoreError, StoreOutcome,
+    ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
     thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
@@ -175,6 +176,35 @@ impl JsonlEventStore {
                 tracing::debug!(%file_id, %storage_key, "updated local file archive metadata");
             }
         }
+    }
+
+    pub async fn backfill_channel_jobs(
+        &self,
+        channel_job: Option<&ProcessEventJob>,
+        message_jobs: &[ProcessEventJob],
+        reaction_jobs: &[ProcessEventJob],
+    ) -> Result<BackfillBatchStats, StoreError> {
+        let mut stats = BackfillBatchStats::default();
+
+        if let Some(job) = channel_job {
+            let _ = self.record_process_event(job).await?;
+        }
+
+        for job in message_jobs {
+            match self.record_process_event(job).await? {
+                StoreOutcome::Inserted => stats.messages_inserted += 1,
+                StoreOutcome::Duplicate => stats.messages_duplicate += 1,
+            }
+        }
+
+        for job in reaction_jobs {
+            match self.record_process_event(job).await? {
+                StoreOutcome::Inserted => stats.reactions_inserted += 1,
+                StoreOutcome::Duplicate => stats.reactions_duplicate += 1,
+            }
+        }
+
+        Ok(stats)
     }
 }
 

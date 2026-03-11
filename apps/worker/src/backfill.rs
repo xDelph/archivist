@@ -1,7 +1,7 @@
 use super::backfill_slack::{SlackConversation, fetch_channel_history, fetch_public_channels};
 use super::{AppState, ErrorResponse, store_failed};
 use axum::{Json, body::Bytes, extract::State, http::StatusCode};
-use db::StoreOutcome;
+use db::BackfillBatchStats;
 use domain::{ChannelKind, EventPayload, ProcessEventJob, SharedFile};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -141,7 +141,6 @@ async fn backfill_single_channel(
     channel: Option<&SlackConversation>,
     cursor: Option<&str>,
 ) -> Result<(BackfillTotals, Option<String>), (StatusCode, Json<ErrorResponse>)> {
-    record_channel_metadata(state, channel_id, channel).await?;
     tracing::info!(
         channel_id,
         channel_name = channel
@@ -192,97 +191,15 @@ async fn backfill_single_channel(
         files = totals.files_seen,
         "persisting channel history payload"
     );
-
-    for message in messages {
-        let message_ts = message.ts.clone();
-        let outcome = state
-            .store
-            .record_process_event(&ProcessEventJob {
-                event_id: format!("backfill:{channel_id}:{message_ts}"),
-                event_time: parse_event_time(&message_ts),
-                received_at: current_unix_timestamp(),
-                channel_id: channel_id.to_owned(),
-                channel_kind: ChannelKind::from_channel_id(channel_id),
-                payload: EventPayload::Message {
-                    user_id: message.user,
-                    text: message.text,
-                    ts: message_ts.clone(),
-                    thread_ts: message
-                        .thread_ts
-                        .filter(|thread_ts| thread_ts != &message_ts),
-                    files: message
-                        .files
-                        .into_iter()
-                        .map(|file| SharedFile {
-                            name: file
-                                .name
-                                .as_deref()
-                                .map(str::trim)
-                                .filter(|value| !value.is_empty())
-                                .map(str::to_owned)
-                                .unwrap_or_else(|| file.id.clone()),
-                            id: file.id,
-                            mimetype: file.mimetype,
-                            permalink: file.permalink,
-                            size: file.size,
-                        })
-                        .collect(),
-                },
-            })
-            .await
-            .map_err(|error| {
-                tracing::error!(
-                    ?error,
-                    channel_id,
-                    message_ts = %message_ts,
-                    "failed to persist backfill message"
-                );
-                store_failed(error)
-            })?;
-
-        match outcome {
-            StoreOutcome::Inserted => totals.messages_inserted += 1,
-            StoreOutcome::Duplicate => totals.messages_duplicate += 1,
-        }
-
-        for reaction in message.reactions {
-            for user_id in reaction.users {
-                let reaction_outcome = state
-                    .store
-                    .record_process_event(&ProcessEventJob {
-                        event_id: format!(
-                            "backfill:{channel_id}:{message_ts}:reaction:{}:{user_id}",
-                            reaction.name
-                        ),
-                        event_time: parse_event_time(&message_ts),
-                        received_at: current_unix_timestamp(),
-                        channel_id: channel_id.to_owned(),
-                        channel_kind: ChannelKind::from_channel_id(channel_id),
-                        payload: EventPayload::ReactionAdded {
-                            user_id,
-                            reaction: reaction.name.clone(),
-                            item_ts: message_ts.clone(),
-                        },
-                    })
-                    .await
-                    .map_err(|error| {
-                        tracing::error!(
-                            ?error,
-                            channel_id,
-                            message_ts = %message_ts,
-                            reaction = %reaction.name,
-                            "failed to persist backfill reaction"
-                        );
-                        store_failed(error)
-                    })?;
-
-                match reaction_outcome {
-                    StoreOutcome::Inserted => totals.reactions_inserted += 1,
-                    StoreOutcome::Duplicate => totals.reactions_duplicate += 1,
-                }
-            }
-        }
-    }
+    let event_time = current_unix_timestamp();
+    let channel_job = build_channel_job(channel_id, channel, event_time);
+    let (message_jobs, reaction_jobs) = build_backfill_jobs(channel_id, messages);
+    let batch_stats = state
+        .store
+        .backfill_channel_jobs(channel_job.as_ref(), &message_jobs, &reaction_jobs)
+        .await
+        .map_err(store_failed)?;
+    apply_batch_stats(&mut totals, batch_stats);
 
     let next_cursor = history
         .response_metadata
@@ -413,48 +330,115 @@ fn current_unix_timestamp() -> i64 {
         .as_secs() as i64
 }
 
-async fn record_channel_metadata(
-    state: &AppState,
-    channel_id: &str,
-    channel: Option<&SlackConversation>,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    let event_time = current_unix_timestamp();
-    let outcome = state
-        .store
-        .record_process_event(&ProcessEventJob {
-            event_id: format!("backfill:channel:{channel_id}:metadata:{event_time}"),
-            event_time,
-            received_at: event_time,
-            channel_id: channel_id.to_owned(),
-            channel_kind: ChannelKind::from_channel_id(channel_id),
-            payload: EventPayload::ChannelUpdated {
-                name: channel
-                    .and_then(|value| value.name.as_deref())
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_owned),
-                is_archived: Some(channel.and_then(|value| value.is_archived).unwrap_or(false)),
-            },
-        })
-        .await
-        .map_err(store_failed)?;
-
-    tracing::debug!(
-        channel_id,
-        channel_name = channel
-            .and_then(|value| value.name.as_deref())
-            .unwrap_or(""),
-        duplicate = matches!(outcome, StoreOutcome::Duplicate),
-        "recorded channel metadata before history backfill"
-    );
-    Ok(())
-}
-
 fn resolve_channel(channel_id: &str, channels: &[SlackConversation]) -> Option<SlackConversation> {
     channels
         .iter()
         .find(|channel| channel.id == channel_id)
         .cloned()
+}
+
+fn build_channel_job(
+    channel_id: &str,
+    channel: Option<&SlackConversation>,
+    event_time: i64,
+) -> Option<ProcessEventJob> {
+    let channel_name = channel
+        .and_then(|value| value.name.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    let is_archived = channel.and_then(|value| value.is_archived).unwrap_or(false);
+    if channel_name.is_none() && !is_archived {
+        return None;
+    }
+
+    Some(ProcessEventJob {
+        event_id: format!("backfill:channel:{channel_id}:metadata:{event_time}"),
+        event_time,
+        received_at: event_time,
+        channel_id: channel_id.to_owned(),
+        channel_kind: ChannelKind::from_channel_id(channel_id),
+        payload: EventPayload::ChannelUpdated {
+            name: channel_name,
+            is_archived: Some(is_archived),
+        },
+    })
+}
+
+fn build_backfill_jobs(
+    channel_id: &str,
+    messages: Vec<super::backfill_slack::SlackHistoryMessage>,
+) -> (Vec<ProcessEventJob>, Vec<ProcessEventJob>) {
+    let mut message_jobs = Vec::with_capacity(messages.len());
+    let mut reaction_jobs = Vec::new();
+
+    for message in messages {
+        let message_ts = message.ts.clone();
+        let event_time = parse_event_time(&message_ts);
+        let files = message
+            .files
+            .into_iter()
+            .map(|file| SharedFile {
+                name: file
+                    .name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| file.id.clone()),
+                id: file.id,
+                mimetype: file.mimetype,
+                permalink: file.permalink,
+                size: file.size,
+            })
+            .collect::<Vec<_>>();
+
+        message_jobs.push(ProcessEventJob {
+            event_id: format!("backfill:{channel_id}:{message_ts}"),
+            event_time,
+            received_at: current_unix_timestamp(),
+            channel_id: channel_id.to_owned(),
+            channel_kind: ChannelKind::from_channel_id(channel_id),
+            payload: EventPayload::Message {
+                user_id: message.user,
+                text: message.text,
+                ts: message_ts.clone(),
+                thread_ts: message
+                    .thread_ts
+                    .filter(|thread_ts| thread_ts != &message_ts),
+                files,
+            },
+        });
+
+        for reaction in message.reactions {
+            for user_id in reaction.users {
+                reaction_jobs.push(ProcessEventJob {
+                    event_id: format!(
+                        "backfill:{channel_id}:{message_ts}:reaction:{}:{user_id}",
+                        reaction.name
+                    ),
+                    event_time,
+                    received_at: current_unix_timestamp(),
+                    channel_id: channel_id.to_owned(),
+                    channel_kind: ChannelKind::from_channel_id(channel_id),
+                    payload: EventPayload::ReactionAdded {
+                        user_id,
+                        reaction: reaction.name.clone(),
+                        item_ts: message_ts.clone(),
+                    },
+                });
+            }
+        }
+    }
+
+    (message_jobs, reaction_jobs)
+}
+
+fn apply_batch_stats(totals: &mut BackfillTotals, stats: BackfillBatchStats) {
+    totals.messages_inserted += stats.messages_inserted;
+    totals.messages_duplicate += stats.messages_duplicate;
+    totals.reactions_inserted += stats.reactions_inserted;
+    totals.reactions_duplicate += stats.reactions_duplicate;
 }
 
 fn parse_backfill_request(

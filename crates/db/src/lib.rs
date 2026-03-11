@@ -1,6 +1,8 @@
+mod backfill_batch;
 mod local_store;
 mod memory;
 mod pg_materialized;
+mod pg_store_backfill;
 mod pg_store;
 mod pg_store_reads;
 mod pg_support;
@@ -11,6 +13,7 @@ mod sqlx_schema;
 mod store;
 mod thread_summary_index;
 
+pub use backfill_batch::BackfillBatchStats;
 pub use local_store::JsonlEventStore;
 pub use memory::InMemoryEventStore;
 pub use pg_store::PgEventStore;

@@ -1,6 +1,6 @@
 #[cfg(not(test))]
 use crate::local_store::runtime_database_url;
-use crate::{JsonlEventStore, PgEventStore, SearchDocumentRow, ThreadSummaryRow};
+use crate::{BackfillBatchStats, JsonlEventStore, PgEventStore, SearchDocumentRow, ThreadSummaryRow};
 use domain::{Channel, File, Message, ProcessEventJob, Reaction};
 use std::path::Path;
 use thiserror::Error;
@@ -192,6 +192,26 @@ impl EventStore {
             Self::Postgres(store) => {
                 store
                     .set_file_archive(file_id, storage_key, storage_url)
+                    .await
+            }
+        }
+    }
+
+    pub async fn backfill_channel_jobs(
+        &self,
+        channel_job: Option<&ProcessEventJob>,
+        message_jobs: &[ProcessEventJob],
+        reaction_jobs: &[ProcessEventJob],
+    ) -> Result<BackfillBatchStats, StoreError> {
+        match self {
+            Self::Local(store) => {
+                store
+                    .backfill_channel_jobs(channel_job, message_jobs, reaction_jobs)
+                    .await
+            }
+            Self::Postgres(store) => {
+                store
+                    .backfill_channel_jobs(channel_job, message_jobs, reaction_jobs)
                     .await
             }
         }
