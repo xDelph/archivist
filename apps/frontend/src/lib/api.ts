@@ -51,6 +51,17 @@ export interface CatchUpThread {
 	last_activity_ts: string;
 }
 
+export interface ChannelSummary {
+	id: string;
+	name: string | null;
+	kind: string;
+	is_archived: boolean;
+	message_count: number;
+	reaction_count: number;
+	file_count: number;
+	last_message_ts: string | null;
+}
+
 export interface SearchResponse {
 	query: string;
 	items: SearchResult[];
@@ -67,6 +78,10 @@ export interface SearchResult {
 	message_ts: string;
 	title: string;
 	snippet: string;
+	reply_count: number;
+	participant_count: number;
+	reaction_count: number;
+	file_count: number;
 	score: number;
 }
 
@@ -172,6 +187,10 @@ export async function logoutCurrentUser() {
 
 export async function fetchCatchUp(window: "24h" | "7d") {
 	return apiRequest<CatchUpResponse>(`/api/catch-up?window=${window}`);
+}
+
+export async function fetchChannels() {
+	return apiRequest<ChannelSummary[]>("/api/channels");
 }
 
 export interface SearchParams {

@@ -1,5 +1,6 @@
 use super::{AppState, ErrorResponse};
 use crate::storage::R2Client;
+use crate::storage_paths::resolve_file_storage_location;
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 
@@ -19,12 +20,6 @@ pub(crate) struct ArchiveFileResponse {
     storage_key: String,
     public_url: String,
     bytes_uploaded: usize,
-}
-
-#[derive(Debug, Deserialize)]
-struct SlackAuthTestResponse {
-    ok: bool,
-    team_id: Option<String>,
 }
 
 pub(crate) async fn archive_file(
@@ -50,11 +45,17 @@ pub(crate) async fn archive_file(
             error: "missing_r2_config",
         }),
     ))?;
-    let storage_prefix = resolve_storage_prefix(&state, slack_user_token)
-        .await
-        .or_else(|| state.r2_key_prefix.clone());
-    let storage_key = storage_key(&request, storage_prefix.as_deref());
-    let public_url = r2_config.public_url(&storage_key);
+    let location = resolve_file_storage_location(
+        &state,
+        slack_user_token,
+        &request.channel_id,
+        &request.file_id,
+        &request.filename,
+    )
+    .await
+    .expect("r2 config is present");
+    let storage_key = location.storage_key;
+    let public_url = location.public_url;
 
     if remote_object_exists(&public_url).await {
         tracing::info!(
@@ -151,67 +152,6 @@ pub(crate) async fn archive_file(
     }))
 }
 
-async fn resolve_storage_prefix(state: &AppState, slack_user_token: &str) -> Option<String> {
-    if let Some(prefix) = state
-        .r2_key_prefix
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return Some(prefix.to_owned());
-    }
-
-    match state
-        .slack_workspace_prefix
-        .get_or_try_init(|| async {
-            fetch_workspace_prefix(&state.slack_api_base_url, slack_user_token)
-                .await
-                .map_err(|_| ())
-        })
-        .await
-    {
-        Ok(prefix) => prefix.clone(),
-        Err(()) => None,
-    }
-}
-
-async fn fetch_workspace_prefix(
-    slack_api_base_url: &str,
-    slack_user_token: &str,
-) -> Result<Option<String>, ()> {
-    let endpoint = format!("{}/auth.test", slack_api_base_url.trim_end_matches('/'));
-    let response = reqwest::Client::new()
-        .get(endpoint)
-        .bearer_auth(slack_user_token)
-        .send()
-        .await
-        .map_err(|error| {
-            tracing::warn!(
-                ?error,
-                "failed to resolve slack workspace prefix for R2 keys"
-            );
-        })?;
-    if !response.status().is_success() {
-        tracing::warn!(status = %response.status(), "slack auth.test returned non-success status");
-        return Err(());
-    }
-
-    let payload: SlackAuthTestResponse = response.json().await.map_err(|error| {
-        tracing::warn!(?error, "failed to decode slack auth.test response");
-    })?;
-    if !payload.ok {
-        tracing::warn!("slack auth.test returned ok=false");
-        return Err(());
-    }
-
-    Ok(payload
-        .team_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned))
-}
-
 async fn remote_object_exists(public_url: &str) -> bool {
     match reqwest::Client::new().head(public_url).send().await {
         Ok(response) => {
@@ -247,18 +187,6 @@ async fn persist_archive_metadata(
                 }),
             )
         })
-}
-
-fn storage_key(request: &ArchiveFileRequest, prefix: Option<&str>) -> String {
-    let file_path = format!(
-        "{}/{}/{}",
-        request.channel_id, request.file_id, request.filename
-    );
-
-    match prefix {
-        Some(prefix) if !prefix.trim().is_empty() => format!("{}/{}", prefix.trim(), file_path),
-        _ => file_path,
-    }
 }
 
 fn file_download_failed() -> (StatusCode, Json<ErrorResponse>) {

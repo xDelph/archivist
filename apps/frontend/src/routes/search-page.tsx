@@ -3,7 +3,7 @@ import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
 import { highlightMatches } from "@/lib/highlight";
-import { searchQueries } from "@/lib/queries";
+import { channelQueries, searchQueries } from "@/lib/queries";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CalendarRange, Search, SlidersHorizontal } from "lucide-react";
@@ -21,6 +21,7 @@ export function SearchPage() {
 	const sort = search.sort ?? "relevance";
 
 	const deferredQuery = useDeferredValue(query.trim());
+	const channelsQuery = useQuery(channelQueries.list());
 
 	const searchQuery = useQuery(
 		searchQueries.results({
@@ -38,6 +39,11 @@ export function SearchPage() {
 			search: { ...search, ...updates },
 		});
 	}
+
+	const channelOptions = channelsQuery.data ?? [];
+	const hasSelectedChannelOption = channelId
+		? channelOptions.some((channel) => channel.id === channelId)
+		: true;
 
 	return (
 		<div className="space-y-4">
@@ -67,11 +73,21 @@ export function SearchPage() {
 							/>
 						</div>
 					</label>
-					<FilterField
+					<FilterSelect
 						label="Channel"
 						value={channelId}
-						placeholder="C123 or channel id"
 						onChange={(v) => updateSearch({ channel_id: v || undefined })}
+						disabled={channelsQuery.isPending || channelsQuery.isError}
+						options={[
+							{ value: "", label: "All channels" },
+							...channelOptions.map((channel) => ({
+								value: channel.id,
+								label: `#${channel.name ?? channel.id}`,
+							})),
+							...(channelId && !hasSelectedChannelOption
+								? [{ value: channelId, label: channelId }]
+								: []),
+						]}
 					/>
 					<div className="grid grid-cols-2 gap-2">
 						<FilterField
@@ -157,9 +173,10 @@ export function SearchPage() {
 								title={highlightMatches(item.title, deferredQuery)}
 								preview={highlightMatches(item.snippet, deferredQuery)}
 								lastActivityTs={item.message_ts}
-								replyCount={0}
-								participantCount={0}
-								reactionCount={0}
+								replyCount={item.reply_count ?? 0}
+								participantCount={item.participant_count ?? 0}
+								reactionCount={item.reaction_count ?? 0}
+								fileCount={item.file_count ?? 0}
 							/>
 						))}
 					</div>
@@ -171,6 +188,46 @@ export function SearchPage() {
 				)}
 			</SectionCard>
 		</div>
+	);
+}
+
+function FilterSelect({
+	label,
+	value,
+	onChange,
+	options,
+	disabled = false,
+}: {
+	label: string;
+	value: string;
+	onChange: (value: string) => void;
+	options: { value: string; label: string }[];
+	disabled?: boolean;
+}) {
+	return (
+		<label>
+			<span className="mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em] text-[#70737b]">
+				{label}
+			</span>
+			<div className="flex items-center gap-2 rounded-[0.8rem] border border-white/8 bg-[#121417] px-3 py-2.5">
+				<select
+					value={value}
+					onChange={(e) => onChange(e.target.value)}
+					disabled={disabled}
+					className="w-full bg-transparent text-[0.88rem] text-white outline-none disabled:cursor-not-allowed disabled:text-[#6f7279]"
+				>
+					{options.map((option) => (
+						<option
+							key={option.value || "__all_channels__"}
+							value={option.value}
+							className="bg-[#121417] text-white"
+						>
+							{option.label}
+						</option>
+					))}
+				</select>
+			</div>
+		</label>
 	);
 }
 

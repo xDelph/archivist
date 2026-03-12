@@ -1,5 +1,6 @@
 import { ChannelBadge } from "@/components/channel-badge";
 import { IdentityAvatar } from "@/components/identity-avatar";
+import { ThreadMetrics } from "@/components/thread-metrics";
 import { formatSlackTimestamp } from "@/lib/format";
 import {
 	type ThreadAuthor,
@@ -8,7 +9,6 @@ import {
 } from "@/lib/thread-display";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { Heart, MessageSquare, Paperclip, Users } from "lucide-react";
 import { Children, type ReactNode, isValidElement } from "react";
 
 interface ThreadCardProps {
@@ -47,13 +47,6 @@ export function ThreadCard({
 	action,
 }: ThreadCardProps) {
 	const previewIsDuplicate = !shouldRenderThreadPreview(title, preview);
-	const metrics = buildThreadCardMetrics(
-		replyCount,
-		reactionCount,
-		participantCount,
-		fileCount,
-	);
-
 	return (
 		<article
 			className={cn(
@@ -109,15 +102,13 @@ export function ThreadCard({
 						</div>
 					</div>
 
-					<div className="mt-2.5 flex flex-wrap items-center gap-2.5 text-[0.72rem] text-[#8f9299]">
-						{metrics.map((metric) => (
-							<Metric
-								key={metric.label}
-								icon={metric.icon}
-								label={metric.label}
-							/>
-						))}
-					</div>
+					<ThreadMetrics
+						className="mt-2.5"
+						replyCount={replyCount}
+						reactionCount={reactionCount}
+						participantCount={participantCount}
+						fileCount={fileCount}
+					/>
 
 					<div className="mt-1.5 flex items-center justify-between gap-3 lg:hidden">
 						<time className="text-[0.68rem] text-[#8b8b93]">
@@ -137,49 +128,8 @@ export function ThreadCard({
 	);
 }
 
-function Metric({ icon, label }: { icon: ReactNode; label: string }) {
-	return (
-		<span className="inline-flex items-center gap-1">
-			{icon}
-			{label}
-		</span>
-	);
-}
-
 function renderRichNode(content: ReactNode) {
 	return typeof content === "string" ? renderSlackText(content) : content;
-}
-
-export function buildThreadCardMetrics(
-	replyCount: number,
-	reactionCount: number,
-	participantCount: number,
-	fileCount: number,
-) {
-	return [
-		{
-			icon: <MessageSquare className="size-3.5" />,
-			label: String(replyCount),
-		},
-		reactionCount > 0
-			? {
-					icon: <Heart className="size-3.5" />,
-					label: String(reactionCount),
-				}
-			: null,
-		participantCount > 0
-			? {
-					icon: <Users className="size-3.5" />,
-					label: String(participantCount),
-				}
-			: null,
-		fileCount > 0
-			? {
-					icon: <Paperclip className="size-3.5" />,
-					label: String(fileCount),
-				}
-			: null,
-	].filter((metric) => metric !== null);
 }
 
 export function shouldRenderThreadPreview(

@@ -148,7 +148,7 @@ async fn archive_file_downloads_from_slack_and_uploads_to_r2() {
             r2_access_key_id: Some("key".to_owned()),
             r2_secret_access_key: Some("secret".to_owned()),
             r2_bucket: Some("bucket".to_owned()),
-            r2_public_url: Some(format!("{base_url}/public")),
+            r2_public_url: Some(format!("{base_url}/public/")),
             r2_endpoint_url: Some(base_url.clone()),
             r2_key_prefix: Some("T123".to_owned()),
             current_signing_key: None,
@@ -190,7 +190,7 @@ async fn archive_file_downloads_from_slack_and_uploads_to_r2() {
     assert_eq!(payload["storage_key"], "T123/C123/F123/brief v1.pdf");
     assert_eq!(
         payload["public_url"],
-        format!("{base_url}/public/T123/C123/F123/brief v1.pdf")
+        format!("{base_url}/public//T123/C123/F123/brief v1.pdf")
     );
 
     let capture = state.upload.lock().await.clone().expect("upload capture");
@@ -209,7 +209,7 @@ async fn archive_file_reuses_existing_r2_object() {
         .existing_public_keys
         .lock()
         .await
-        .insert("T123/C123/F123/brief.pdf".to_owned());
+        .insert("/T123/C123/F123/brief.pdf".to_owned());
     let router = build_router(
         store,
         WorkerConfig {
@@ -223,7 +223,7 @@ async fn archive_file_reuses_existing_r2_object() {
             r2_access_key_id: Some("key".to_owned()),
             r2_secret_access_key: Some("secret".to_owned()),
             r2_bucket: Some("bucket".to_owned()),
-            r2_public_url: Some(format!("{base_url}/public")),
+            r2_public_url: Some(format!("{base_url}/public/")),
             r2_endpoint_url: Some(base_url.clone()),
             r2_key_prefix: Some("T123".to_owned()),
             current_signing_key: None,
@@ -265,7 +265,7 @@ async fn archive_file_reuses_existing_r2_object() {
     assert_eq!(payload["storage_key"], "T123/C123/F123/brief.pdf");
     assert_eq!(
         payload["public_url"],
-        format!("{base_url}/public/T123/C123/F123/brief.pdf")
+        format!("{base_url}/public//T123/C123/F123/brief.pdf")
     );
     assert_eq!(state.upload.lock().await.clone(), None);
 }

@@ -1,3 +1,4 @@
+use super::backfill_archive::persist_backfill_file_archives;
 use super::backfill_slack::{SlackConversation, fetch_channel_history, fetch_public_channels};
 use super::backfill_threads::expand_thread_replies;
 use super::{AppState, ErrorResponse, store_failed};
@@ -47,6 +48,7 @@ struct BackfillTotals {
     reactions_inserted: usize,
     reactions_duplicate: usize,
     files_seen: usize,
+    files_archived: usize,
 }
 
 pub(crate) async fn backfill_channel(
@@ -195,13 +197,15 @@ async fn backfill_single_channel(
     );
     let event_time = current_unix_timestamp();
     let channel_job = build_channel_job(channel_id, channel, event_time);
-    let (message_jobs, reaction_jobs) = build_backfill_jobs(channel_id, messages);
+    let (message_jobs, reaction_jobs) = build_backfill_jobs(channel_id, &messages);
     let batch_stats = state
         .store
         .backfill_channel_jobs(channel_job.as_ref(), &message_jobs, &reaction_jobs)
         .await
         .map_err(store_failed)?;
     apply_batch_stats(&mut totals, batch_stats);
+    totals.files_archived =
+        persist_backfill_file_archives(state, slack_user_token, channel_id, &messages).await?;
 
     let next_cursor = history
         .response_metadata
@@ -214,6 +218,7 @@ async fn backfill_single_channel(
         reactions_inserted = totals.reactions_inserted,
         reactions_duplicate = totals.reactions_duplicate,
         files_seen = totals.files_seen,
+        files_archived = totals.files_archived,
         next_cursor = next_cursor.as_deref().unwrap_or(""),
         "completed channel backfill"
     );
@@ -369,12 +374,12 @@ fn build_channel_job(
 
 fn build_backfill_jobs(
     channel_id: &str,
-    messages: Vec<super::backfill_slack::SlackHistoryMessage>,
+    messages: &[super::backfill_slack::SlackHistoryMessage],
 ) -> (Vec<ProcessEventJob>, Vec<ProcessEventJob>) {
     let mut message_jobs = Vec::with_capacity(messages.len());
     let mut reaction_jobs = Vec::new();
 
-    for message in messages {
+    for message in messages.iter().cloned() {
         let message_ts = message.ts.clone();
         let event_time = parse_event_time(&message_ts);
         let files = message

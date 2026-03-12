@@ -41,6 +41,8 @@
 	html {
 		scroll-behavior: smooth;
 		-webkit-tap-highlight-color: transparent;
+		background: #040506;
+		color-scheme: dark;
 	}
 
 	body {
@@ -55,6 +57,11 @@
 				transparent 160px
 			), linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
 		background-attachment: fixed;
+	}
+
+	#root {
+		min-height: 100dvh;
+		background: #040506;
 	}
 
 	a {

@@ -1,7 +1,5 @@
-import {
-	buildThreadCardMetrics,
-	shouldRenderThreadPreview,
-} from "@/components/thread-card";
+import { shouldRenderThreadPreview } from "@/components/thread-card";
+import { buildThreadMetrics } from "@/components/thread-metrics";
 import { renderSlackTextWithHighlights } from "@/lib/thread-display";
 
 describe("thread card preview visibility", () => {
@@ -38,7 +36,7 @@ describe("thread card preview visibility", () => {
 
 	it("always shows the reply count metric", () => {
 		expect(
-			buildThreadCardMetrics(0, 4, 2, 0).map((metric) => metric.label),
-		).toEqual(["0", "4", "2"]);
+			buildThreadMetrics(0, 4, 2, 0).map((metric) => metric.value),
+		).toEqual([0, 4, 2]);
 	});
 });

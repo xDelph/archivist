@@ -6,7 +6,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
-use db::SearchDocumentRow;
+use db::{SearchDocumentRow, ThreadSummaryRow};
 use domain::{Channel, Message};
 use search::{SearchFilters, SearchQuery, SearchSort, normalize_query_text};
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,10 @@ struct SearchResultResponse {
     message_ts: String,
     title: String,
     snippet: String,
+    reply_count: usize,
+    participant_count: usize,
+    reaction_count: usize,
+    file_count: usize,
     score: usize,
 }
 
@@ -65,6 +69,10 @@ struct SearchResult {
     message_seconds: i64,
     title: String,
     snippet: String,
+    reply_count: usize,
+    participant_count: usize,
+    reaction_count: usize,
+    file_count: usize,
     score: usize,
 }
 
@@ -80,6 +88,7 @@ pub(crate) async fn search(
         state.store.channels().await.map_err(store_failed)?,
         state.store.messages().await.map_err(store_failed)?,
         state.store.search_documents().await.map_err(store_failed)?,
+        state.store.thread_summaries().await.map_err(store_failed)?,
         &search_query,
     );
     let author_ids = items
@@ -108,6 +117,10 @@ pub(crate) async fn search(
             message_ts: item.message_ts.clone(),
             title: item.title.clone(),
             snippet: item.snippet.clone(),
+            reply_count: item.reply_count,
+            participant_count: item.participant_count,
+            reaction_count: item.reaction_count,
+            file_count: item.file_count,
             score: item.score,
         })
         .collect::<Vec<_>>();
@@ -189,6 +202,7 @@ fn build_search_results(
     channels: Vec<Channel>,
     messages: Vec<Message>,
     search_documents: Vec<SearchDocumentRow>,
+    thread_summaries: Vec<ThreadSummaryRow>,
     query: &SearchQuery,
 ) -> Vec<SearchResult> {
     let channel_names = channels
@@ -203,6 +217,15 @@ fn build_search_results(
     let message_lookup = messages
         .iter()
         .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
+        .collect::<HashMap<_, _>>();
+    let summary_lookup = thread_summaries
+        .into_iter()
+        .map(|summary| {
+            (
+                (summary.channel_id.clone(), summary.root_ts.clone()),
+                summary,
+            )
+        })
         .collect::<HashMap<_, _>>();
     let tokens = query
         .text
@@ -246,6 +269,7 @@ fn build_search_results(
                 .get(&(document.channel_id.clone(), root_ts.clone()))
                 .copied()
                 .or(message.copied());
+            let summary = summary_lookup.get(&(document.channel_id.clone(), root_ts.clone()));
 
             Some(SearchResult {
                 id: format!("{}:{}", document.channel_id, document.message_ts),
@@ -265,6 +289,10 @@ fn build_search_results(
                     .or_else(|| document.title.clone())
                     .unwrap_or_else(|| summarize_text(&document.body)),
                 snippet: build_snippet(&document.body, &tokens),
+                reply_count: summary.map_or(0, |summary| as_count(summary.reply_count)),
+                participant_count: summary.map_or(0, |summary| as_count(summary.participant_count)),
+                reaction_count: summary.map_or(0, |summary| as_count(summary.reaction_count)),
+                file_count: summary.map_or(0, |summary| as_count(summary.file_count)),
                 score,
             })
         })
@@ -352,6 +380,10 @@ fn summarize_text(value: &str) -> String {
 
 fn parse_ts_seconds(value: &str) -> Option<i64> {
     value.split('.').next()?.parse().ok()
+}
+
+fn as_count(value: i64) -> usize {
+    value.max(0) as usize
 }
 
 fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {

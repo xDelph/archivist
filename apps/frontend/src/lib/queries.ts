@@ -1,6 +1,8 @@
 import {
+	type ChannelSummary,
 	type SearchParams,
 	fetchCatchUp,
+	fetchChannels,
 	fetchCurrentUser,
 	fetchSavedItems,
 	fetchSearchResults,
@@ -35,6 +37,21 @@ export const catchUpQueries = {
 			queryKey: ["catch-up", window],
 			queryFn: () => fetchCatchUp(window),
 			staleTime: 30_000,
+		}),
+};
+
+export const channelQueries = {
+	list: () =>
+		queryOptions({
+			queryKey: ["channels"],
+			queryFn: fetchChannels,
+			select: (channels: ChannelSummary[]) =>
+				channels
+					.filter((channel) => channel.name)
+					.sort((left, right) =>
+						(left.name ?? left.id).localeCompare(right.name ?? right.id),
+					),
+			staleTime: 60_000,
 		}),
 };
 

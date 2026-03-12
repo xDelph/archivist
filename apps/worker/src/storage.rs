@@ -58,7 +58,7 @@ impl R2Config {
     }
 
     pub(crate) fn public_url(&self, key: &str) -> String {
-        format!("{}/{}", self.public_url.trim_end_matches('/'), key)
+        format!("{}/{}", self.public_url, key)
     }
 }
 
@@ -98,7 +98,7 @@ impl R2Client {
         Self {
             client: Client::from_conf(client),
             bucket: bucket.to_owned(),
-            public_url: public_url.trim_end_matches('/').to_owned(),
+            public_url: public_url.to_owned(),
         }
     }
 

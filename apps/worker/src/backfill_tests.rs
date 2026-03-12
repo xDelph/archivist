@@ -104,13 +104,13 @@ async fn backfill_channel_fetches_history_and_upserts_messages() {
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url,
             slack_user_token: Some("xoxp-test".to_owned()),
-            r2_account_id: None,
-            r2_access_key_id: None,
-            r2_secret_access_key: None,
-            r2_bucket: None,
-            r2_public_url: None,
-            r2_endpoint_url: None,
-            r2_key_prefix: None,
+            r2_account_id: Some("acct".to_owned()),
+            r2_access_key_id: Some("key".to_owned()),
+            r2_secret_access_key: Some("secret".to_owned()),
+            r2_bucket: Some("bucket".to_owned()),
+            r2_public_url: Some("https://files.example.com/".to_owned()),
+            r2_endpoint_url: Some("https://r2.example.com".to_owned()),
+            r2_key_prefix: Some("archive".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
         },
@@ -169,6 +169,10 @@ async fn backfill_channel_fetches_history_and_upserts_messages() {
     assert_eq!(reactions[0].name, "eyes");
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].name, "brief.pdf");
+    assert_eq!(
+        files[0].permalink.as_deref(),
+        Some("https://files.example.com//archive/C123/F123/brief.pdf")
+    );
 }
 
 #[tokio::test]

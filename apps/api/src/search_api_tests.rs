@@ -8,7 +8,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use db::{JsonlEventStore, SearchDocumentRow};
+use db::{JsonlEventStore, SearchDocumentRow, ThreadSummaryRow};
 use domain::{ChannelKind, EventPayload, ProcessEventJob};
 use search::SearchSort;
 use tempfile::tempdir;
@@ -106,6 +106,32 @@ fn build_search_results_respects_filters_and_sorting() {
                 message_occurred_at: "1700000400".to_owned(),
             },
         ],
+        vec![
+            ThreadSummaryRow {
+                channel_id: "C123".to_owned(),
+                root_ts: "1700000200.000001".to_owned(),
+                title: "release notes are ready".to_owned(),
+                preview: "release notes include search improvements".to_owned(),
+                reply_count: 1,
+                participant_count: 2,
+                reaction_count: 3,
+                file_count: 4,
+                root_message_at: "1700000200".to_owned(),
+                last_activity_ts: "1700000300".to_owned(),
+            },
+            ThreadSummaryRow {
+                channel_id: "C999".to_owned(),
+                root_ts: "1700000400.000001".to_owned(),
+                title: "release notes in another channel".to_owned(),
+                preview: "release notes in another channel".to_owned(),
+                reply_count: 0,
+                participant_count: 1,
+                reaction_count: 0,
+                file_count: 0,
+                root_message_at: "1700000400".to_owned(),
+                last_activity_ts: "1700000400".to_owned(),
+            },
+        ],
         &query,
     );
 
@@ -113,6 +139,10 @@ fn build_search_results_respects_filters_and_sorting() {
     assert_eq!(items[0].channel_id, "C123");
     assert_eq!(items[0].channel_name.as_deref(), Some("product"));
     assert_eq!(items[0].thread_id, "C123:1700000200.000001");
+    assert_eq!(items[0].reply_count, 1);
+    assert_eq!(items[0].participant_count, 2);
+    assert_eq!(items[0].reaction_count, 3);
+    assert_eq!(items[0].file_count, 4);
     assert!(items[0].score >= items[1].score);
 }
 
@@ -238,6 +268,7 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
     assert_eq!(payload.query, "release notes");
     assert_eq!(payload.items.len(), 2);
     assert!(payload.items.iter().all(|item| item.channel_id == "C123"));
+    assert!(payload.items.iter().all(|item| item.participant_count >= 1));
     assert!(
         payload
             .items

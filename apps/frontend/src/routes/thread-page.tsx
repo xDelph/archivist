@@ -1,6 +1,11 @@
 import { EmptyState } from "@/components/empty-state";
 import { IdentityAvatar } from "@/components/identity-avatar";
 import { SectionCard } from "@/components/section-card";
+import {
+	ThreadFileViewer,
+	type ThreadViewerFile,
+} from "@/components/thread-file-viewer";
+import { ThreadMetrics } from "@/components/thread-metrics";
 import { Button } from "@/components/ui/button";
 import { deleteSavedThread, saveThread } from "@/lib/api";
 import { formatSlackTimestamp } from "@/lib/format";
@@ -29,6 +34,10 @@ export function ThreadPage() {
 	const { threadId } = useParams({ from: "/app/threads/$threadId" });
 	const queryClient = useQueryClient();
 	const [isExpanded, setIsExpanded] = useState(false);
+	const [selectedFileState, setSelectedFileState] = useState<{
+		messageTs: string;
+		index: number;
+	} | null>(null);
 
 	const threadQuery = useQuery(threadQueries.detail(threadId));
 	const savedQuery = useQuery(savedQueries.list());
@@ -80,7 +89,19 @@ export function ThreadPage() {
 	const links = extractLinks(
 		messages.map((message) => message.text).join("\n"),
 	);
-	const allFiles = messages.flatMap((message) => message.files);
+	const fileGroups = messages
+		.filter((message) => message.files.length > 0)
+		.map((message) => ({
+			messageTs: message.ts,
+			files: message.files,
+		}));
+	const allFiles = fileGroups.flatMap((group) =>
+		group.files.map((file, index) => ({
+			...file,
+			messageTs: group.messageTs,
+			messageFileIndex: index,
+		})),
+	);
 	const participantCount = new Set(
 		messages
 			.map((message) => message.user_id)
@@ -90,6 +111,11 @@ export function ThreadPage() {
 		(total, message) => total + message.reactions.length,
 		0,
 	);
+	const selectedFileGroup = selectedFileState
+		? fileGroups.find(
+				(group) => group.messageTs === selectedFileState.messageTs,
+			)
+		: null;
 
 	return (
 		<div className="space-y-4">
@@ -128,14 +154,12 @@ export function ThreadPage() {
 					</Button>
 				}
 			>
-				<div className="flex flex-wrap gap-1.5 text-[0.72rem] text-[#9aa0a7]">
-					<MetaChip label={String(replyCount)} />
-					<MetaChip label={String(participantCount)} />
-					<MetaChip label={String(reactionCount)} />
-					{allFiles.length > 0 ? (
-						<MetaChip label={String(allFiles.length)} />
-					) : null}
-				</div>
+				<ThreadMetrics
+					replyCount={replyCount}
+					reactionCount={reactionCount}
+					participantCount={participantCount}
+					fileCount={allFiles.length}
+				/>
 			</SectionCard>
 
 			<div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -143,7 +167,16 @@ export function ThreadPage() {
 					<SectionCard eyebrow="Highlights" title="Important moments">
 						<div className="space-y-2.5">
 							{highlightedMessages.map((message) => (
-								<MessageCard key={message.ts} message={message} />
+								<MessageCard
+									key={message.ts}
+									message={message}
+									onOpenFile={(fileIndex) =>
+										setSelectedFileState({
+											messageTs: message.ts,
+											index: fileIndex,
+										})
+									}
+								/>
 							))}
 						</div>
 					</SectionCard>
@@ -151,7 +184,16 @@ export function ThreadPage() {
 					<SectionCard eyebrow="Full transcript" title="Conversation timeline">
 						<div className="space-y-2.5">
 							{visibleMessages.map((message) => (
-								<MessageCard key={message.ts} message={message} />
+								<MessageCard
+									key={message.ts}
+									message={message}
+									onOpenFile={(fileIndex) =>
+										setSelectedFileState({
+											messageTs: message.ts,
+											index: fileIndex,
+										})
+									}
+								/>
 							))}
 						</div>
 						{messages.length > INITIAL_MESSAGE_COUNT ? (
@@ -207,26 +249,32 @@ export function ThreadPage() {
 							<ul className="space-y-2">
 								{allFiles.map((file) => (
 									<li
-										key={`${file.id}-${file.name}`}
+										key={`${file.messageTs}-${file.id}-${file.name}`}
 										className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3"
 									>
-										<p className="text-[0.82rem] font-medium text-white">
-											{file.name}
-										</p>
-										<p className="mt-1 text-[0.72rem] text-[#8f949b]">
-											{file.mimetype || "unknown type"}
-										</p>
-										{file.permalink ? (
-											<a
-												className="mt-2 inline-flex items-center gap-1.5 text-[0.8rem] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]"
-												href={file.permalink}
-												target="_blank"
-												rel="noreferrer"
-											>
-												<Paperclip className="size-4" />
-												Open file
-											</a>
-										) : null}
+										<button
+											type="button"
+											className="w-full text-left"
+											onClick={() =>
+												setSelectedFileState({
+													messageTs: file.messageTs,
+													index: file.messageFileIndex,
+												})
+											}
+										>
+											<p className="text-[0.82rem] font-medium text-white">
+												{file.name}
+											</p>
+											<p className="mt-1 text-[0.72rem] text-[#8f949b]">
+												{file.mimetype || "unknown type"}
+											</p>
+											{file.permalink ? (
+												<span className="mt-2 inline-flex items-center gap-1.5 text-[0.8rem] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]">
+													<Paperclip className="size-4" />
+													Open file
+												</span>
+											) : null}
+										</button>
 									</li>
 								))}
 							</ul>
@@ -240,6 +288,24 @@ export function ThreadPage() {
 					</SectionCard>
 				</div>
 			</div>
+
+			{selectedFileGroup && selectedFileState ? (
+				<ThreadFileViewer
+					files={selectedFileGroup.files}
+					currentIndex={Math.min(
+						selectedFileState.index,
+						selectedFileGroup.files.length - 1,
+					)}
+					messageTs={selectedFileGroup.messageTs}
+					onClose={() => setSelectedFileState(null)}
+					onChangeIndex={(index) =>
+						setSelectedFileState({
+							messageTs: selectedFileGroup.messageTs,
+							index,
+						})
+					}
+				/>
+			) : null}
 		</div>
 	);
 }
@@ -256,11 +322,12 @@ interface MessageProps {
 		} | null;
 		text: string;
 		reactions: { user_id: string; name: string }[];
-		files: { id: string; name: string; permalink: string | null }[];
+		files: ThreadViewerFile[];
 	};
+	onOpenFile: (fileIndex: number) => void;
 }
 
-function MessageCard({ message }: MessageProps) {
+function MessageCard({ message, onOpenFile }: MessageProps) {
 	const reactions = groupReactions(message.reactions);
 
 	return (
@@ -300,28 +367,16 @@ function MessageCard({ message }: MessageProps) {
 						label={`${reaction.emoji ?? `:${reaction.name}:`} ${reaction.count}`}
 					/>
 				))}
-				{message.files.map((file) => (
-					<span
+				{message.files.map((file, index) => (
+					<button
 						key={file.id}
+						type="button"
 						className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.72rem] text-[#c4c8cf] hover:border-[#1fc86f]/22 hover:text-white"
+						onClick={() => onOpenFile(index)}
 					>
-						{file.permalink ? (
-							<a
-								href={file.permalink}
-								target="_blank"
-								rel="noreferrer"
-								className="inline-flex items-center gap-1.5"
-							>
-								<Paperclip className="size-3.5" />
-								{file.name}
-							</a>
-						) : (
-							<>
-								<Paperclip className="size-3.5" />
-								{file.name}
-							</>
-						)}
-					</span>
+						<Paperclip className="size-3.5" />
+						{file.name}
+					</button>
 				))}
 			</div>
 		</article>
