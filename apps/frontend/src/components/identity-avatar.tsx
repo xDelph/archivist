@@ -14,9 +14,9 @@ interface IdentityAvatarProps {
 }
 
 const sizes = {
-	sm: "size-10 text-sm",
-	md: "size-12 text-base",
-	lg: "size-14 text-lg",
+	sm: "size-8 text-xs",
+	md: "size-10 text-sm",
+	lg: "size-12 text-base",
 };
 
 export function IdentityAvatar({
@@ -31,7 +31,7 @@ export function IdentityAvatar({
 				src={author.avatar_url}
 				alt={displayAuthorName(author, fallback)}
 				className={cn(
-					"rounded-full border border-white/10 object-cover shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+					"rounded-full border border-white/10 object-cover",
 					sizes[size],
 					className,
 				)}
@@ -42,7 +42,7 @@ export function IdentityAvatar({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center justify-center rounded-full border border-white/10 bg-linear-to-br font-semibold shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+				"inline-flex items-center justify-center rounded-full border border-white/10 bg-linear-to-br font-semibold",
 				authorAvatarTone(author?.slack_user_id || fallback),
 				sizes[size],
 				className,

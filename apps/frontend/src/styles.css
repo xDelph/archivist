@@ -49,25 +49,12 @@
 		font-family: "Space Grotesk", sans-serif;
 		font-feature-settings: "ss01", "ss02";
 		color: var(--text-main);
-		background: radial-gradient(
-				circle at 50% 0%,
-				rgba(24, 204, 119, 0.08),
-				transparent 24%
+		background: linear-gradient(
+				180deg,
+				rgba(17, 22, 20, 0.18),
+				transparent 160px
 			), linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
 		background-attachment: fixed;
-	}
-
-	body::before {
-		content: "";
-		position: fixed;
-		inset: 0;
-		pointer-events: none;
-		background-image: linear-gradient(
-				rgba(255, 255, 255, 0.03) 1px,
-				transparent 1px
-			), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-		background-size: 84px 84px;
-		mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent 80%);
 	}
 
 	a {

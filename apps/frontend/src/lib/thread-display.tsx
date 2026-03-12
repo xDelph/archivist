@@ -135,7 +135,7 @@ export function renderSlackTextWithHighlights(
 					href={slackLink.href}
 					target="_blank"
 					rel="noreferrer"
-					className="text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 transition-colors hover:text-[#89bbff]"
+					className="break-all [overflow-wrap:anywhere] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 transition-colors hover:text-[#89bbff]"
 				>
 					{renderHighlightedText(slackLink.label || slackLink.href, query, key)}
 				</a>

@@ -4,13 +4,12 @@ import { authQueries } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Archive, Bookmark, House, Search, UserRound } from "lucide-react";
+import { Archive, Bookmark, House, Search } from "lucide-react";
 
 const navItems = [
 	{ to: "/", label: "Catch up", icon: House },
 	{ to: "/search", label: "Search", icon: Search },
 	{ to: "/saved", label: "Saved", icon: Bookmark },
-	{ to: "/account", label: "Account", icon: UserRound },
 ] as const;
 
 export function AppShell() {
@@ -22,20 +21,20 @@ export function AppShell() {
 
 	return (
 		<div className="min-h-dvh bg-[#050607] pb-20 text-white">
-			<header className="sticky top-0 z-30 border-b border-white/6 bg-black/85 backdrop-blur-xl">
-				<div className="mx-auto flex max-w-[1500px] items-center gap-4 px-4 py-4 sm:px-6">
-					<Link to="/" className="flex items-center gap-4">
-						<span className="flex size-12 items-center justify-center rounded-2xl bg-[#18cc77] text-black shadow-[0_8px_24px_rgba(24,204,119,0.25)]">
-							<Archive className="size-6" />
+			<header className="sticky top-0 z-30 border-b border-white/6 bg-[#040506]/94 backdrop-blur-xl">
+				<div className="mx-auto flex max-w-[1680px] items-center gap-2 px-2.5 py-1 sm:px-3">
+					<Link to="/" className="flex items-center gap-2">
+						<span className="flex size-9 items-center justify-center rounded-lg bg-[#19ce77] text-black shadow-[0_8px_18px_rgba(24,204,119,0.18)]">
+							<Archive className="size-3.5" />
 						</span>
 						<div>
-							<p className="text-[1.7rem] font-semibold leading-none tracking-tight text-white">
+							<p className="text-[1.2rem] font-semibold leading-none tracking-tight text-white sm:text-[1.3rem]">
 								Archivist
 							</p>
 						</div>
 					</Link>
 
-					<nav className="hidden items-center gap-2 lg:flex">
+					<nav className="hidden items-center rounded-xl border border-white/8 bg-white/[0.035] p-0.5 lg:flex">
 						{navItems.map((item) => {
 							const isActive =
 								item.to === "/"
@@ -47,10 +46,10 @@ export function AppShell() {
 									key={item.to}
 									to={item.to}
 									className={cn(
-										"rounded-2xl border px-5 py-3 text-lg text-[#c0c1c6] transition-colors",
+										"rounded-md px-3 py-1.25 text-[0.8rem] text-[#b8bcc4] transition-colors",
 										isActive
-											? "border-white/12 bg-black text-white"
-											: "border-transparent bg-white/4 hover:border-white/10 hover:bg-white/8 hover:text-white",
+											? "bg-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.24)]"
+											: "hover:bg-white/[0.04] hover:text-white",
 									)}
 								>
 									{item.label}
@@ -61,7 +60,7 @@ export function AppShell() {
 
 					<Link
 						to="/account"
-						className="ml-auto flex items-center gap-3 rounded-full border border-white/10 bg-white/4 px-2 py-1.5 transition-colors hover:border-white/16 hover:bg-white/8"
+						className="ml-auto flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.035] px-1 py-1 transition-colors hover:border-white/16 hover:bg-white/[0.06]"
 					>
 						<IdentityAvatar
 							author={
@@ -76,11 +75,11 @@ export function AppShell() {
 							fallback={user?.email || "Archivist"}
 							size="sm"
 						/>
-						<div className="hidden pr-3 text-right sm:block">
-							<p className="text-lg font-medium leading-tight text-white">
+						<div className="hidden pr-2 text-right xl:block">
+							<p className="text-[0.76rem] font-medium leading-tight text-white">
 								{user?.display_name || "Archivist"}
 							</p>
-							<p className="text-sm text-[#868790]">
+							<p className="text-[0.66rem] text-[#868790]">
 								{user?.email || user?.slack_user_id || "Slack"}
 							</p>
 						</div>
@@ -88,7 +87,7 @@ export function AppShell() {
 				</div>
 			</header>
 
-			<div className="mx-auto flex w-full max-w-[1500px] flex-col px-4 py-6 sm:px-6">
+			<div className="mx-auto flex w-full max-w-[1680px] flex-col px-2.5 py-2.5 sm:px-3">
 				<InstallBanner />
 				<main className="flex-1">
 					<Outlet />
@@ -96,7 +95,7 @@ export function AppShell() {
 			</div>
 
 			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/8 bg-black/92 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
-				<div className="mx-auto grid max-w-md grid-cols-4 gap-1 py-2">
+				<div className="mx-auto grid max-w-md grid-cols-3 gap-1 py-1.5">
 					{navItems.map((item) => {
 						const Icon = item.icon;
 						const isActive =
@@ -109,13 +108,13 @@ export function AppShell() {
 								key={item.to}
 								to={item.to}
 								className={cn(
-									"flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-[0.68rem] uppercase tracking-[0.18em] transition-colors",
+									"flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[0.62rem] uppercase tracking-[0.16em] transition-colors",
 									isActive
 										? "bg-[#18cc77]/14 text-[#3be18b]"
 										: "text-[#7a7c84] hover:bg-white/6 hover:text-white",
 								)}
 							>
-								<Icon className="size-5" />
+								<Icon className="size-4.5" />
 								<span>{item.label}</span>
 							</Link>
 						);

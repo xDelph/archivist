@@ -3,7 +3,7 @@ import { IdentityAvatar } from "@/components/identity-avatar";
 import { SectionCard } from "@/components/section-card";
 import { Button } from "@/components/ui/button";
 import { deleteSavedThread, saveThread } from "@/lib/api";
-import { formatSlackTimestamp, formatStatLabel } from "@/lib/format";
+import { formatSlackTimestamp } from "@/lib/format";
 import { savedQueries, threadQueries } from "@/lib/queries";
 import {
 	displayAuthorName,
@@ -92,78 +92,64 @@ export function ThreadPage() {
 	);
 
 	return (
-		<div className="space-y-6">
+		<div className="space-y-4">
 			<SectionCard
 				eyebrow="Thread detail"
 				title={renderSlackText(rootMessage?.text || "Untitled thread")}
-				description="The feature set stays the same. This redesign only restores the darker original Archivist treatment with clearer identities, links, files, and reactions."
+				titleClassName="font-normal"
+				overlayActions
 				actions={
 					<Button
 						type="button"
 						variant={savedItem ? "default" : "secondary"}
+						size="sm"
 						className={
 							savedItem
-								? "bg-[#18cc77] text-black hover:bg-[#2ae38a]"
-								: "border-white/10 bg-white/[0.03] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06]"
+								? "size-9 rounded-full px-0 text-black hover:bg-[#2ae38a] sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem] bg-[#18cc77]"
+								: "size-9 rounded-full border-white/10 bg-white/[0.03] px-0 text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06] sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
 						}
 						onClick={() => saveMutation.mutate()}
 						disabled={saveMutation.isPending}
 					>
 						{savedItem ? (
-							<BookmarkCheck className="size-4" />
+							<BookmarkCheck className="size-4 sm:size-3.5" />
 						) : (
-							<Bookmark className="size-4" />
+							<Bookmark className="size-4 sm:size-3.5" />
 						)}
-						{saveMutation.isPending
-							? savedItem
-								? "Removing"
-								: "Saving"
-							: savedItem
-								? "Saved"
-								: "Save thread"}
+						<span className="hidden sm:inline">
+							{saveMutation.isPending
+								? savedItem
+									? "Removing"
+									: "Saving"
+								: savedItem
+									? "Saved"
+									: "Save thread"}
+						</span>
 					</Button>
 				}
 			>
-				<div className="flex flex-wrap gap-2 text-xs text-[#9aa0a7]">
-					<MetaChip label={formatStatLabel(replyCount, "reply", "replies")} />
-					<MetaChip
-						label={formatStatLabel(
-							participantCount,
-							"participant",
-							"participants",
-						)}
-					/>
-					<MetaChip
-						label={formatStatLabel(reactionCount, "reaction", "reactions")}
-					/>
+				<div className="flex flex-wrap gap-1.5 text-[0.72rem] text-[#9aa0a7]">
+					<MetaChip label={String(replyCount)} />
+					<MetaChip label={String(participantCount)} />
+					<MetaChip label={String(reactionCount)} />
 					{allFiles.length > 0 ? (
-						<MetaChip
-							label={formatStatLabel(allFiles.length, "file", "files")}
-						/>
+						<MetaChip label={String(allFiles.length)} />
 					) : null}
 				</div>
 			</SectionCard>
 
-			<div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-				<div className="space-y-6">
-					<SectionCard
-						eyebrow="Highlights"
-						title="Important moments"
-						description="Root messages, replies with reactions, and messages that carried files stay surfaced first."
-					>
-						<div className="space-y-3">
+			<div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+				<div className="space-y-4">
+					<SectionCard eyebrow="Highlights" title="Important moments">
+						<div className="space-y-2.5">
 							{highlightedMessages.map((message) => (
 								<MessageCard key={message.ts} message={message} />
 							))}
 						</div>
 					</SectionCard>
 
-					<SectionCard
-						eyebrow="Full transcript"
-						title="Conversation timeline"
-						description="Long threads still collapse by default, but the message presentation now mirrors the first Archivist version more closely."
-					>
-						<div className="space-y-3">
+					<SectionCard eyebrow="Full transcript" title="Conversation timeline">
+						<div className="space-y-2.5">
 							{visibleMessages.map((message) => (
 								<MessageCard key={message.ts} message={message} />
 							))}
@@ -173,10 +159,10 @@ export function ThreadPage() {
 								<Button
 									type="button"
 									variant="secondary"
-									className="border-white/10 bg-white/[0.03] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06]"
+									className="border-white/10 bg-white/[0.03] px-3 py-2 text-[0.78rem] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06]"
 									onClick={() => setIsExpanded((current) => !current)}
 								>
-									<ChevronDown className="size-4" />
+									<ChevronDown className="size-3.5" />
 									{isExpanded
 										? "Collapse transcript"
 										: `Show all ${messages.length} messages`}
@@ -186,18 +172,14 @@ export function ThreadPage() {
 					</SectionCard>
 				</div>
 
-				<div className="space-y-6">
-					<SectionCard
-						eyebrow="Links"
-						title="Linked references"
-						description="URLs mentioned in the thread are extracted here with a simpler legacy-style treatment."
-					>
+				<div className="space-y-4">
+					<SectionCard eyebrow="Links" title="Linked references">
 						{links.length ? (
-							<ul className="space-y-2 text-sm">
+							<ul className="space-y-2 text-[0.82rem]">
 								{links.map((link) => (
 									<li
 										key={link.href}
-										className="rounded-[1.2rem] border border-white/8 bg-[#0a0d0f] p-3.5"
+										className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3"
 									>
 										<a
 											href={link.href}
@@ -220,27 +202,23 @@ export function ThreadPage() {
 						)}
 					</SectionCard>
 
-					<SectionCard
-						eyebrow="Files"
-						title="Attached files"
-						description="Files shared in the thread stay grouped here for quick access."
-					>
+					<SectionCard eyebrow="Files" title="Attached files">
 						{allFiles.length ? (
 							<ul className="space-y-2">
 								{allFiles.map((file) => (
 									<li
 										key={`${file.id}-${file.name}`}
-										className="rounded-[1.2rem] border border-white/8 bg-[#0a0d0f] p-4"
+										className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3"
 									>
-										<p className="text-sm font-medium text-white">
+										<p className="text-[0.82rem] font-medium text-white">
 											{file.name}
 										</p>
-										<p className="mt-1 text-xs text-[#8f949b]">
+										<p className="mt-1 text-[0.72rem] text-[#8f949b]">
 											{file.mimetype || "unknown type"}
 										</p>
 										{file.permalink ? (
 											<a
-												className="mt-2 inline-flex items-center gap-2 text-sm text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]"
+												className="mt-2 inline-flex items-center gap-1.5 text-[0.8rem] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]"
 												href={file.permalink}
 												target="_blank"
 												rel="noreferrer"
@@ -286,16 +264,16 @@ function MessageCard({ message }: MessageProps) {
 	const reactions = groupReactions(message.reactions);
 
 	return (
-		<article className="rounded-[1.35rem] border border-white/8 bg-[#0a0d0f] p-4">
-			<div className="flex items-start gap-3">
+		<article className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3">
+			<div className="flex items-start gap-2.5">
 				<IdentityAvatar
 					author={message.author}
 					fallback={message.user_id}
 					size="sm"
 				/>
 				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-2 text-xs text-[#868b93]">
-						<span className="text-sm font-medium text-white">
+					<div className="flex flex-wrap items-center gap-1.5 text-[0.72rem] text-[#868b93]">
+						<span className="text-[0.82rem] font-medium text-white">
 							{displayAuthorName(message.author, message.user_id)}
 						</span>
 						<span className="text-white/15">&middot;</span>
@@ -309,13 +287,13 @@ function MessageCard({ message }: MessageProps) {
 							</>
 						) : null}
 					</div>
-					<div className="mt-2 whitespace-pre-wrap text-[0.98rem] leading-7 text-[#eef0f2]">
+					<div className="mt-1.5 whitespace-pre-wrap text-[0.82rem] leading-6 font-normal text-[#eef0f2]">
 						{renderSlackText(message.text)}
 					</div>
 				</div>
 			</div>
 
-			<div className="mt-4 flex flex-wrap gap-2">
+			<div className="mt-3 flex flex-wrap gap-1.5">
 				{reactions.map((reaction) => (
 					<MetaChip
 						key={reaction.name}
@@ -325,7 +303,7 @@ function MessageCard({ message }: MessageProps) {
 				{message.files.map((file) => (
 					<span
 						key={file.id}
-						className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-[#c4c8cf] hover:border-[#1fc86f]/22 hover:text-white"
+						className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.72rem] text-[#c4c8cf] hover:border-[#1fc86f]/22 hover:text-white"
 					>
 						{file.permalink ? (
 							<a
@@ -358,7 +336,7 @@ function MetaChip({
 	icon?: ReactNode;
 }) {
 	return (
-		<span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-0.5 text-[#c3c8ce]">
+		<span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.72rem] text-[#c3c8ce]">
 			{icon}
 			{label}
 		</span>

@@ -1,6 +1,6 @@
 import { ChannelBadge } from "@/components/channel-badge";
 import { IdentityAvatar } from "@/components/identity-avatar";
-import { formatSlackTimestamp, formatStatLabel } from "@/lib/format";
+import { formatSlackTimestamp } from "@/lib/format";
 import {
 	type ThreadAuthor,
 	displayAuthorName,
@@ -57,13 +57,13 @@ export function ThreadCard({
 	return (
 		<article
 			className={cn(
-				"group rounded-[1.45rem] border border-white/8 bg-[#090b0d] px-4 py-4 shadow-[0_18px_56px_rgba(0,0,0,0.28)] transition-colors hover:border-[#22c55e]/28 hover:bg-[#0b0d10]",
+				"group rounded-[0.82rem] border border-white/8 bg-[#07090b] px-2.5 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-colors hover:border-[#22c55e]/28 hover:bg-[#090b0d]",
 				className,
 			)}
 		>
-			<div className="flex items-start gap-4">
+			<div className="flex items-start gap-2">
 				{typeof rank === "number" ? (
-					<div className="hidden min-w-8 justify-center pt-1 text-[2rem] font-semibold leading-none text-[#22c55e] xl:flex">
+					<div className="hidden min-w-5 justify-center pt-0.5 text-[1.15rem] font-semibold leading-none text-[#22c55e] xl:flex">
 						{rank}
 					</div>
 				) : null}
@@ -79,37 +79,37 @@ export function ThreadCard({
 					params={{ threadId }}
 					className="min-w-0 flex-1"
 				>
-					<div className="flex items-start justify-between gap-4">
+					<div className="flex items-start justify-between gap-2.5">
 						<div className="min-w-0">
-							<div className="flex flex-wrap items-center gap-2">
-								<p className="truncate text-[1.08rem] font-medium text-white">
+							<div className="flex flex-wrap items-center gap-1.5">
+								<p className="truncate text-[0.82rem] font-medium text-white">
 									{displayAuthorName(author, authorFallback || channelName)}
 								</p>
 								<ChannelBadge name={channelName} />
 							</div>
-							<div className="mt-3 text-[1.06rem] leading-snug text-[#eef0f2]">
+							<div className="mt-1 break-words text-[0.84rem] leading-snug font-normal text-[#eef0f2]">
 								{renderRichNode(title)}
 							</div>
 							{previewIsDuplicate ? null : (
-								<div className="mt-2 line-clamp-2 text-[0.98rem] leading-relaxed text-[#a6a9b1]">
+								<div className="mt-0.5 line-clamp-2 break-words text-[0.74rem] leading-relaxed text-[#a6a9b1]">
 									{renderRichNode(preview)}
 								</div>
 							)}
 						</div>
 
 						<div className="hidden shrink-0 text-right lg:block">
-							<time className="block text-[0.95rem] text-[#83868e]">
+							<time className="block text-[0.7rem] text-[#83868e]">
 								{formatSlackTimestamp(lastActivityTs)}
 							</time>
 							{typeof score === "number" ? (
-								<div className="mt-4 rounded-full border border-[#1fc86f]/20 bg-[#112017] px-3 py-1 text-sm font-medium text-[#29d779]">
+								<div className="mt-2 rounded-[0.65rem] border border-[#1fc86f]/20 bg-[#112017] px-2 py-0.5 text-[0.7rem] font-medium text-[#29d779]">
 									{score}
 								</div>
 							) : null}
 						</div>
 					</div>
 
-					<div className="mt-4 flex flex-wrap items-center gap-4 text-[0.95rem] text-[#8f9299]">
+					<div className="mt-2.5 flex flex-wrap items-center gap-2.5 text-[0.72rem] text-[#8f9299]">
 						{metrics.map((metric) => (
 							<Metric
 								key={metric.label}
@@ -119,12 +119,12 @@ export function ThreadCard({
 						))}
 					</div>
 
-					<div className="mt-3 flex items-center justify-between gap-3 lg:hidden">
-						<time className="text-[0.9rem] text-[#8b8b93]">
+					<div className="mt-1.5 flex items-center justify-between gap-3 lg:hidden">
+						<time className="text-[0.68rem] text-[#8b8b93]">
 							{formatSlackTimestamp(lastActivityTs)}
 						</time>
 						{typeof score === "number" ? (
-							<span className="rounded-full border border-[#1fc86f]/20 bg-[#112017] px-3 py-1 text-sm font-medium text-[#29d779]">
+							<span className="rounded-[0.65rem] border border-[#1fc86f]/20 bg-[#112017] px-2 py-0.5 text-[0.7rem] font-medium text-[#29d779]">
 								{score}
 							</span>
 						) : null}
@@ -139,7 +139,7 @@ export function ThreadCard({
 
 function Metric({ icon, label }: { icon: ReactNode; label: string }) {
 	return (
-		<span className="inline-flex items-center gap-2">
+		<span className="inline-flex items-center gap-1">
 			{icon}
 			{label}
 		</span>
@@ -158,25 +158,25 @@ export function buildThreadCardMetrics(
 ) {
 	return [
 		{
-			icon: <MessageSquare className="size-4" />,
-			label: formatStatLabel(replyCount, "reply", "replies"),
+			icon: <MessageSquare className="size-3.5" />,
+			label: String(replyCount),
 		},
 		reactionCount > 0
 			? {
-					icon: <Heart className="size-4" />,
-					label: formatStatLabel(reactionCount, "reaction", "reactions"),
+					icon: <Heart className="size-3.5" />,
+					label: String(reactionCount),
 				}
 			: null,
 		participantCount > 0
 			? {
-					icon: <Users className="size-4" />,
-					label: formatStatLabel(participantCount, "person", "people"),
+					icon: <Users className="size-3.5" />,
+					label: String(participantCount),
 				}
 			: null,
 		fileCount > 0
 			? {
-					icon: <Paperclip className="size-4" />,
-					label: formatStatLabel(fileCount, "file", "files"),
+					icon: <Paperclip className="size-3.5" />,
+					label: String(fileCount),
 				}
 			: null,
 	].filter((metric) => metric !== null);

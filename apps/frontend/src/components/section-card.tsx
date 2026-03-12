@@ -3,46 +3,69 @@ import type { PropsWithChildren, ReactNode } from "react";
 
 interface SectionCardProps extends PropsWithChildren {
 	title: ReactNode;
+	titleClassName?: string;
 	description?: string;
 	eyebrow?: string;
 	actions?: ReactNode;
+	overlayActions?: boolean;
 	className?: string;
 }
 
 export function SectionCard({
 	title,
+	titleClassName,
 	description,
 	eyebrow,
 	actions,
+	overlayActions = false,
 	className,
 	children,
 }: SectionCardProps) {
 	return (
 		<section
 			className={cn(
-				"rounded-[1.75rem] border border-white/8 bg-[#090b0d] p-5 shadow-[0_18px_56px_rgba(0,0,0,0.36)] backdrop-blur-sm sm:p-6",
+				"rounded-[0.82rem] border border-white/8 bg-[#07090b] p-3 shadow-[0_8px_24px_rgba(0,0,0,0.18)] sm:p-3.5",
 				className,
 			)}
 		>
-			<div className="flex items-start justify-between gap-4">
+			<div
+				className={cn(
+					"flex items-start justify-between gap-3",
+					overlayActions && "relative block",
+				)}
+			>
 				<div className="min-w-0">
 					{eyebrow ? (
-						<p className="text-[0.68rem] font-medium uppercase tracking-[0.3em] text-[#20cb74]">
+						<p className="text-[0.58rem] font-medium uppercase tracking-[0.25em] text-[#20cb74]">
 							{eyebrow}
 						</p>
 					) : null}
-					<h2 className="mt-2 text-xl font-semibold tracking-tight text-white">
+					<h2
+						className={cn(
+							"mt-1 text-[1.02rem] font-semibold tracking-tight text-white sm:text-[1.14rem]",
+							titleClassName,
+						)}
+					>
 						{title}
 					</h2>
 					{description ? (
-						<p className="mt-2 text-sm leading-relaxed text-[#92959c]">
+						<p className="mt-1 text-[0.76rem] leading-relaxed text-[#92959c]">
 							{description}
 						</p>
 					) : null}
 				</div>
-				{actions ? <div className="shrink-0">{actions}</div> : null}
+				{actions ? (
+					<div
+						className={cn(
+							"shrink-0",
+							overlayActions && "absolute right-0 top-0 z-10",
+						)}
+					>
+						{actions}
+					</div>
+				) : null}
 			</div>
-			<div className="mt-5">{children}</div>
+			<div className="mt-2.5">{children}</div>
 		</section>
 	);
 }

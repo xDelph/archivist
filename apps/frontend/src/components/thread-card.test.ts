@@ -39,6 +39,6 @@ describe("thread card preview visibility", () => {
 	it("always shows the reply count metric", () => {
 		expect(
 			buildThreadCardMetrics(0, 4, 2, 0).map((metric) => metric.label),
-		).toEqual(["0 replies", "4 reactions", "2 people"]);
+		).toEqual(["0", "4", "2"]);
 	});
 });

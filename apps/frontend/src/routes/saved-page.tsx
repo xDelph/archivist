@@ -19,11 +19,7 @@ export function SavedPage() {
 
 	return (
 		<div className="space-y-5">
-			<SectionCard
-				eyebrow="Saved"
-				title="Bookmarked threads"
-				description="Threads you explicitly saved are kept here so you can return without rerunning search or catch-up."
-			>
+			<SectionCard eyebrow="Saved" title="Bookmarked threads">
 				{savedQuery.isPending ? (
 					<div className="space-y-3">
 						{["skel-a", "skel-b"].map((id) => (

@@ -12,11 +12,12 @@ import { type ReactNode, useDeferredValue } from "react";
 export function SearchPage() {
 	const search = useSearch({ from: "/app/search" });
 	const navigate = useNavigate();
+	const defaultDateRange = getDefaultSearchDateRange();
 
 	const query = search.q ?? "";
 	const channelId = search.channel_id ?? "";
-	const dateFrom = search.date_from ?? "";
-	const dateTo = search.date_to ?? "";
+	const dateFrom = search.date_from ?? defaultDateRange.from;
+	const dateTo = search.date_to ?? defaultDateRange.to;
 	const sort = search.sort ?? "relevance";
 
 	const deferredQuery = useDeferredValue(query.trim());
@@ -39,23 +40,23 @@ export function SearchPage() {
 	}
 
 	return (
-		<div className="space-y-6">
-			<section className="rounded-[1.9rem] border border-white/8 bg-[#090b0d] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)] sm:p-6">
-				<p className="text-[0.72rem] font-medium uppercase tracking-[0.32em] text-[#20cb74]">
+		<div className="space-y-4">
+			<section className="rounded-[0.9rem] border border-white/8 bg-[#07090b] p-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-4">
+				<p className="text-[0.62rem] font-medium uppercase tracking-[0.28em] text-[#20cb74]">
 					Search
 				</p>
-				<h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+				<h2 className="mt-2 text-[1.45rem] font-semibold tracking-tight text-white sm:text-[1.65rem]">
 					Search public-channel history without losing the thread context.
 				</h2>
-				<div className="mt-6 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_220px_220px]">
+				<div className="mt-4 grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px_200px]">
 					<label className="sm:col-span-2">
-						<span className="mb-2 block text-[0.68rem] font-medium uppercase tracking-[0.26em] text-[#70737b]">
+						<span className="mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em] text-[#70737b]">
 							Query
 						</span>
-						<div className="flex items-center gap-3 rounded-[1.25rem] border border-white/8 bg-[#121417] px-4 py-3.5 focus-within:border-[#1fc86f]/28">
-							<Search className="size-4 shrink-0 text-[#6c7078]" />
+						<div className="flex items-center gap-2.5 rounded-[0.8rem] border border-white/8 bg-[#121417] px-3 py-2.5 focus-within:border-[#1fc86f]/28">
+							<Search className="size-3.5 shrink-0 text-[#6c7078]" />
 							<input
-								className="w-full bg-transparent text-lg text-white outline-none placeholder:text-[#6f7279]"
+								className="w-full bg-transparent text-[0.92rem] text-white outline-none placeholder:text-[#6f7279]"
 								value={query}
 								onChange={(e) =>
 									updateSearch({ q: e.target.value || undefined })
@@ -72,7 +73,7 @@ export function SearchPage() {
 						placeholder="C123 or channel id"
 						onChange={(v) => updateSearch({ channel_id: v || undefined })}
 					/>
-					<div className="grid grid-cols-2 gap-3">
+					<div className="grid grid-cols-2 gap-2">
 						<FilterField
 							label="From"
 							type="date"
@@ -89,8 +90,8 @@ export function SearchPage() {
 						/>
 					</div>
 				</div>
-				<div className="mt-4 flex flex-wrap items-center gap-2.5">
-					<span className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/[0.03] px-3 py-2 text-xs uppercase tracking-[0.2em] text-[#757983]">
+				<div className="mt-3 flex flex-wrap items-center gap-1.5">
+					<span className="inline-flex items-center gap-2 rounded-[0.7rem] border border-white/8 bg-white/[0.03] px-2.5 py-1.25 text-[0.62rem] uppercase tracking-[0.18em] text-[#757983]">
 						<SlidersHorizontal className="size-3.5" />
 						Sort
 					</span>
@@ -124,7 +125,6 @@ export function SearchPage() {
 						? `Results for "${deferredQuery}"`
 						: "Start typing to search"
 				}
-				description="Results stay thread-shaped so you can jump directly into the full conversation with its author, channel, and message context."
 			>
 				{searchQuery.isPending && deferredQuery.length > 0 ? (
 					<div className="space-y-3">
@@ -174,6 +174,24 @@ export function SearchPage() {
 	);
 }
 
+function getDefaultSearchDateRange() {
+	const today = new Date();
+	const yesterday = new Date(today);
+	yesterday.setDate(today.getDate() - 1);
+
+	return {
+		from: formatDateInputValue(yesterday),
+		to: formatDateInputValue(today),
+	};
+}
+
+function formatDateInputValue(value: Date) {
+	const year = value.getFullYear();
+	const month = String(value.getMonth() + 1).padStart(2, "0");
+	const day = String(value.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+
 function FilterField({
 	label,
 	value,
@@ -191,17 +209,17 @@ function FilterField({
 }) {
 	return (
 		<label>
-			<span className="mb-2 block text-[0.68rem] font-medium uppercase tracking-[0.26em] text-[#70737b]">
+			<span className="mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em] text-[#70737b]">
 				{label}
 			</span>
-			<div className="flex items-center gap-3 rounded-[1.25rem] border border-white/8 bg-[#121417] px-4 py-3.5">
+			<div className="flex items-center gap-2 rounded-[0.8rem] border border-white/8 bg-[#121417] px-3 py-2.5">
 				{icon}
 				<input
 					type={type}
 					value={value}
 					onChange={(e) => onChange(e.target.value)}
 					placeholder={placeholder}
-					className="w-full bg-transparent text-base text-white outline-none placeholder:text-[#6f7279]"
+					className="w-full bg-transparent text-[0.88rem] text-white outline-none placeholder:text-[#6f7279]"
 				/>
 			</div>
 		</label>

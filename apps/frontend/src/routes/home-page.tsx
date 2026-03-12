@@ -26,21 +26,18 @@ export function HomePage() {
 	const highlights = pickChannelHighlights(filteredWeekChannels);
 
 	return (
-		<div className="space-y-6">
-			<section className="rounded-[1.9rem] border border-white/8 bg-[#090b0d] px-5 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)] sm:px-6">
-				<div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-					<div className="max-w-4xl">
-						<p className="text-[0.72rem] font-medium uppercase tracking-[0.32em] text-[#20cb74]">
+		<div className="space-y-4">
+			<section className="rounded-[0.82rem] border border-white/8 bg-[#07090b] px-3 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:px-3.5">
+				<div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+					<div className="max-w-3xl">
+						<p className="text-[0.58rem] font-medium uppercase tracking-[0.24em] text-[#20cb74]">
 							Public-channel catch-up
 						</p>
-						<h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-[2.8rem]">
+						<h1 className="mt-1.5 text-[1.18rem] font-semibold tracking-tight text-white sm:text-[1.38rem]">
 							Catch up without reopening the full Slack firehose.
 						</h1>
-						<p className="mt-4 max-w-3xl text-base leading-8 text-[#92949b]">
-							The catch-up feed stays the same. This pass only tightens the
-							presentation so threads read closer to the original Archivist:
-							darker chrome, clearer identity, better channel pills, and denser
-							conversation cards.
+						<p className="mt-1 max-w-2xl text-[0.72rem] leading-5 text-[#92949b]">
+							Public threads, same data model, darker Archivist chrome.
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-3">
@@ -50,15 +47,15 @@ export function HomePage() {
 								void dayQuery.refetch();
 								void weekQuery.refetch();
 							}}
-							className="border-white/10 bg-white/4 text-white hover:border-[#1fc86f]/30 hover:bg-white/7"
+							className="rounded-lg border-white/10 bg-white/[0.04] px-3 py-2 text-[0.78rem] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.07]"
 						>
-							<RefreshCcw className="size-4" />
+							<RefreshCcw className="size-3.5" />
 							Refresh
 						</Button>
 					</div>
 				</div>
 
-				<div className="mt-6 flex flex-wrap gap-2.5">
+				<div className="mt-2.5 flex flex-wrap gap-1.5">
 					<ChannelPill
 						isActive={activeFilter === "all"}
 						label="All channels"
@@ -75,13 +72,9 @@ export function HomePage() {
 				</div>
 			</section>
 
-			<div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.85fr)]">
-				<div className="space-y-6">
-					<SectionCard
-						eyebrow="Last 24 hours"
-						title="Fresh threads"
-						description="Recent public-channel movement, shown with the same catch-up logic but a cleaner surface."
-					>
+			<div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.85fr)]">
+				<div className="space-y-4">
+					<SectionCard eyebrow="Last 24 hours" title="Fresh threads">
 						<CatchUpSection
 							channels={filteredDayChannels}
 							isPending={dayQuery.isPending}
@@ -91,11 +84,7 @@ export function HomePage() {
 						/>
 					</SectionCard>
 
-					<SectionCard
-						eyebrow="This week"
-						title="Steady conversations"
-						description="The longer weekly window stays visible so you can scan ongoing threads without changing the feature set."
-					>
+					<SectionCard eyebrow="This week" title="Steady conversations">
 						<CatchUpSection
 							channels={filteredWeekChannels}
 							isPending={weekQuery.isPending}
@@ -106,15 +95,14 @@ export function HomePage() {
 					</SectionCard>
 				</div>
 
-				<div className="space-y-6">
+				<div className="space-y-4">
 					<SectionCard
 						eyebrow="Trending"
 						title="Threads with momentum"
-						description="A secondary view of the same weekly data. Replies, participants, reactions, and files stay visible without turning the main feed into a ranked list."
 						actions={<Flame className="size-5 text-[#20cb74]" />}
 					>
 						{trendingThreads.length ? (
-							<div className="space-y-3">
+							<div className="space-y-2.5">
 								{trendingThreads.map((thread) => (
 									<ThreadCard
 										key={thread.id}
@@ -144,11 +132,10 @@ export function HomePage() {
 					<SectionCard
 						eyebrow="Channel activity"
 						title="Where people are gathering"
-						description="The channel summary stays the same, but the visual treatment now matches the darker original Archivist surface."
 						actions={<TrendingUp className="size-5 text-[#20cb74]" />}
 					>
 						{highlights.length ? (
-							<div className="space-y-3">
+							<div className="space-y-2.5">
 								{highlights.map((channel) => (
 									<HighlightCard key={channel.id} channel={channel} />
 								))}
@@ -205,7 +192,7 @@ function CatchUpSection({
 	}
 
 	return (
-		<div className="space-y-3">
+		<div className="space-y-2.5">
 			{threads.map((thread) => (
 				<ThreadCard
 					key={thread.id}
@@ -227,7 +214,7 @@ function CatchUpSection({
 
 function LoadingGrid() {
 	return (
-		<div className="space-y-3">
+		<div className="space-y-2.5">
 			{["skel-a", "skel-b", "skel-c"].map((id) => (
 				<div
 					key={id}
@@ -252,7 +239,7 @@ function ChannelPill({
 			to="/"
 			search={search}
 			className={cn(
-				"rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+				"rounded-[0.65rem] border px-2.5 py-1 text-[0.7rem] font-medium transition-colors",
 				isActive
 					? "border-[#1fc86f]/35 bg-[#122318] text-[#29d779]"
 					: "border-white/10 bg-white/[0.03] text-[#9da0a8] hover:border-white/16 hover:bg-white/[0.05] hover:text-white",
@@ -265,21 +252,21 @@ function ChannelPill({
 
 function HighlightCard({ channel }: { channel: CatchUpChannel }) {
 	return (
-		<div className="rounded-[1.35rem] border border-white/8 bg-[#07090a] px-4 py-4">
+		<div className="rounded-[0.9rem] border border-white/8 bg-[#07090a] px-3 py-3">
 			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
-					<p className="text-[0.72rem] font-medium uppercase tracking-[0.28em] text-[#71747d]">
+					<p className="text-[0.62rem] font-medium uppercase tracking-[0.22em] text-[#71747d]">
 						Channel
 					</p>
-					<p className="mt-2 truncate text-lg font-semibold text-white">
+					<p className="mt-1.5 truncate text-[0.95rem] font-semibold text-white">
 						#{channel.name || channel.id}
 					</p>
 				</div>
-				<div className="rounded-full border border-[#1fc86f]/25 bg-[#132118] px-3 py-1 text-sm font-medium text-[#29d779]">
+				<div className="rounded-full border border-[#1fc86f]/25 bg-[#132118] px-2.5 py-0.5 text-[0.72rem] font-medium text-[#29d779]">
 					{formatCompactNumber(channel.thread_count)}
 				</div>
 			</div>
-			<div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.05]">
+			<div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
 				<div
 					className="h-full rounded-full bg-linear-to-r from-[#14a64e] to-[#29d779]"
 					style={{
