@@ -7,7 +7,7 @@ import { formatCompactNumber } from "@/lib/format";
 import { catchUpQueries } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { useSearch } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { Flame, Hash, RefreshCcw, TrendingUp } from "lucide-react";
 
 export function HomePage() {
@@ -26,58 +26,61 @@ export function HomePage() {
 	const highlights = pickChannelHighlights(filteredWeekChannels);
 
 	return (
-		<div className="space-y-5">
-			<section className="overflow-hidden rounded-(--radius-section) border border-(--color-border-subtle) bg-[linear-gradient(135deg,var(--color-bg-surface),var(--color-bg-base))] p-5 shadow-[0_16px_48px_oklch(0.05_0.02_220/0.4)] sm:p-6">
-				<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-					<div>
-						<p className="text-[0.62rem] font-medium uppercase tracking-[0.32em] text-(--color-accent-soft)">
-							Home / Catch up
+		<div className="space-y-6">
+			<section className="rounded-[1.9rem] border border-white/8 bg-[#090b0d] px-5 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)] sm:px-6">
+				<div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+					<div className="max-w-4xl">
+						<p className="text-[0.72rem] font-medium uppercase tracking-[0.32em] text-[#20cb74]">
+							Public-channel catch-up
 						</p>
-						<h2 className="mt-3 max-w-2xl text-2xl font-semibold text-(--color-text-primary) sm:text-3xl">
-							Start with what moved this week, not with the entire Slack
-							firehose.
-						</h2>
-						<p className="mt-3 max-w-2xl text-sm leading-relaxed text-(--color-text-secondary)">
-							Archivist groups recent public-channel threads into a catch-up
-							feed so you can see the conversations that actually shifted.
+						<h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-[2.8rem]">
+							Catch up without reopening the full Slack firehose.
+						</h1>
+						<p className="mt-4 max-w-3xl text-base leading-8 text-[#92949b]">
+							The catch-up feed stays the same. This pass only tightens the
+							presentation so threads read closer to the original Archivist:
+							darker chrome, clearer identity, better channel pills, and denser
+							conversation cards.
 						</p>
 					</div>
-					<div className="flex shrink-0 gap-3">
+					<div className="flex shrink-0 items-center gap-3">
 						<Button
 							variant="secondary"
 							onClick={() => {
 								void dayQuery.refetch();
 								void weekQuery.refetch();
 							}}
+							className="border-white/10 bg-white/4 text-white hover:border-[#1fc86f]/30 hover:bg-white/7"
 						>
 							<RefreshCcw className="size-4" />
 							Refresh
 						</Button>
 					</div>
 				</div>
-				<div className="mt-5 flex flex-wrap gap-2">
+
+				<div className="mt-6 flex flex-wrap gap-2.5">
 					<ChannelPill
 						isActive={activeFilter === "all"}
 						label="All channels"
-						href="/?channel="
+						search={{ channel: undefined }}
 					/>
 					{availableChannels.map((channel) => (
 						<ChannelPill
 							key={channel.id}
 							isActive={activeFilter === channel.id}
 							label={channel.name || channel.id}
-							href={`/?channel=${channel.id}`}
+							search={{ channel: channel.id }}
 						/>
 					))}
 				</div>
 			</section>
 
-			<div className="grid gap-5 xl:grid-cols-[1.35fr_0.95fr]">
-				<div className="space-y-5">
+			<div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.85fr)]">
+				<div className="space-y-6">
 					<SectionCard
-						eyebrow="Since yesterday"
+						eyebrow="Last 24 hours"
 						title="Fresh threads"
-						description="The last 24 hours of public-channel activity, ranked by actual movement."
+						description="Recent public-channel movement, shown with the same catch-up logic but a cleaner surface."
 					>
 						<CatchUpSection
 							channels={filteredDayChannels}
@@ -89,26 +92,26 @@ export function HomePage() {
 					</SectionCard>
 
 					<SectionCard
-						eyebrow="Since last week"
+						eyebrow="This week"
 						title="Steady conversations"
-						description="Longer-running threads that still matter when you zoom out past today."
+						description="The longer weekly window stays visible so you can scan ongoing threads without changing the feature set."
 					>
 						<CatchUpSection
 							channels={filteredWeekChannels}
 							isPending={weekQuery.isPending}
 							isError={weekQuery.isError}
 							emptyTitle="No weekly catch-up yet"
-							emptyDescription="Once the worker processes more public-channel history, longer windows will appear here."
+							emptyDescription="Once the worker processes more history, longer windows will show up here."
 						/>
 					</SectionCard>
 				</div>
 
-				<div className="space-y-5">
+				<div className="space-y-6">
 					<SectionCard
 						eyebrow="Trending"
 						title="Threads with momentum"
-						description="A simple blend of replies, participants, reactions, and files from the weekly window."
-						actions={<Flame className="size-5 text-(--color-accent-soft)" />}
+						description="A secondary view of the same weekly data. Replies, participants, reactions, and files stay visible without turning the main feed into a ranked list."
+						actions={<Flame className="size-5 text-[#20cb74]" />}
 					>
 						{trendingThreads.length ? (
 							<div className="space-y-3">
@@ -117,6 +120,7 @@ export function HomePage() {
 										key={thread.id}
 										threadId={thread.id}
 										channelName={thread.channelName}
+										author={thread.author}
 										title={thread.title}
 										preview={thread.preview}
 										lastActivityTs={thread.last_activity_ts}
@@ -124,25 +128,24 @@ export function HomePage() {
 										participantCount={thread.participant_count}
 										reactionCount={thread.reaction_count}
 										fileCount={thread.file_count}
+										className="bg-[#07090a]"
 									/>
 								))}
 							</div>
 						) : (
 							<EmptyState
 								title="Trending needs more history"
-								description="This card fills in automatically as the worker accumulates public-channel thread summaries."
+								description="This panel fills in automatically as the worker accumulates more public-channel thread summaries."
 								icon={<Flame className="size-5" />}
 							/>
 						)}
 					</SectionCard>
 
 					<SectionCard
-						eyebrow="Community highlights"
+						eyebrow="Channel activity"
 						title="Where people are gathering"
-						description="Channels ranked by recent thread volume in the selected window."
-						actions={
-							<TrendingUp className="size-5 text-(--color-accent-soft)" />
-						}
+						description="The channel summary stays the same, but the visual treatment now matches the darker original Archivist surface."
+						actions={<TrendingUp className="size-5 text-[#20cb74]" />}
 					>
 						{highlights.length ? (
 							<div className="space-y-3">
@@ -153,7 +156,7 @@ export function HomePage() {
 						) : (
 							<EmptyState
 								title="No channel highlights yet"
-								description="As soon as the catch-up feed sees more thread summaries, this panel will call out the liveliest channels."
+								description="More public-channel thread summaries will populate this panel automatically."
 								icon={<Hash className="size-5" />}
 							/>
 						)}
@@ -208,6 +211,7 @@ function CatchUpSection({
 					key={thread.id}
 					threadId={thread.id}
 					channelName={thread.channelName}
+					author={thread.author}
 					title={thread.title}
 					preview={thread.preview}
 					lastActivityTs={thread.last_activity_ts}
@@ -227,7 +231,7 @@ function LoadingGrid() {
 			{["skel-a", "skel-b", "skel-c"].map((id) => (
 				<div
 					key={id}
-					className="h-32 animate-pulse rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-surface)/40"
+					className="h-36 animate-pulse rounded-[1.45rem] border border-white/8 bg-white/[0.03]"
 				/>
 			))}
 		</div>
@@ -237,63 +241,62 @@ function LoadingGrid() {
 function ChannelPill({
 	label,
 	isActive,
-	href,
+	search,
 }: {
 	label: string;
 	isActive: boolean;
-	href: string;
+	search: { channel?: string };
 }) {
 	return (
-		<a
-			href={href}
+		<Link
+			to="/"
+			search={search}
 			className={cn(
-				"rounded-(--radius-pill) border px-4 py-2 text-xs font-medium transition-colors",
+				"rounded-full border px-4 py-2 text-sm font-medium transition-colors",
 				isActive
-					? "border-(--color-border-accent) bg-(--color-accent-soft)/12 text-(--color-accent-soft)"
-					: "border-(--color-border-subtle) bg-(--color-bg-surface)/50 text-(--color-text-secondary) hover:border-(--color-border-default) hover:text-(--color-text-primary)",
+					? "border-[#1fc86f]/35 bg-[#122318] text-[#29d779]"
+					: "border-white/10 bg-white/[0.03] text-[#9da0a8] hover:border-white/16 hover:bg-white/[0.05] hover:text-white",
 			)}
 		>
 			{label}
-		</a>
+		</Link>
 	);
 }
 
-interface ChannelHighlight {
-	id: string;
-	name: string;
-	kind: string;
-	threadCount: number;
-	highlight: string;
-}
-
-function HighlightCard({ channel }: { channel: ChannelHighlight }) {
+function HighlightCard({ channel }: { channel: CatchUpChannel }) {
 	return (
-		<article className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4">
-			<div className="flex items-start justify-between gap-4">
-				<div>
-					<p className="text-[0.6rem] font-medium uppercase tracking-[0.22em] text-(--color-text-muted)">
-						{channel.kind}
+		<div className="rounded-[1.35rem] border border-white/8 bg-[#07090a] px-4 py-4">
+			<div className="flex items-start justify-between gap-3">
+				<div className="min-w-0">
+					<p className="text-[0.72rem] font-medium uppercase tracking-[0.28em] text-[#71747d]">
+						Channel
 					</p>
-					<h3 className="mt-1.5 text-base font-semibold text-(--color-text-primary)">
-						# {channel.name}
-					</h3>
+					<p className="mt-2 truncate text-lg font-semibold text-white">
+						#{channel.name || channel.id}
+					</p>
 				</div>
-				<span className="rounded-(--radius-pill) border border-(--color-border-subtle) bg-(--color-bg-surface) px-3 py-1 text-xs tabular-nums text-(--color-text-secondary)">
-					{formatCompactNumber(channel.threadCount)} threads
-				</span>
+				<div className="rounded-full border border-[#1fc86f]/25 bg-[#132118] px-3 py-1 text-sm font-medium text-[#29d779]">
+					{formatCompactNumber(channel.thread_count)}
+				</div>
 			</div>
-			<p className="mt-2.5 text-sm leading-relaxed text-(--color-text-secondary)">
-				{channel.highlight}
-			</p>
-		</article>
+			<div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.05]">
+				<div
+					className="h-full rounded-full bg-linear-to-r from-[#14a64e] to-[#29d779]"
+					style={{
+						width: `${Math.max(12, Math.min(100, channel.thread_count * 12))}%`,
+					}}
+				/>
+			</div>
+		</div>
 	);
 }
 
-function filterChannels(channels: CatchUpChannel[], filter: string) {
-	if (filter === "all") {
+function filterChannels(channels: CatchUpChannel[], activeFilter: string) {
+	if (activeFilter === "all") {
 		return channels;
 	}
-	return channels.filter((channel) => channel.id === filter);
+
+	return channels.filter((channel) => channel.id === activeFilter);
 }
 
 function pickTrendingThreads(channels: CatchUpChannel[]) {
@@ -302,28 +305,19 @@ function pickTrendingThreads(channels: CatchUpChannel[]) {
 			channel.threads.map((thread) => ({
 				...thread,
 				channelName: channel.name || channel.id,
-				trendingScore:
+				movement:
 					thread.reply_count * 3 +
 					thread.participant_count * 2 +
 					thread.reaction_count * 2 +
-					thread.file_count,
+					thread.file_count * 4,
 			})),
 		)
-		.sort((left, right) => right.trendingScore - left.trendingScore)
+		.sort((left, right) => right.movement - left.movement)
 		.slice(0, 4);
 }
 
 function pickChannelHighlights(channels: CatchUpChannel[]) {
-	return channels
-		.map((channel) => ({
-			id: channel.id,
-			name: channel.name || channel.id,
-			kind: channel.kind.replace("_", " "),
-			threadCount: channel.thread_count,
-			highlight:
-				channel.threads[0]?.title ||
-				"Recent public-channel activity is available, but this channel has not produced a summary title yet.",
-		}))
-		.sort((left, right) => right.threadCount - left.threadCount)
-		.slice(0, 4);
+	return [...channels]
+		.sort((left, right) => right.thread_count - left.thread_count)
+		.slice(0, 5);
 }

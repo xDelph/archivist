@@ -1,29 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-	/* ── Core palette (OKLCH) ── */
-	--color-bg-deep: oklch(0.12 0.02 220);
-	--color-bg-base: oklch(0.15 0.018 220);
-	--color-bg-surface: oklch(0.18 0.015 220);
-	--color-bg-elevated: oklch(0.21 0.012 220);
-
-	--color-accent: oklch(0.82 0.18 160);
-	--color-accent-soft: oklch(0.76 0.16 160);
-	--color-accent-strong: oklch(0.84 0.2 130);
-
-	--color-text-primary: oklch(0.96 0.005 220);
-	--color-text-secondary: oklch(0.72 0.02 220);
-	--color-text-muted: oklch(0.55 0.015 220);
-
-	--color-border-default: oklch(0.28 0.01 220);
-	--color-border-subtle: oklch(0.23 0.008 220);
-	--color-border-accent: oklch(0.76 0.16 160 / 0.3);
-
-	--color-success: oklch(0.72 0.19 155);
-	--color-warning: oklch(0.78 0.15 70);
-	--color-destructive: oklch(0.63 0.24 25);
-
-	/* ── Spacing & radius ── */
+	--color-bg-deep: #040506;
+	--color-bg-base: #090b0d;
+	--color-bg-surface: #0d1013;
+	--color-bg-elevated: #13171b;
+	--color-accent: #18cc77;
+	--color-accent-soft: #20cb74;
+	--color-accent-strong: #2ae38a;
+	--color-text-primary: #f5f7f8;
+	--color-text-secondary: #a6abb3;
+	--color-text-muted: #72767f;
+	--color-border-default: rgba(255, 255, 255, 0.12);
+	--color-border-subtle: rgba(255, 255, 255, 0.08);
+	--color-border-accent: rgba(24, 204, 119, 0.28);
+	--color-success: #18cc77;
+	--color-warning: #ff9800;
+	--color-destructive: #f04f52;
 	--radius-card: 1.25rem;
 	--radius-section: 1.75rem;
 	--radius-pill: 9999px;
@@ -31,13 +24,13 @@
 }
 
 :root {
-	--bg-top: oklch(0.15 0.025 220);
-	--bg-bottom: oklch(0.09 0.02 220);
-	--accent: oklch(0.82 0.18 160);
-	--accent-soft: oklch(0.76 0.16 160);
-	--accent-strong: oklch(0.84 0.2 130);
-	--text-main: oklch(0.96 0.005 220);
-	--text-muted: oklch(0.72 0.02 220);
+	--bg-top: #040506;
+	--bg-bottom: #040506;
+	--accent: #18cc77;
+	--accent-soft: #20cb74;
+	--accent-strong: #2ae38a;
+	--text-main: #f5f7f8;
+	--text-muted: #a2a7af;
 }
 
 @layer base {
@@ -57,14 +50,9 @@
 		font-feature-settings: "ss01", "ss02";
 		color: var(--text-main);
 		background: radial-gradient(
-				ellipse at 20% 0%,
-				oklch(0.82 0.18 160 / 0.08),
-				transparent 50%
-			),
-			radial-gradient(
-				ellipse at 80% 0%,
-				oklch(0.84 0.2 130 / 0.06),
-				transparent 40%
+				circle at 50% 0%,
+				rgba(24, 204, 119, 0.08),
+				transparent 24%
 			), linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
 		background-attachment: fixed;
 	}
@@ -74,10 +62,12 @@
 		position: fixed;
 		inset: 0;
 		pointer-events: none;
-		background-image: linear-gradient(oklch(1 0 0 / 0.03) 1px, transparent 1px),
-			linear-gradient(90deg, oklch(1 0 0 / 0.03) 1px, transparent 1px);
-		background-size: 72px 72px;
-		mask-image: linear-gradient(180deg, oklch(0 0 0 / 0.7), transparent 80%);
+		background-image: linear-gradient(
+				rgba(255, 255, 255, 0.03) 1px,
+				transparent 1px
+			), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+		background-size: 84px 84px;
+		mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent 80%);
 	}
 
 	a {

@@ -8,81 +8,71 @@ import { ArrowRight, LockKeyhole } from "lucide-react";
 
 export function SignInPage() {
 	const userQuery = useQuery(authQueries.me());
+	const isLoading = userQuery.isPending;
 
 	return (
-		<main className="flex min-h-dvh items-center px-4 py-8 sm:px-6">
-			<div className="mx-auto grid w-full max-w-4xl gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-				<section className="overflow-hidden rounded-(--radius-section) border border-(--color-border-subtle) bg-[linear-gradient(135deg,var(--color-bg-surface),var(--color-bg-base))] p-6 shadow-[0_24px_80px_oklch(0.05_0.02_220/0.5)] sm:p-8">
-					<p className="text-[0.62rem] font-medium uppercase tracking-[0.36em] text-(--color-accent-soft)">
-						Archivist v2
-					</p>
-					<h1 className="mt-4 text-3xl font-semibold text-(--color-text-primary) sm:text-4xl">
-						Sign in with Slack and open the public-channel archive.
-					</h1>
-					<p className="mt-4 max-w-xl text-sm leading-relaxed text-(--color-text-secondary) sm:text-base">
-						After sign-in, the app unlocks catch-up, search, thread detail,
-						saved items, and your account view.
-					</p>
-					<div className="mt-8 flex flex-wrap gap-3">
-						<a
-							href={slackAuthStartUrl()}
-							className={buttonVariants({ variant: "default" })}
-						>
-							<LockKeyhole className="size-4" />
-							Continue with Slack
-						</a>
-						{userQuery.data?.ok && (
-							<Link
-								to="/"
-								className={cn(buttonVariants({ variant: "secondary" }))}
-							>
-								Open app
-							</Link>
-						)}
-					</div>
-				</section>
+		<main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#030406] px-6">
+			<div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(34,197,94,0.08),transparent_28%),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:auto,100%_96px,96px_100%]" />
+			<div className="relative text-center">
+				<p className="text-[0.9rem] uppercase tracking-[0.38em] text-[#18cc77]">
+					Archivist
+				</p>
+				<h1 className="mt-6 text-6xl font-semibold tracking-tight text-white sm:text-7xl">
+					Archivist
+				</h1>
+				<p className="mt-4 text-2xl text-[#7a7b83]">Slack message archiver</p>
 
-				<section className="rounded-(--radius-section) border border-(--color-border-subtle) bg-(--color-bg-surface)/60 p-6 backdrop-blur-sm sm:p-7">
-					<p className="text-[0.62rem] font-medium uppercase tracking-[0.28em] text-(--color-text-muted)">
-						What you get
-					</p>
-					<ul className="mt-5 space-y-3 text-sm leading-relaxed text-(--color-text-primary)">
-						<li className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4">
-							A catch-up feed with one-day and one-week windows.
-						</li>
-						<li className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4">
-							Search results that stay attached to the thread they came from.
-						</li>
-						<li className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4">
-							Thread detail with extracted links, files, and progressive
-							transcript loading.
-						</li>
-					</ul>
-					<div className="mt-5 rounded-(--radius-card) border border-(--color-accent-soft)/15 bg-(--color-accent-soft)/8 p-4 text-sm text-(--color-text-primary)">
-						<p className="font-medium">Local development</p>
-						<p className="mt-2 leading-relaxed text-(--color-text-secondary)">
-							The Vite app proxies `/api` to `apps/api`, so sign-in and session
-							cookies stay on the frontend origin during local development.
+				{isLoading ? (
+					<div className="mt-12 inline-flex items-center gap-3 text-[1.05rem] text-[#8c8d94]">
+						<span className="size-4 rounded-full bg-[#ff9800] shadow-[0_0_0_6px_rgba(255,152,0,0.12)] animate-pulse" />
+						loading
+					</div>
+				) : userQuery.data?.ok ? (
+					<div className="mt-12 flex justify-center">
+						<Link
+							to="/"
+							className={cn(
+								buttonVariants({ variant: "secondary", size: "lg" }),
+								"border-white/12 bg-white/6 text-white hover:border-[#22c55e]/30 hover:bg-white/10",
+							)}
+						>
+							Open archive
+							<ArrowRight className="size-4" />
+						</Link>
+					</div>
+				) : (
+					<div className="mt-12 space-y-4">
+						<div className="flex justify-center">
+							<a
+								href={slackAuthStartUrl()}
+								className={cn(
+									buttonVariants({ variant: "default", size: "lg" }),
+									"bg-[#18cc77] text-black hover:bg-[#2ae38a]",
+								)}
+							>
+								<LockKeyhole className="size-4" />
+								Continue with Slack
+							</a>
+						</div>
+						<p className="text-sm text-[#6d6f76]">
+							Sign in to unlock search, catch-up, thread detail, and saved
+							threads.
 						</p>
 					</div>
-					{userQuery.data?.ok ? (
-						<div className="mt-5">
-							<Link
-								to="/"
-								className={cn(buttonVariants({ variant: "secondary" }))}
-							>
-								Already signed in
-								<ArrowRight className="size-4" />
-							</Link>
-						</div>
-					) : (
-						<div className="mt-5">
-							<Button type="button" variant="ghost" disabled>
-								Waiting for Slack session
-							</Button>
-						</div>
-					)}
-				</section>
+				)}
+
+				{userQuery.isError ? (
+					<div className="mt-6">
+						<Button
+							type="button"
+							variant="ghost"
+							onClick={() => void userQuery.refetch()}
+							className="text-[#9ea0a7] hover:bg-white/6 hover:text-white"
+						>
+							Retry session check
+						</Button>
+					</div>
+				) : null}
 			</div>
 		</main>
 	);

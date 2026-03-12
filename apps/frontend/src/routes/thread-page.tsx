@@ -1,19 +1,24 @@
 import { EmptyState } from "@/components/empty-state";
+import { IdentityAvatar } from "@/components/identity-avatar";
 import { SectionCard } from "@/components/section-card";
 import { Button } from "@/components/ui/button";
 import { deleteSavedThread, saveThread } from "@/lib/api";
 import { formatSlackTimestamp, formatStatLabel } from "@/lib/format";
 import { savedQueries, threadQueries } from "@/lib/queries";
+import {
+	displayAuthorName,
+	extractLinks,
+	groupReactions,
+	renderSlackText,
+} from "@/lib/thread-display";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
 	Bookmark,
 	BookmarkCheck,
 	ChevronDown,
-	Link2,
-	MessageSquare,
+	ExternalLink,
 	Paperclip,
-	Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -46,7 +51,7 @@ export function ThreadPage() {
 				{["skel-a", "skel-b", "skel-c"].map((id) => (
 					<div
 						key={id}
-						className="h-36 animate-pulse rounded-(--radius-section) border border-(--color-border-subtle) bg-(--color-bg-surface)/40"
+						className="h-36 animate-pulse rounded-[1.75rem] border border-white/8 bg-white/[0.03]"
 					/>
 				))}
 			</div>
@@ -87,15 +92,20 @@ export function ThreadPage() {
 	);
 
 	return (
-		<div className="space-y-5">
+		<div className="space-y-6">
 			<SectionCard
 				eyebrow="Thread detail"
-				title={rootMessage?.text || "Untitled thread"}
-				description="A focused view of the conversation, with the highest-signal messages pulled to the top."
+				title={renderSlackText(rootMessage?.text || "Untitled thread")}
+				description="The feature set stays the same. This redesign only restores the darker original Archivist treatment with clearer identities, links, files, and reactions."
 				actions={
 					<Button
 						type="button"
 						variant={savedItem ? "default" : "secondary"}
+						className={
+							savedItem
+								? "bg-[#18cc77] text-black hover:bg-[#2ae38a]"
+								: "border-white/10 bg-white/[0.03] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06]"
+						}
 						onClick={() => saveMutation.mutate()}
 						disabled={saveMutation.isPending}
 					>
@@ -114,7 +124,7 @@ export function ThreadPage() {
 					</Button>
 				}
 			>
-				<div className="flex flex-wrap gap-2 text-xs text-(--color-text-secondary)">
+				<div className="flex flex-wrap gap-2 text-xs text-[#9aa0a7]">
 					<MetaChip label={formatStatLabel(replyCount, "reply", "replies")} />
 					<MetaChip
 						label={formatStatLabel(
@@ -126,20 +136,20 @@ export function ThreadPage() {
 					<MetaChip
 						label={formatStatLabel(reactionCount, "reaction", "reactions")}
 					/>
-					{allFiles.length > 0 && (
+					{allFiles.length > 0 ? (
 						<MetaChip
 							label={formatStatLabel(allFiles.length, "file", "files")}
 						/>
-					)}
+					) : null}
 				</div>
 			</SectionCard>
 
-			<div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-				<div className="space-y-5">
+			<div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+				<div className="space-y-6">
 					<SectionCard
-						eyebrow="Key messages"
+						eyebrow="Highlights"
 						title="Important moments"
-						description="Root messages, replies with reactions, and posts that carried files."
+						description="Root messages, replies with reactions, and messages that carried files stay surfaced first."
 					>
 						<div className="space-y-3">
 							{highlightedMessages.map((message) => (
@@ -151,18 +161,19 @@ export function ThreadPage() {
 					<SectionCard
 						eyebrow="Full transcript"
 						title="Conversation timeline"
-						description="The full thread stays collapsed for long conversations until you ask for the rest."
+						description="Long threads still collapse by default, but the message presentation now mirrors the first Archivist version more closely."
 					>
 						<div className="space-y-3">
 							{visibleMessages.map((message) => (
 								<MessageCard key={message.ts} message={message} />
 							))}
 						</div>
-						{messages.length > INITIAL_MESSAGE_COUNT && (
+						{messages.length > INITIAL_MESSAGE_COUNT ? (
 							<div className="mt-4">
 								<Button
 									type="button"
 									variant="secondary"
+									className="border-white/10 bg-white/[0.03] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06]"
 									onClick={() => setIsExpanded((current) => !current)}
 								>
 									<ChevronDown className="size-4" />
@@ -171,31 +182,31 @@ export function ThreadPage() {
 										: `Show all ${messages.length} messages`}
 								</Button>
 							</div>
-						)}
+						) : null}
 					</SectionCard>
 				</div>
 
-				<div className="space-y-5">
+				<div className="space-y-6">
 					<SectionCard
 						eyebrow="Links"
 						title="Linked references"
-						description="URLs mentioned in the thread are extracted here."
+						description="URLs mentioned in the thread are extracted here with a simpler legacy-style treatment."
 					>
 						{links.length ? (
 							<ul className="space-y-2 text-sm">
 								{links.map((link) => (
 									<li
-										key={link}
-										className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-3"
+										key={link.href}
+										className="rounded-[1.2rem] border border-white/8 bg-[#0a0d0f] p-3.5"
 									>
 										<a
-											href={link}
+											href={link.href}
 											target="_blank"
 											rel="noreferrer"
-											className="flex items-center gap-2 break-all text-(--color-accent-soft) hover:underline"
+											className="flex items-center gap-2 break-all text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]"
 										>
-											<Link2 className="size-4 shrink-0" />
-											{link}
+											<ExternalLink className="size-4 shrink-0" />
+											{link.label || link.href}
 										</a>
 									</li>
 								))}
@@ -204,7 +215,7 @@ export function ThreadPage() {
 							<EmptyState
 								title="No links found"
 								description="This thread does not contain extractable URLs."
-								icon={<Link2 className="size-5" />}
+								icon={<ExternalLink className="size-5" />}
 							/>
 						)}
 					</SectionCard>
@@ -212,24 +223,24 @@ export function ThreadPage() {
 					<SectionCard
 						eyebrow="Files"
 						title="Attached files"
-						description="Files shared in the thread, grouped for easy access."
+						description="Files shared in the thread stay grouped here for quick access."
 					>
 						{allFiles.length ? (
 							<ul className="space-y-2">
 								{allFiles.map((file) => (
 									<li
-										key={file.id}
-										className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4"
+										key={`${file.id}-${file.name}`}
+										className="rounded-[1.2rem] border border-white/8 bg-[#0a0d0f] p-4"
 									>
-										<p className="text-sm font-medium text-(--color-text-primary)">
+										<p className="text-sm font-medium text-white">
 											{file.name}
 										</p>
-										<p className="mt-1 text-xs text-(--color-text-muted)">
+										<p className="mt-1 text-xs text-[#8f949b]">
 											{file.mimetype || "unknown type"}
 										</p>
-										{file.permalink && (
+										{file.permalink ? (
 											<a
-												className="mt-2 inline-flex items-center gap-2 text-sm text-(--color-accent-soft) hover:underline"
+												className="mt-2 inline-flex items-center gap-2 text-sm text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]"
 												href={file.permalink}
 												target="_blank"
 												rel="noreferrer"
@@ -237,7 +248,7 @@ export function ThreadPage() {
 												<Paperclip className="size-4" />
 												Open file
 											</a>
-										)}
+										) : null}
 									</li>
 								))}
 							</ul>
@@ -260,46 +271,80 @@ interface MessageProps {
 		ts: string;
 		thread_ts: string | null;
 		user_id: string | null;
+		author: {
+			slack_user_id: string;
+			display_name: string | null;
+			avatar_url: string | null;
+		} | null;
 		text: string;
 		reactions: { user_id: string; name: string }[];
-		files: { id: string; name: string }[];
+		files: { id: string; name: string; permalink: string | null }[];
 	};
 }
 
 function MessageCard({ message }: MessageProps) {
+	const reactions = groupReactions(message.reactions);
+
 	return (
-		<article className="rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-base)/60 p-4">
-			<div className="flex flex-wrap items-center gap-2 text-xs text-(--color-text-muted)">
-				<span>{message.user_id || "Unknown member"}</span>
-				<span className="text-(--color-border-default)">&middot;</span>
-				<time className="tabular-nums">{formatSlackTimestamp(message.ts)}</time>
+		<article className="rounded-[1.35rem] border border-white/8 bg-[#0a0d0f] p-4">
+			<div className="flex items-start gap-3">
+				<IdentityAvatar
+					author={message.author}
+					fallback={message.user_id}
+					size="sm"
+				/>
+				<div className="min-w-0 flex-1">
+					<div className="flex flex-wrap items-center gap-2 text-xs text-[#868b93]">
+						<span className="text-sm font-medium text-white">
+							{displayAuthorName(message.author, message.user_id)}
+						</span>
+						<span className="text-white/15">&middot;</span>
+						<time className="tabular-nums">
+							{formatSlackTimestamp(message.ts)}
+						</time>
+						{message.thread_ts ? (
+							<>
+								<span className="text-white/15">&middot;</span>
+								<span>Reply</span>
+							</>
+						) : null}
+					</div>
+					<div className="mt-2 whitespace-pre-wrap text-[0.98rem] leading-7 text-[#eef0f2]">
+						{renderSlackText(message.text)}
+					</div>
+				</div>
 			</div>
-			<p className="mt-2.5 whitespace-pre-wrap text-sm leading-relaxed text-(--color-text-primary)">
-				{message.text}
-			</p>
-			<div className="mt-3 flex flex-wrap gap-1.5 text-xs text-(--color-text-secondary)">
-				{message.reactions.length > 0 && (
+
+			<div className="mt-4 flex flex-wrap gap-2">
+				{reactions.map((reaction) => (
 					<MetaChip
-						icon={<Sparkles className="size-3.5" />}
-						label={formatStatLabel(
-							message.reactions.length,
-							"reaction",
-							"reactions",
+						key={reaction.name}
+						label={`${reaction.emoji ?? `:${reaction.name}:`} ${reaction.count}`}
+					/>
+				))}
+				{message.files.map((file) => (
+					<span
+						key={file.id}
+						className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-[#c4c8cf] hover:border-[#1fc86f]/22 hover:text-white"
+					>
+						{file.permalink ? (
+							<a
+								href={file.permalink}
+								target="_blank"
+								rel="noreferrer"
+								className="inline-flex items-center gap-1.5"
+							>
+								<Paperclip className="size-3.5" />
+								{file.name}
+							</a>
+						) : (
+							<>
+								<Paperclip className="size-3.5" />
+								{file.name}
+							</>
 						)}
-					/>
-				)}
-				{message.files.length > 0 && (
-					<MetaChip
-						icon={<Paperclip className="size-3.5" />}
-						label={formatStatLabel(message.files.length, "file", "files")}
-					/>
-				)}
-				{message.thread_ts && (
-					<MetaChip
-						icon={<MessageSquare className="size-3.5" />}
-						label="Reply"
-					/>
-				)}
+					</span>
+				))}
 			</div>
 		</article>
 	);
@@ -313,13 +358,9 @@ function MetaChip({
 	icon?: ReactNode;
 }) {
 	return (
-		<span className="inline-flex items-center gap-1.5 rounded-(--radius-pill) border border-(--color-border-subtle) bg-(--color-bg-surface)/50 px-2.5 py-0.5">
+		<span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-0.5 text-[#c3c8ce]">
 			{icon}
 			{label}
 		</span>
 	);
-}
-
-function extractLinks(text: string) {
-	return Array.from(text.matchAll(/https?:\/\/[^\s)]+/g), (match) => match[0]);
 }

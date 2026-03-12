@@ -13,6 +13,12 @@ export interface CurrentUser {
 	avatar_url: string | null;
 }
 
+export interface ThreadAuthor {
+	slack_user_id: string;
+	display_name: string | null;
+	avatar_url: string | null;
+}
+
 export interface CurrentUserResponse {
 	ok: boolean;
 	user: CurrentUser;
@@ -35,6 +41,7 @@ export interface CatchUpChannel {
 export interface CatchUpThread {
 	id: string;
 	root_ts: string;
+	author: ThreadAuthor | null;
 	title: string;
 	preview: string;
 	reply_count: number;
@@ -55,6 +62,7 @@ export interface SearchResult {
 	thread_id: string;
 	channel_id: string;
 	channel_name: string | null;
+	author: ThreadAuthor | null;
 	root_ts: string;
 	message_ts: string;
 	title: string;
@@ -74,6 +82,7 @@ export interface ThreadMessage {
 	ts: string;
 	thread_ts: string | null;
 	user_id: string | null;
+	author: ThreadAuthor | null;
 	text: string;
 	reactions: ThreadReaction[];
 	files: ThreadFile[];
