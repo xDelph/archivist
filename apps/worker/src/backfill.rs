@@ -1,4 +1,5 @@
 use super::backfill_slack::{SlackConversation, fetch_channel_history, fetch_public_channels};
+use super::backfill_threads::expand_thread_replies;
 use super::{AppState, ErrorResponse, store_failed};
 use axum::{Json, body::Bytes, extract::State, http::StatusCode};
 use db::BackfillBatchStats;
@@ -169,6 +170,7 @@ async fn backfill_single_channel(
 
     let mut totals = BackfillTotals::default();
     let mut messages = history.messages.unwrap_or_default();
+    messages = expand_thread_replies(state, slack_user_token, channel_id, messages).await?;
     messages.sort_by(|left, right| parse_event_time(&left.ts).cmp(&parse_event_time(&right.ts)));
     totals.files_seen = messages
         .iter()

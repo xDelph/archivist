@@ -1,6 +1,9 @@
 use super::ErrorResponse;
 use axum::{Json, http::StatusCode};
 use serde::Deserialize;
+use tokio::time::{Duration, sleep};
+
+const SLACK_RATE_LIMIT_RETRIES: usize = 8;
 
 #[derive(Debug, Deserialize)]
 pub(super) struct SlackHistoryResponse {
@@ -35,19 +38,20 @@ pub(super) struct SlackConversation {
     pub(super) is_archived: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(super) struct SlackHistoryMessage {
     pub(super) ts: String,
     pub(super) user: Option<String>,
     pub(super) text: Option<String>,
     pub(super) thread_ts: Option<String>,
+    pub(super) reply_count: Option<usize>,
     #[serde(default)]
     pub(super) reactions: Vec<SlackHistoryReaction>,
     #[serde(default)]
     pub(super) files: Vec<SlackHistoryFile>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(super) struct SlackHistoryFile {
     pub(super) id: String,
     pub(super) name: Option<String>,
@@ -56,7 +60,7 @@ pub(super) struct SlackHistoryFile {
     pub(super) size: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(super) struct SlackHistoryReaction {
     pub(super) name: String,
     #[serde(default)]
@@ -229,6 +233,99 @@ pub(super) async fn fetch_channel_history(
     }
 
     Ok(history)
+}
+
+pub(super) async fn fetch_thread_replies(
+    slack_api_base_url: &str,
+    slack_user_token: &str,
+    channel_id: &str,
+    root_ts: &str,
+    cursor: Option<&str>,
+) -> Result<SlackHistoryResponse, (StatusCode, Json<ErrorResponse>)> {
+    let endpoint = format!(
+        "{}/conversations.replies",
+        slack_api_base_url.trim_end_matches('/')
+    );
+    let client = reqwest::Client::new();
+
+    for attempt in 0..=SLACK_RATE_LIMIT_RETRIES {
+        let response = client
+            .get(&endpoint)
+            .bearer_auth(slack_user_token)
+            .query(&[
+                ("channel", channel_id),
+                ("ts", root_ts),
+                ("cursor", cursor.unwrap_or_default()),
+            ])
+            .send()
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    ?error,
+                    channel_id,
+                    root_ts,
+                    "failed to fetch slack thread replies"
+                );
+                slack_history_failed()
+            })?;
+        if response.status() == StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(1);
+            tracing::warn!(
+                channel_id,
+                root_ts,
+                attempt,
+                retry_after,
+                "slack thread replies rate limited, retrying after backoff"
+            );
+            if attempt == SLACK_RATE_LIMIT_RETRIES {
+                tracing::error!(
+                    channel_id,
+                    root_ts,
+                    retries = SLACK_RATE_LIMIT_RETRIES,
+                    "slack thread replies exhausted rate-limit retries"
+                );
+                return Err(slack_history_failed());
+            }
+            sleep(Duration::from_secs(retry_after)).await;
+            continue;
+        }
+        if !response.status().is_success() {
+            tracing::error!(
+                status = %response.status(),
+                channel_id,
+                root_ts,
+                "slack thread replies returned non-success status"
+            );
+            return Err(slack_history_failed());
+        }
+
+        let history: SlackHistoryResponse = response.json().await.map_err(|error| {
+            tracing::error!(
+                ?error,
+                channel_id,
+                root_ts,
+                "failed to decode slack thread replies"
+            );
+            slack_history_failed()
+        })?;
+        if !history.ok {
+            tracing::error!(
+                channel_id,
+                root_ts,
+                "slack thread replies returned ok=false"
+            );
+            return Err(slack_history_failed());
+        }
+
+        return Ok(history);
+    }
+
+    Err(slack_history_failed())
 }
 
 fn slack_history_failed() -> (StatusCode, Json<ErrorResponse>) {

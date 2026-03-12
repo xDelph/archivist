@@ -172,6 +172,108 @@ async fn backfill_channel_fetches_history_and_upserts_messages() {
 }
 
 #[tokio::test]
+async fn backfill_channel_fetches_thread_replies_for_root_messages() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    let (slack_api_base_url, handle) = spawn_thread_history_server().await;
+    let router = build_router(
+        store.clone(),
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url,
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"channel_id":"C123"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let messages = store.messages().await;
+    assert_eq!(messages.len(), 3);
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| message.thread_ts.is_some())
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn backfill_channel_retries_thread_replies_after_rate_limit() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    let (slack_api_base_url, handle) = spawn_thread_history_server_with_reply_rate_limit().await;
+    let router = build_router(
+        store.clone(),
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url,
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"channel_id":"C123"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let messages = store.messages().await;
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[1].thread_ts.as_deref(), Some("1700000000.000001"));
+}
+
+#[tokio::test]
 async fn backfill_channel_tolerates_files_missing_names() {
     let tempdir = tempdir().expect("tempdir");
     let log_path = tempdir.path().join("events.jsonl");
@@ -418,6 +520,141 @@ async fn spawn_history_server(response: Json<serde_json::Value>) -> (String, Joi
             async move { response }
         }),
     );
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server");
+    });
+
+    (format!("http://{address}"), handle)
+}
+
+async fn spawn_thread_history_server() -> (String, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+    let app = Router::new()
+        .route(
+            "/conversations.history",
+            get(|| async {
+                Json(json!({
+                    "ok": true,
+                    "messages": [
+                        {
+                            "ts": "1700000000.000001",
+                            "user": "U123",
+                            "text": "hello from backfill",
+                            "reply_count": 2
+                        }
+                    ]
+                }))
+            }),
+        )
+        .route(
+            "/conversations.replies",
+            get(|Query(query): Query<HashMap<String, String>>| async move {
+                assert_eq!(query.get("channel").map(String::as_str), Some("C123"));
+                assert_eq!(
+                    query.get("ts").map(String::as_str),
+                    Some("1700000000.000001")
+                );
+                Json(json!({
+                    "ok": true,
+                    "messages": [
+                        {
+                            "ts": "1700000000.000001",
+                            "user": "U123",
+                            "text": "hello from backfill"
+                        },
+                        {
+                            "ts": "1700000000.000002",
+                            "user": "U456",
+                            "text": "first reply",
+                            "thread_ts": "1700000000.000001"
+                        },
+                        {
+                            "ts": "1700000000.000003",
+                            "user": "U789",
+                            "text": "second reply",
+                            "thread_ts": "1700000000.000001"
+                        }
+                    ]
+                }))
+            }),
+        );
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server");
+    });
+
+    (format!("http://{address}"), handle)
+}
+
+async fn spawn_thread_history_server_with_reply_rate_limit() -> (String, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+    let reply_attempts = Arc::new(Mutex::new(0usize));
+    let app = Router::new()
+        .route(
+            "/conversations.history",
+            get(|| async {
+                Json(json!({
+                    "ok": true,
+                    "messages": [
+                        {
+                            "ts": "1700000000.000001",
+                            "user": "U123",
+                            "text": "hello from backfill",
+                            "reply_count": 1
+                        }
+                    ]
+                }))
+            }),
+        )
+        .route(
+            "/conversations.replies",
+            get({
+                let reply_attempts = reply_attempts.clone();
+                move || {
+                    let reply_attempts = reply_attempts.clone();
+                    async move {
+                        let mut attempts = reply_attempts.lock().await;
+                        *attempts += 1;
+                        if *attempts == 1 {
+                            return (
+                                StatusCode::TOO_MANY_REQUESTS,
+                                [("retry-after", "0")],
+                                Body::empty(),
+                            );
+                        }
+
+                        (
+                            StatusCode::OK,
+                            [("content-type", "application/json")],
+                            Body::from(
+                                json!({
+                                    "ok": true,
+                                    "messages": [
+                                        {
+                                            "ts": "1700000000.000001",
+                                            "user": "U123",
+                                            "text": "hello from backfill"
+                                        },
+                                        {
+                                            "ts": "1700000000.000002",
+                                            "user": "U456",
+                                            "text": "reply after retry",
+                                            "thread_ts": "1700000000.000001"
+                                        }
+                                    ]
+                                })
+                                .to_string(),
+                            ),
+                        )
+                    }
+                }
+            }),
+        );
     let handle = tokio::spawn(async move {
         axum::serve(listener, app).await.expect("server");
     });
