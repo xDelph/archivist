@@ -178,16 +178,13 @@ fn build_thread_summaries(
         .collect::<HashMap<_, _>>();
     let root_messages = messages
         .iter()
-        .filter(|message| message.thread_ts.is_none())
+        .filter(|message| is_root_message(message))
         .map(|message| (message.ts.clone(), message))
         .collect::<HashMap<_, _>>();
     let mut threads = HashMap::<(String, String), ThreadSummary>::new();
 
     for message in &messages {
-        let root_ts = message
-            .thread_ts
-            .clone()
-            .unwrap_or_else(|| message.ts.clone());
+        let root_ts = normalized_root_ts(message);
         if !root_messages.contains_key(&root_ts) {
             continue;
         }
@@ -216,7 +213,7 @@ fn build_thread_summaries(
                 last_activity_seconds: parse_ts_seconds(&message.ts).unwrap_or_default(),
             });
 
-        if message.ts != root_ts {
+        if !is_root_message(message) {
             entry.reply_count += 1;
         }
         if let Some(user_id) = &message.user_id {
@@ -233,10 +230,7 @@ fn build_thread_summaries(
         let Some(message) = message_lookup.get(&reaction.message_ts) else {
             continue;
         };
-        let root_ts = message
-            .thread_ts
-            .clone()
-            .unwrap_or_else(|| message.ts.clone());
+        let root_ts = normalized_root_ts(message);
         if !root_messages.contains_key(&root_ts) {
             continue;
         }
@@ -278,10 +272,7 @@ fn build_thread_summaries(
         let Some(message) = message_lookup.get(&file.message_ts) else {
             continue;
         };
-        let root_ts = message
-            .thread_ts
-            .clone()
-            .unwrap_or_else(|| message.ts.clone());
+        let root_ts = normalized_root_ts(message);
         if !root_messages.contains_key(&root_ts) {
             continue;
         }
@@ -375,6 +366,24 @@ fn root_text<'a>(root_messages: &'a HashMap<String, &'a Message>, root_ts: &str)
         .get(root_ts)
         .map(|root| root.text.as_str())
         .unwrap_or_default()
+}
+
+fn is_root_message(message: &Message) -> bool {
+    message
+        .thread_ts
+        .as_deref()
+        .is_none_or(|thread_ts| thread_ts == message.ts)
+}
+
+fn normalized_root_ts(message: &Message) -> String {
+    if is_root_message(message) {
+        return message.ts.clone();
+    }
+
+    message
+        .thread_ts
+        .clone()
+        .unwrap_or_else(|| message.ts.clone())
 }
 
 fn parse_ts_seconds(value: &str) -> Option<i64> {

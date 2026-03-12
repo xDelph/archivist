@@ -1,11 +1,13 @@
-use crate::{AppState, analytics::record_analytics, auth::SessionClaims};
+use crate::{
+    AppState, analytics::record_analytics, auth::SessionClaims, view_models::UserSummaryResponse,
+};
 use axum::{
     Extension, Json,
     extract::{Query, State},
     http::StatusCode,
 };
 use db::ThreadSummaryRow;
-use domain::{Channel, ChannelKind};
+use domain::{Channel, ChannelKind, Message};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,6 +39,7 @@ struct CatchUpChannelResponse {
 struct CatchUpThreadResponse {
     id: String,
     root_ts: String,
+    author: Option<UserSummaryResponse>,
     title: String,
     preview: String,
     reply_count: i64,
@@ -95,9 +98,12 @@ pub(crate) async fn catch_up(
     let channels = build_catch_up(
         state.store.channels().await.map_err(store_failed)?,
         state.store.thread_summaries().await.map_err(store_failed)?,
+        state.store.messages().await.map_err(store_failed)?,
+        &state.user_store,
         window,
         current_unix_timestamp(),
-    );
+    )
+    .await;
 
     record_analytics(
         &state,
@@ -112,9 +118,11 @@ pub(crate) async fn catch_up(
     }))
 }
 
-fn build_catch_up(
+async fn build_catch_up(
     channels: Vec<Channel>,
     thread_summaries: Vec<ThreadSummaryRow>,
+    messages: Vec<Message>,
+    user_store: &crate::user_store::UserStore,
     window: CatchUpWindow,
     now: i64,
 ) -> Vec<CatchUpChannelResponse> {
@@ -123,6 +131,22 @@ fn build_catch_up(
         .into_iter()
         .map(|channel| (channel.id.clone(), channel))
         .collect::<HashMap<_, _>>();
+    let root_users = messages
+        .into_iter()
+        .filter(|message| message.thread_ts.is_none())
+        .map(|message| ((message.channel_id, message.ts), message.user_id))
+        .collect::<HashMap<_, _>>();
+    let author_ids = thread_summaries
+        .iter()
+        .filter_map(|summary| {
+            root_users
+                .get(&(summary.channel_id.clone(), summary.root_ts.clone()))
+                .and_then(|user_id| user_id.clone())
+        })
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let authors = user_store.find_users(&author_ids).await;
     let mut grouped = HashMap::<String, Vec<ThreadSummaryRow>>::new();
 
     for summary in thread_summaries
@@ -173,6 +197,12 @@ fn build_catch_up(
                         .into_iter()
                         .map(|summary| CatchUpThreadResponse {
                             id: format!("{}:{}", summary.channel_id, summary.root_ts),
+                            author: root_users
+                                .get(&(summary.channel_id.clone(), summary.root_ts.clone()))
+                                .and_then(|user_id| user_id.as_ref())
+                                .and_then(|user_id| authors.get(user_id))
+                                .cloned()
+                                .map(Into::into),
                             root_ts: summary.root_ts,
                             title: summary.title,
                             preview: summary.preview,

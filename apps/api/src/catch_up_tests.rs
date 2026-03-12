@@ -13,9 +13,10 @@ use domain::{ChannelKind, EventPayload, ProcessEventJob, SharedFile};
 use tempfile::tempdir;
 use tower::util::ServiceExt;
 
-#[test]
-fn build_catch_up_filters_to_the_requested_window() {
+#[tokio::test]
+async fn build_catch_up_filters_to_the_requested_window() {
     let now = 1_700_000_000;
+    let tempdir = tempdir().expect("tempdir");
     let channels = vec![];
     let summaries = vec![
         ThreadSummaryRow {
@@ -44,7 +45,18 @@ fn build_catch_up_filters_to_the_requested_window() {
         },
     ];
 
-    let catch_up = build_catch_up(channels, summaries, CatchUpWindow::Week, now);
+    let catch_up = build_catch_up(
+        channels,
+        summaries,
+        vec![],
+        &crate::user_store::LocalUserStore::open(tempdir.path().join("synced-users.json"))
+            .await
+            .expect("user store")
+            .into(),
+        CatchUpWindow::Week,
+        now,
+    )
+    .await;
 
     assert_eq!(catch_up.len(), 1);
     assert_eq!(catch_up[0].threads.len(), 1);
@@ -258,6 +270,10 @@ async fn catch_up_route_groups_threads_by_channel_and_sorts_by_activity() {
 
     assert_eq!(payload["window"], "24h");
     assert_eq!(payload["channels"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        payload["channels"][0]["threads"][0]["author"],
+        serde_json::Value::Null
+    );
     assert_eq!(payload["channels"][0]["id"], "C123");
     assert_eq!(payload["channels"][0]["thread_count"], 1);
     assert_eq!(payload["channels"][0]["threads"][0]["reply_count"], 1);

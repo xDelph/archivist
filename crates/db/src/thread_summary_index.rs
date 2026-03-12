@@ -30,7 +30,7 @@ pub(crate) fn build_thread_summaries(
 ) -> ThreadSummaryMap {
     let root_messages = messages
         .values()
-        .filter(|message| message.thread_ts.is_none())
+        .filter(|message| is_root_message(message))
         .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
         .collect::<HashMap<_, _>>();
     let message_lookup = messages
@@ -40,10 +40,7 @@ pub(crate) fn build_thread_summaries(
     let mut aggregates = HashMap::<ThreadSummaryKey, ThreadSummaryAggregate>::new();
 
     for message in messages.values() {
-        let root_ts = message
-            .thread_ts
-            .clone()
-            .unwrap_or_else(|| message.ts.clone());
+        let root_ts = normalized_root_ts(message);
         let Some(root) = root_messages.get(&(message.channel_id.clone(), root_ts.clone())) else {
             continue;
         };
@@ -62,7 +59,7 @@ pub(crate) fn build_thread_summaries(
                 last_activity_seconds: parse_ts_seconds(&message.ts),
             });
 
-        if message.ts != root_ts {
+        if !is_root_message(message) {
             entry.reply_count += 1;
         }
         if let Some(user_id) = &message.user_id {
@@ -75,10 +72,7 @@ pub(crate) fn build_thread_summaries(
         let Some(message) = message_lookup.get(&(channel_id.clone(), message_ts.clone())) else {
             continue;
         };
-        let root_ts = message
-            .thread_ts
-            .clone()
-            .unwrap_or_else(|| message.ts.clone());
+        let root_ts = normalized_root_ts(message);
         let Some(root) = root_messages.get(&(message.channel_id.clone(), root_ts.clone())) else {
             continue;
         };
@@ -107,10 +101,7 @@ pub(crate) fn build_thread_summaries(
         else {
             continue;
         };
-        let root_ts = message
-            .thread_ts
-            .clone()
-            .unwrap_or_else(|| message.ts.clone());
+        let root_ts = normalized_root_ts(message);
         let Some(root) = root_messages.get(&(message.channel_id.clone(), root_ts.clone())) else {
             continue;
         };
@@ -161,6 +152,18 @@ fn summarize_text(value: &str) -> String {
         return "(no text)".to_owned();
     }
     normalized.chars().take(80).collect()
+}
+
+fn is_root_message(message: &Message) -> bool {
+    message.thread_ts.as_deref().is_none_or(|thread_ts| thread_ts == message.ts)
+}
+
+fn normalized_root_ts(message: &Message) -> String {
+    if is_root_message(message) {
+        return message.ts.clone();
+    }
+
+    message.thread_ts.clone().unwrap_or_else(|| message.ts.clone())
 }
 
 fn parse_ts_seconds(value: &str) -> i64 {

@@ -1,4 +1,6 @@
-use crate::{AppState, analytics::record_analytics, auth::SessionClaims};
+use crate::{
+    AppState, analytics::record_analytics, auth::SessionClaims, view_models::UserSummaryResponse,
+};
 use axum::{
     Extension, Json,
     extract::{Query, State},
@@ -37,6 +39,7 @@ struct SearchResultResponse {
     thread_id: String,
     channel_id: String,
     channel_name: Option<String>,
+    author: Option<UserSummaryResponse>,
     root_ts: String,
     message_ts: String,
     title: String,
@@ -55,6 +58,7 @@ struct SearchResult {
     thread_id: String,
     channel_id: String,
     channel_name: Option<String>,
+    author_id: Option<String>,
     root_ts: String,
     root_seconds: i64,
     message_ts: String,
@@ -78,6 +82,13 @@ pub(crate) async fn search(
         state.store.search_documents().await.map_err(store_failed)?,
         &search_query,
     );
+    let author_ids = items
+        .iter()
+        .filter_map(|item| item.author_id.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let authors = state.user_store.find_users(&author_ids).await;
     let page = items
         .iter()
         .skip(cursor)
@@ -87,6 +98,12 @@ pub(crate) async fn search(
             thread_id: item.thread_id.clone(),
             channel_id: item.channel_id.clone(),
             channel_name: item.channel_name.clone(),
+            author: item
+                .author_id
+                .as_ref()
+                .and_then(|user_id| authors.get(user_id))
+                .cloned()
+                .map(Into::into),
             root_ts: item.root_ts.clone(),
             message_ts: item.message_ts.clone(),
             title: item.title.clone(),
@@ -238,6 +255,7 @@ fn build_search_results(
                     .get(&document.channel_id)
                     .cloned()
                     .unwrap_or_default(),
+                author_id: root.and_then(|root| root.user_id.clone()),
                 root_ts: root_ts.clone(),
                 root_seconds: parse_ts_seconds(&root_ts).unwrap_or(message_seconds),
                 message_ts: document.message_ts.clone(),

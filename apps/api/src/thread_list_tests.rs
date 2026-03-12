@@ -47,6 +47,40 @@ fn build_thread_summaries_sorts_by_requested_strategy() {
     assert_eq!(summaries[0].preview, "newer");
 }
 
+#[test]
+fn build_thread_summaries_treats_thread_ts_equal_to_ts_as_root() {
+    let summaries = build_thread_summaries(
+        vec![],
+        vec![
+            domain::Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000000.000001".to_owned(),
+                thread_ts: Some("1700000000.000001".to_owned()),
+                user_id: Some("U123".to_owned()),
+                text: "root".to_owned(),
+            },
+            domain::Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: Some("1700000000.000001".to_owned()),
+                user_id: Some("U456".to_owned()),
+                text: "reply".to_owned(),
+            },
+        ],
+        vec![],
+        vec![],
+        ThreadListFilters {
+            channel_id: None,
+            date_from: None,
+            date_to: None,
+            sort: ThreadSort::Newest,
+        },
+    );
+
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].reply_count, 1);
+}
+
 #[tokio::test]
 async fn thread_list_route_returns_paginated_filtered_threads() {
     let tempdir = tempdir().expect("tempdir");

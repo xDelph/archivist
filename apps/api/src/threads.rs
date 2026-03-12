@@ -1,4 +1,6 @@
-use crate::{AppState, analytics::record_analytics, auth::SessionClaims};
+use crate::{
+    AppState, analytics::record_analytics, auth::SessionClaims, view_models::UserSummaryResponse,
+};
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -22,6 +24,7 @@ struct ThreadMessageResponse {
     ts: String,
     thread_ts: Option<String>,
     user_id: Option<String>,
+    author: Option<UserSummaryResponse>,
     text: String,
     reactions: Vec<ThreadReactionResponse>,
     files: Vec<ThreadFileResponse>,
@@ -66,7 +69,9 @@ pub(crate) async fn thread_detail(
         state.store.messages().await.map_err(store_failed)?,
         state.store.reactions().await.map_err(store_failed)?,
         state.store.files().await.map_err(store_failed)?,
+        &state.user_store,
     )
+    .await
     .ok_or((
         StatusCode::NOT_FOUND,
         Json(ErrorResponse {
@@ -101,13 +106,14 @@ fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
     )
 }
 
-fn build_thread_detail(
+async fn build_thread_detail(
     id: &str,
     channel_id: &str,
     root_ts: &str,
     messages: Vec<Message>,
     reactions: Vec<Reaction>,
     files: Vec<File>,
+    user_store: &crate::user_store::UserStore,
 ) -> Option<ThreadDetailResponse> {
     let mut thread_messages = messages
         .into_iter()
@@ -121,6 +127,17 @@ fn build_thread_detail(
     if !thread_messages.iter().any(|message| message.ts == root_ts) {
         return None;
     }
+
+    let users = user_store
+        .find_users(
+            &thread_messages
+                .iter()
+                .filter_map(|message| message.user_id.clone())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>(),
+        )
+        .await;
 
     let message_ids = thread_messages
         .iter()
@@ -168,6 +185,12 @@ fn build_thread_detail(
         .map(|message| ThreadMessageResponse {
             reactions: reactions_by_message.remove(&message.ts).unwrap_or_default(),
             files: files_by_message.remove(&message.ts).unwrap_or_default(),
+            author: message
+                .user_id
+                .as_ref()
+                .and_then(|user_id| users.get(user_id))
+                .cloned()
+                .map(Into::into),
             ts: message.ts,
             thread_ts: message.thread_ts,
             user_id: message.user_id,

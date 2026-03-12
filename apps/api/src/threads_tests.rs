@@ -23,8 +23,9 @@ fn parse_thread_id_requires_channel_and_timestamp() {
     assert_eq!(parse_thread_id(":1700000000.000001"), None);
 }
 
-#[test]
-fn build_thread_detail_requires_a_root_message() {
+#[tokio::test]
+async fn build_thread_detail_requires_a_root_message() {
+    let tempdir = tempdir().expect("tempdir");
     let detail = build_thread_detail(
         "C123:1700000000.000001",
         "C123",
@@ -38,7 +39,12 @@ fn build_thread_detail_requires_a_root_message() {
         }],
         vec![],
         vec![],
-    );
+        &crate::user_store::LocalUserStore::open(tempdir.path().join("synced-users.json"))
+            .await
+            .expect("user store")
+            .into(),
+    )
+    .await;
 
     assert_eq!(detail, None);
 }
@@ -159,6 +165,7 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
 
     assert_eq!(payload["reply_count"], 1);
     assert_eq!(payload["messages"][0]["text"], "root message");
+    assert_eq!(payload["messages"][0]["author"], serde_json::Value::Null);
     assert_eq!(payload["messages"][0]["reactions"][0]["name"], "eyes");
     assert_eq!(payload["messages"][0]["files"][0]["name"], "brief.pdf");
     assert_eq!(payload["messages"][1]["text"], "reply message");

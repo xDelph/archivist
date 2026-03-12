@@ -10,6 +10,7 @@ mod search_api;
 mod thread_list;
 mod threads;
 mod user_store;
+mod view_models;
 
 use axum::{
     Json, Router,

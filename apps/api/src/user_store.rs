@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 #[cfg(test)]
 use std::path::PathBuf;
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 use thiserror::Error;
 use tokio::{fs, sync::Mutex};
 
@@ -118,6 +118,55 @@ impl UserStore {
                 avatar_url: row.get("avatar_url"),
                 is_active: row.get("is_active"),
             }),
+        }
+    }
+
+    pub(crate) async fn find_users(
+        &self,
+        slack_user_ids: &[String],
+    ) -> HashMap<String, SyncedUserRecord> {
+        if slack_user_ids.is_empty() {
+            return HashMap::new();
+        }
+
+        match self {
+            Self::Local(store) => {
+                let lookup = slack_user_ids
+                    .iter()
+                    .cloned()
+                    .collect::<std::collections::HashSet<_>>();
+                store
+                    .state
+                    .lock()
+                    .await
+                    .iter()
+                    .filter(|user| lookup.contains(&user.slack_user_id))
+                    .cloned()
+                    .map(|user| (user.slack_user_id.clone(), user))
+                    .collect()
+            }
+            Self::Postgres(store) => sqlx::query(
+                r#"
+                SELECT id, display_name, avatar_url, is_active
+                FROM users
+                WHERE id = ANY($1)
+                "#,
+            )
+            .bind(slack_user_ids)
+            .fetch_all(&store.pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|row| {
+                let user = SyncedUserRecord {
+                    slack_user_id: row.get("id"),
+                    display_name: row.get("display_name"),
+                    avatar_url: row.get("avatar_url"),
+                    is_active: row.get("is_active"),
+                };
+                (user.slack_user_id.clone(), user)
+            })
+            .collect(),
         }
     }
 }
