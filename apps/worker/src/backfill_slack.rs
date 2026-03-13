@@ -57,6 +57,10 @@ pub(super) struct SlackHistoryFile {
     pub(super) name: Option<String>,
     pub(super) mimetype: Option<String>,
     pub(super) permalink: Option<String>,
+    #[serde(default)]
+    pub(super) url_private: Option<String>,
+    #[serde(default)]
+    pub(super) url_private_download: Option<String>,
     pub(super) size: Option<u64>,
 }
 

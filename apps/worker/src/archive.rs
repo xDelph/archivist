@@ -22,10 +22,58 @@ pub(crate) struct ArchiveFileResponse {
     bytes_uploaded: usize,
 }
 
+pub(super) struct ArchiveSlackFile<'a> {
+    pub(super) channel_id: &'a str,
+    pub(super) message_ts: &'a str,
+    pub(super) file_id: &'a str,
+    pub(super) filename: &'a str,
+    pub(super) download_url: &'a str,
+    pub(super) mimetype: Option<&'a str>,
+}
+
+pub(super) struct ArchivedSlackFile {
+    pub(super) storage_key: String,
+    pub(super) public_url: String,
+    pub(super) bytes_uploaded: usize,
+}
+
 pub(crate) async fn archive_file(
     State(state): State<AppState>,
     Json(request): Json<ArchiveFileRequest>,
 ) -> Result<Json<ArchiveFileResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let slack_user_token = state.slack_user_token.as_deref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(ErrorResponse {
+            error: "missing_slack_user_token",
+        }),
+    ))?;
+    let archived = archive_slack_file(
+        &state,
+        slack_user_token,
+        ArchiveSlackFile {
+            channel_id: &request.channel_id,
+            message_ts: &request.message_ts,
+            file_id: &request.file_id,
+            filename: &request.filename,
+            download_url: &request.download_url,
+            mimetype: request.mimetype.as_deref(),
+        },
+    )
+    .await?;
+
+    Ok(Json(ArchiveFileResponse {
+        ok: true,
+        storage_key: archived.storage_key,
+        public_url: archived.public_url,
+        bytes_uploaded: archived.bytes_uploaded,
+    }))
+}
+
+pub(super) async fn archive_slack_file(
+    state: &AppState,
+    slack_user_token: &str,
+    request: ArchiveSlackFile<'_>,
+) -> Result<ArchivedSlackFile, (StatusCode, Json<ErrorResponse>)> {
     tracing::info!(
         channel_id = %request.channel_id,
         message_ts = %request.message_ts,
@@ -33,12 +81,6 @@ pub(crate) async fn archive_file(
         filename = %request.filename,
         "starting file archive"
     );
-    let slack_user_token = state.slack_user_token.as_deref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: "missing_slack_user_token",
-        }),
-    ))?;
     let r2_config = state.r2_config.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         Json(ErrorResponse {
@@ -46,11 +88,11 @@ pub(crate) async fn archive_file(
         }),
     ))?;
     let location = resolve_file_storage_location(
-        &state,
+        state,
         slack_user_token,
-        &request.channel_id,
-        &request.file_id,
-        &request.filename,
+        request.channel_id,
+        request.file_id,
+        request.filename,
     )
     .await
     .expect("r2 config is present");
@@ -64,17 +106,16 @@ pub(crate) async fn archive_file(
             storage_key = %storage_key,
             "reusing existing archived file"
         );
-        persist_archive_metadata(&state, &request.file_id, &storage_key, &public_url).await?;
-        return Ok(Json(ArchiveFileResponse {
-            ok: true,
+        persist_archive_metadata(state, request.file_id, &storage_key, &public_url).await?;
+        return Ok(ArchivedSlackFile {
             storage_key,
             public_url,
             bytes_uploaded: 0,
-        }));
+        });
     }
 
     let response = reqwest::Client::new()
-        .get(&request.download_url)
+        .get(request.download_url)
         .bearer_auth(slack_user_token)
         .send()
         .await
@@ -116,6 +157,7 @@ pub(crate) async fn archive_file(
     })?;
     let content_type = request
         .mimetype
+        .map(str::to_owned)
         .or(response_content_type)
         .unwrap_or_else(|| "application/octet-stream".to_owned());
     let public_url = R2Client::from_config(r2_config)
@@ -134,7 +176,7 @@ pub(crate) async fn archive_file(
             file_upload_failed()
         })?;
 
-    persist_archive_metadata(&state, &request.file_id, &storage_key, &public_url).await?;
+    persist_archive_metadata(state, request.file_id, &storage_key, &public_url).await?;
     tracing::info!(
         channel_id = %request.channel_id,
         message_ts = %request.message_ts,
@@ -144,15 +186,14 @@ pub(crate) async fn archive_file(
         "completed file archive"
     );
 
-    Ok(Json(ArchiveFileResponse {
-        ok: true,
+    Ok(ArchivedSlackFile {
         storage_key,
         public_url,
         bytes_uploaded: bytes.len(),
-    }))
+    })
 }
 
-async fn remote_object_exists(public_url: &str) -> bool {
+pub(super) async fn remote_object_exists(public_url: &str) -> bool {
     match reqwest::Client::new().head(public_url).send().await {
         Ok(response) => {
             let exists = response.status().is_success();

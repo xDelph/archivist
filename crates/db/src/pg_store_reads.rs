@@ -300,7 +300,7 @@ impl PgEventStore {
         storage_key: &str,
         storage_url: &str,
     ) -> Result<(), StoreError> {
-        sqlx::query(
+        let rows_affected = sqlx::query(
             r#"
             UPDATE files
             SET storage_key = $2,
@@ -314,7 +314,11 @@ impl PgEventStore {
         .bind(storage_url)
         .execute(&self.pool())
         .await
-        .map_err(StoreError::Sqlx)?;
+        .map_err(StoreError::Sqlx)?
+        .rows_affected();
+        if rows_affected == 0 {
+            return Err(StoreError::Sqlx(sqlx::Error::RowNotFound));
+        }
 
         Ok(())
     }

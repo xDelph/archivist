@@ -170,10 +170,10 @@ async fn backfill_single_channel(
         "starting channel backfill"
     );
     if oldest_ts.is_some() {
-        tracing::warn!(
+        tracing::info!(
             channel_id,
             oldest_ts = oldest_ts.unwrap_or(""),
-            "incremental backfill skips already-stored channel messages but can still miss late replies on older thread roots until a full backfill runs"
+            "incremental backfill runs per public channel and skips already-stored channel messages, but can still miss late replies on older thread roots until a full backfill runs"
         );
     }
     let history = fetch_channel_history(
