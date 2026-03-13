@@ -11,7 +11,9 @@ axum.workspace = true
 base64.workspace = true
 db = { path = "../../crates/db" }
 domain = { path = "../../crates/domain" }
+html-escape.workspace = true
 hmac.workspace = true
+regex.workspace = true
 reqwest.workspace = true
 search = { path = "../../crates/search" }
 serde.workspace = true

@@ -30,15 +30,18 @@ async fn build_thread_detail_requires_a_root_message() {
         "C123:1700000000.000001",
         "C123",
         "1700000000.000001",
-        vec![Message {
-            channel_id: "C123".to_owned(),
-            ts: "1700000000.000002".to_owned(),
-            thread_ts: Some("1700000000.000001".to_owned()),
-            user_id: Some("U123".to_owned()),
-            text: "reply only".to_owned(),
-        }],
-        vec![],
-        vec![],
+        super::ThreadDetailData {
+            channels: vec![],
+            messages: vec![Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: Some("1700000000.000001".to_owned()),
+                user_id: Some("U123".to_owned()),
+                text: "reply only".to_owned(),
+            }],
+            reactions: vec![],
+            files: vec![],
+        },
         &crate::user_store::LocalUserStore::open(tempdir.path().join("synced-users.json"))
             .await
             .expect("user store")
@@ -54,7 +57,33 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
     let tempdir = tempdir().expect("tempdir");
     let path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&path).await.expect("store");
+    std::fs::write(
+        tempdir.path().join("synced-users.json"),
+        serde_json::to_vec(&vec![serde_json::json!({
+            "slack_user_id": "U789",
+            "display_name": "Thomas",
+            "avatar_url": null,
+            "is_active": true
+        })])
+        .expect("users json"),
+    )
+    .expect("write synced users");
     let root_ts = "1700000000.000001";
+
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_channel".to_owned(),
+            event_time: 0,
+            received_at: 0,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::ChannelUpdated {
+                name: Some("general".to_owned()),
+                is_archived: Some(false),
+            },
+        })
+        .await
+        .expect("channel insert");
 
     store
         .record_process_event(&ProcessEventJob {
@@ -65,7 +94,7 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
             channel_kind: ChannelKind::Public,
             payload: EventPayload::Message {
                 user_id: Some("U123".to_owned()),
-                text: Some("root message".to_owned()),
+                text: Some("root message --&gt; <@U789> in <#C123>".to_owned()),
                 ts: root_ts.to_owned(),
                 thread_ts: None,
                 files: vec![SharedFile {
@@ -164,7 +193,10 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
     let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
 
     assert_eq!(payload["reply_count"], 1);
-    assert_eq!(payload["messages"][0]["text"], "root message");
+    assert_eq!(
+        payload["messages"][0]["text"],
+        "root message --> @Thomas in #general"
+    );
     assert_eq!(payload["messages"][0]["author"], serde_json::Value::Null);
     assert_eq!(payload["messages"][0]["reactions"][0]["name"], "eyes");
     assert_eq!(payload["messages"][0]["files"][0]["name"], "brief.pdf");

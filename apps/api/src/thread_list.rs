@@ -1,4 +1,4 @@
-use crate::{AppState, auth::SessionClaims};
+use crate::{AppState, auth::SessionClaims, slack_text};
 use axum::{
     Extension, Json,
     extract::{Query, State},
@@ -107,8 +107,9 @@ pub(crate) async fn thread_list(
         .unwrap_or_default();
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
+    let channels = state.store.channels().await.map_err(store_failed)?;
     let items = build_thread_summaries(
-        state.store.channels().await.map_err(store_failed)?,
+        channels.clone(),
         state.store.messages().await.map_err(store_failed)?,
         state.store.reactions().await.map_err(store_failed)?,
         state.store.files().await.map_err(store_failed)?,
@@ -119,6 +120,19 @@ pub(crate) async fn thread_list(
             sort,
         },
     );
+    let channel_names = slack_text::build_channel_name_map(&channels);
+    let users = state
+        .user_store
+        .find_users(
+            &slack_text::collect_user_mention_ids(
+                items
+                    .iter()
+                    .flat_map(|item| [item.title.as_str(), item.preview.as_str()]),
+            )
+            .into_iter()
+            .collect::<Vec<_>>(),
+        )
+        .await;
 
     let page = items
         .iter()
@@ -129,8 +143,8 @@ pub(crate) async fn thread_list(
             channel_id: summary.channel_id.clone(),
             channel_name: summary.channel_name.clone(),
             root_ts: summary.root_ts.clone(),
-            title: summary.title.clone(),
-            preview: summary.preview.clone(),
+            title: slack_text::render_slack_text(&summary.title, &users, &channel_names),
+            preview: slack_text::render_slack_text(&summary.preview, &users, &channel_names),
             reply_count: summary.reply_count,
             participant_count: summary.participants.len(),
             reaction_count: summary.reaction_count,

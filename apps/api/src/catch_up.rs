@@ -1,5 +1,6 @@
 use crate::{
-    AppState, analytics::record_analytics, auth::SessionClaims, view_models::UserSummaryResponse,
+    AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
+    view_models::UserSummaryResponse,
 };
 use axum::{
     Extension, Json,
@@ -95,10 +96,13 @@ pub(crate) async fn catch_up(
             error: "invalid_window",
         }),
     ))?;
+    let channels = state.store.channels().await.map_err(store_failed)?;
+    let thread_summaries = state.store.thread_summaries().await.map_err(store_failed)?;
+    let messages = state.store.messages().await.map_err(store_failed)?;
     let channels = build_catch_up(
-        state.store.channels().await.map_err(store_failed)?,
-        state.store.thread_summaries().await.map_err(store_failed)?,
-        state.store.messages().await.map_err(store_failed)?,
+        channels,
+        thread_summaries,
+        messages,
         &state.user_store,
         window,
         current_unix_timestamp(),
@@ -127,6 +131,7 @@ async fn build_catch_up(
     now: i64,
 ) -> Vec<CatchUpChannelResponse> {
     let cutoff = window.cutoff(now);
+    let channel_names = slack_text::build_channel_name_map(&channels);
     let channel_metadata = channels
         .into_iter()
         .map(|channel| (channel.id.clone(), channel))
@@ -136,17 +141,22 @@ async fn build_catch_up(
         .filter(|message| message.thread_ts.is_none())
         .map(|message| ((message.channel_id, message.ts), message.user_id))
         .collect::<HashMap<_, _>>();
-    let author_ids = thread_summaries
+    let mut user_ids = thread_summaries
         .iter()
         .filter_map(|summary| {
             root_users
                 .get(&(summary.channel_id.clone(), summary.root_ts.clone()))
                 .and_then(|user_id| user_id.clone())
         })
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    let authors = user_store.find_users(&author_ids).await;
+        .collect::<std::collections::HashSet<_>>();
+    user_ids.extend(slack_text::collect_user_mention_ids(
+        thread_summaries
+            .iter()
+            .flat_map(|summary| [summary.title.as_str(), summary.preview.as_str()]),
+    ));
+    let users = user_store
+        .find_users(&user_ids.into_iter().collect::<Vec<_>>())
+        .await;
     let mut grouped = HashMap::<String, Vec<ThreadSummaryRow>>::new();
 
     for summary in thread_summaries
@@ -200,12 +210,20 @@ async fn build_catch_up(
                             author: root_users
                                 .get(&(summary.channel_id.clone(), summary.root_ts.clone()))
                                 .and_then(|user_id| user_id.as_ref())
-                                .and_then(|user_id| authors.get(user_id))
+                                .and_then(|user_id| users.get(user_id))
                                 .cloned()
                                 .map(Into::into),
                             root_ts: summary.root_ts,
-                            title: summary.title,
-                            preview: summary.preview,
+                            title: slack_text::render_slack_text(
+                                &summary.title,
+                                &users,
+                                &channel_names,
+                            ),
+                            preview: slack_text::render_slack_text(
+                                &summary.preview,
+                                &users,
+                                &channel_names,
+                            ),
                             reply_count: summary.reply_count,
                             participant_count: summary.participant_count,
                             reaction_count: summary.reaction_count,

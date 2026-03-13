@@ -7,6 +7,7 @@ mod channels;
 mod saved;
 mod saved_store;
 mod search_api;
+mod slack_text;
 mod thread_list;
 mod threads;
 mod user_store;

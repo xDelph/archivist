@@ -1,12 +1,13 @@
 use crate::{
-    AppState, analytics::record_analytics, auth::SessionClaims, view_models::UserSummaryResponse,
+    AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
+    view_models::UserSummaryResponse,
 };
 use axum::{
     Extension, Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use domain::{File, Message, Reaction};
+use domain::{Channel, File, Message, Reaction};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
@@ -50,6 +51,13 @@ pub(crate) struct ErrorResponse {
     error: &'static str,
 }
 
+struct ThreadDetailData {
+    channels: Vec<Channel>,
+    messages: Vec<Message>,
+    reactions: Vec<Reaction>,
+    files: Vec<File>,
+}
+
 pub(crate) async fn thread_detail(
     Path(id): Path<String>,
     State(state): State<AppState>,
@@ -66,9 +74,12 @@ pub(crate) async fn thread_detail(
         &id,
         channel_id,
         root_ts,
-        state.store.messages().await.map_err(store_failed)?,
-        state.store.reactions().await.map_err(store_failed)?,
-        state.store.files().await.map_err(store_failed)?,
+        ThreadDetailData {
+            channels: state.store.channels().await.map_err(store_failed)?,
+            messages: state.store.messages().await.map_err(store_failed)?,
+            reactions: state.store.reactions().await.map_err(store_failed)?,
+            files: state.store.files().await.map_err(store_failed)?,
+        },
         &state.user_store,
     )
     .await
@@ -110,12 +121,11 @@ async fn build_thread_detail(
     id: &str,
     channel_id: &str,
     root_ts: &str,
-    messages: Vec<Message>,
-    reactions: Vec<Reaction>,
-    files: Vec<File>,
+    data: ThreadDetailData,
     user_store: &crate::user_store::UserStore,
 ) -> Option<ThreadDetailResponse> {
-    let mut thread_messages = messages
+    let mut thread_messages = data
+        .messages
         .into_iter()
         .filter(|message| {
             message.channel_id == channel_id
@@ -128,23 +138,32 @@ async fn build_thread_detail(
         return None;
     }
 
+    let mut user_ids = thread_messages
+        .iter()
+        .filter_map(|message| message.user_id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    user_ids.extend(slack_text::collect_user_mention_ids(
+        thread_messages.iter().map(|message| message.text.as_str()),
+    ));
     let users = user_store
-        .find_users(
-            &thread_messages
-                .iter()
-                .filter_map(|message| message.user_id.clone())
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>(),
-        )
+        .find_users(&user_ids.into_iter().collect::<Vec<_>>())
         .await;
+    let channel_names = if slack_text::collect_channel_mention_ids(
+        thread_messages.iter().map(|message| message.text.as_str()),
+    )
+    .is_empty()
+    {
+        HashMap::new()
+    } else {
+        slack_text::build_channel_name_map(&data.channels)
+    };
 
     let message_ids = thread_messages
         .iter()
         .map(|message| message.ts.clone())
         .collect::<HashSet<_>>();
     let mut reactions_by_message = HashMap::<String, Vec<ThreadReactionResponse>>::new();
-    for reaction in reactions.into_iter().filter(|reaction| {
+    for reaction in data.reactions.into_iter().filter(|reaction| {
         reaction.channel_id == channel_id && message_ids.contains(&reaction.message_ts)
     }) {
         reactions_by_message
@@ -161,7 +180,8 @@ async fn build_thread_detail(
     }
 
     let mut files_by_message = HashMap::<String, Vec<ThreadFileResponse>>::new();
-    for file in files
+    for file in data
+        .files
         .into_iter()
         .filter(|file| file.channel_id == channel_id && message_ids.contains(&file.message_ts))
     {
@@ -194,7 +214,7 @@ async fn build_thread_detail(
             ts: message.ts,
             thread_ts: message.thread_ts,
             user_id: message.user_id,
-            text: message.text,
+            text: slack_text::render_slack_text(&message.text, &users, &channel_names),
         })
         .collect::<Vec<_>>();
     let reply_count = messages.len().saturating_sub(1);

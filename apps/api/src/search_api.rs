@@ -1,5 +1,6 @@
 use crate::{
-    AppState, analytics::record_analytics, auth::SessionClaims, view_models::UserSummaryResponse,
+    AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
+    view_models::UserSummaryResponse,
 };
 use axum::{
     Extension, Json,
@@ -84,20 +85,28 @@ pub(crate) async fn search(
     let cursor = parse_cursor(query.cursor.as_deref())?;
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let search_query = parse_search_query(&query)?;
+    let channels = state.store.channels().await.map_err(store_failed)?;
     let items = build_search_results(
-        state.store.channels().await.map_err(store_failed)?,
+        channels.clone(),
         state.store.messages().await.map_err(store_failed)?,
         state.store.search_documents().await.map_err(store_failed)?,
         state.store.thread_summaries().await.map_err(store_failed)?,
         &search_query,
     );
-    let author_ids = items
+    let channel_names = slack_text::build_channel_name_map(&channels);
+    let mut user_ids = items
         .iter()
         .filter_map(|item| item.author_id.clone())
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    let authors = state.user_store.find_users(&author_ids).await;
+        .collect::<std::collections::HashSet<_>>();
+    user_ids.extend(slack_text::collect_user_mention_ids(
+        items
+            .iter()
+            .flat_map(|item| [item.title.as_str(), item.snippet.as_str()]),
+    ));
+    let users = state
+        .user_store
+        .find_users(&user_ids.into_iter().collect::<Vec<_>>())
+        .await;
     let page = items
         .iter()
         .skip(cursor)
@@ -110,13 +119,13 @@ pub(crate) async fn search(
             author: item
                 .author_id
                 .as_ref()
-                .and_then(|user_id| authors.get(user_id))
+                .and_then(|user_id| users.get(user_id))
                 .cloned()
                 .map(Into::into),
             root_ts: item.root_ts.clone(),
             message_ts: item.message_ts.clone(),
-            title: item.title.clone(),
-            snippet: item.snippet.clone(),
+            title: slack_text::render_slack_text(&item.title, &users, &channel_names),
+            snippet: slack_text::render_slack_text(&item.snippet, &users, &channel_names),
             reply_count: item.reply_count,
             participant_count: item.participant_count,
             reaction_count: item.reaction_count,

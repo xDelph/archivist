@@ -1,10 +1,9 @@
-use crate::{AppState, auth::SessionClaims, saved_store::SavedItemRecord};
+use crate::{AppState, auth::SessionClaims, saved_store::SavedItemRecord, slack_text};
 use axum::{
     Extension, Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use domain::Channel;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -54,13 +53,20 @@ pub(crate) async fn list_saved_items(
     State(state): State<AppState>,
     Extension(claims): Extension<SessionClaims>,
 ) -> Result<Json<SavedItemsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let channel_names = channel_names(state.store.channels().await.map_err(store_failed)?);
-    let items = state
-        .saved_store
-        .list_items(&claims.slack_user_id)
-        .await
+    let channels = state.store.channels().await.map_err(store_failed)?;
+    let channel_names = slack_text::build_channel_name_map(&channels);
+    let items = state.saved_store.list_items(&claims.slack_user_id).await;
+    let mentioned_user_ids = slack_text::collect_user_mention_ids(
+        items
+            .iter()
+            .flat_map(|item| [item.title.as_str(), item.preview.as_str()]),
+    )
+    .into_iter()
+    .collect::<Vec<_>>();
+    let users = state.user_store.find_users(&mentioned_user_ids).await;
+    let items = items
         .into_iter()
-        .map(|item| saved_item_response(item, &channel_names))
+        .map(|item| saved_item_response(item, &channel_names, &users))
         .collect();
 
     Ok(Json(SavedItemsResponse { items }))
@@ -91,7 +97,8 @@ pub(crate) async fn save_item(
                 error: "thread_not_found",
             }),
         ))?;
-    let channel_names = channel_names(state.store.channels().await.map_err(store_failed)?);
+    let channels = state.store.channels().await.map_err(store_failed)?;
+    let channel_names = slack_text::build_channel_name_map(&channels);
     let saved_item = state
         .saved_store
         .upsert_item(SavedItemRecord {
@@ -106,10 +113,17 @@ pub(crate) async fn save_item(
         })
         .await
         .map_err(saved_store_error)?;
+    let mentioned_user_ids = slack_text::collect_user_mention_ids([
+        saved_item.title.as_str(),
+        saved_item.preview.as_str(),
+    ])
+    .into_iter()
+    .collect::<Vec<_>>();
+    let users = state.user_store.find_users(&mentioned_user_ids).await;
 
     Ok(Json(SavedMutationResponse {
         ok: true,
-        item: saved_item_response(saved_item, &channel_names),
+        item: saved_item_response(saved_item, &channel_names, &users),
     }))
 }
 
@@ -144,16 +158,10 @@ pub(crate) async fn delete_saved_item(
     Ok(Json(DeleteSavedItemResponse { ok: true }))
 }
 
-fn channel_names(channels: Vec<Channel>) -> HashMap<String, Option<String>> {
-    channels
-        .into_iter()
-        .map(|channel| (channel.id, channel.name))
-        .collect()
-}
-
 fn saved_item_response(
     item: SavedItemRecord,
     channel_names: &HashMap<String, Option<String>>,
+    users: &HashMap<String, crate::user_store::SyncedUserRecord>,
 ) -> SavedItemResponse {
     SavedItemResponse {
         id: item.thread_id.clone(),
@@ -164,8 +172,8 @@ fn saved_item_response(
             .cloned()
             .unwrap_or_default(),
         root_ts: item.root_ts,
-        title: item.title,
-        preview: item.preview,
+        title: slack_text::render_slack_text(&item.title, users, channel_names),
+        preview: slack_text::render_slack_text(&item.preview, users, channel_names),
         last_activity_ts: item.last_activity_ts,
         saved_at: item.saved_at,
     }
