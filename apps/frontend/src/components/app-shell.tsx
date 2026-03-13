@@ -60,7 +60,7 @@ export function AppShell() {
 
 					<Link
 						to="/account"
-						className="ml-auto flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.035] px-1 py-1 transition-colors hover:border-white/16 hover:bg-white/[0.06]"
+						className="ml-auto flex items-center justify-center rounded-full border border-white/10 bg-white/[0.035] p-1 transition-colors hover:border-white/16 hover:bg-white/[0.06]"
 					>
 						<IdentityAvatar
 							author={
@@ -75,14 +75,6 @@ export function AppShell() {
 							fallback={user?.email || "Archivist"}
 							size="sm"
 						/>
-						<div className="hidden pr-2 text-right xl:block">
-							<p className="text-[0.76rem] font-medium leading-tight text-white">
-								{user?.display_name || "Archivist"}
-							</p>
-							<p className="text-[0.66rem] text-[#868790]">
-								{user?.email || user?.slack_user_id || "Slack"}
-							</p>
-						</div>
 					</Link>
 				</div>
 			</header>

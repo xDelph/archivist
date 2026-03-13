@@ -8,14 +8,28 @@ import { catchUpQueries } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
-import { Flame, Hash, RefreshCcw, TrendingUp } from "lucide-react";
+import {
+	Calendar,
+	Clock,
+	Flame,
+	Hash,
+	RefreshCcw,
+	TrendingUp,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 export function HomePage() {
 	const { channel: channelFilter } = useSearch({ from: "/app/" });
 	const dayQuery = useQuery(catchUpQueries.window("24h"));
 	const weekQuery = useQuery(catchUpQueries.window("7d"));
 
-	const availableChannels = weekQuery.data?.channels ?? [];
+	const availableChannels = [...(weekQuery.data?.channels ?? [])].sort(
+		(a, b) => {
+			const nameA = a.name || a.id;
+			const nameB = b.name || b.id;
+			return nameA.localeCompare(nameB);
+		},
+	);
 	const activeFilter = channelFilter ?? "all";
 	const filteredDayChannels = filterChannels(
 		dayQuery.data?.channels ?? [],
@@ -25,8 +39,12 @@ export function HomePage() {
 	const trendingThreads = pickTrendingThreads(filteredWeekChannels);
 	const highlights = pickChannelHighlights(filteredWeekChannels);
 
+	const [activeTab, setActiveTab] = useState<
+		"fresh" | "steady" | "trending" | "channels"
+	>("fresh");
+
 	return (
-		<div className="space-y-4">
+		<div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
 			<section className="rounded-[0.82rem] border border-white/8 bg-[#07090b] px-3 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:px-3.5">
 				<div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
 					<div className="max-w-3xl">
@@ -55,7 +73,7 @@ export function HomePage() {
 					</div>
 				</div>
 
-				<div className="mt-2.5 flex flex-wrap gap-1.5">
+				<div className="mt-3 flex flex-wrap gap-1.5">
 					<ChannelPill
 						isActive={activeFilter === "all"}
 						label="All channels"
@@ -72,8 +90,35 @@ export function HomePage() {
 				</div>
 			</section>
 
-			<div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.85fr)]">
-				<div className="space-y-4">
+			<div className="flex w-full items-center gap-1 rounded-[0.82rem] border border-white/8 bg-[#07090b] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:gap-2 sm:p-2">
+				<TabButton
+					isActive={activeTab === "fresh"}
+					onClick={() => setActiveTab("fresh")}
+					icon={<Clock className="size-3.5 shrink-0 sm:size-4" />}
+					label="Fresh (24h)"
+				/>
+				<TabButton
+					isActive={activeTab === "steady"}
+					onClick={() => setActiveTab("steady")}
+					icon={<Calendar className="size-3.5 shrink-0 sm:size-4" />}
+					label="This Week"
+				/>
+				<TabButton
+					isActive={activeTab === "trending"}
+					onClick={() => setActiveTab("trending")}
+					icon={<Flame className="size-3.5 shrink-0 sm:size-4" />}
+					label="Trending"
+				/>
+				<TabButton
+					isActive={activeTab === "channels"}
+					onClick={() => setActiveTab("channels")}
+					icon={<TrendingUp className="size-3.5 shrink-0 sm:size-4" />}
+					label="Channels"
+				/>
+			</div>
+
+			<div className="mt-2">
+				{activeTab === "fresh" && (
 					<SectionCard eyebrow="Last 24 hours" title="Fresh threads">
 						<CatchUpSection
 							channels={filteredDayChannels}
@@ -83,7 +128,9 @@ export function HomePage() {
 							emptyDescription="Nothing crossed the 24-hour threshold for the selected channels."
 						/>
 					</SectionCard>
+				)}
 
+				{activeTab === "steady" && (
 					<SectionCard eyebrow="This week" title="Steady conversations">
 						<CatchUpSection
 							channels={filteredWeekChannels}
@@ -93,9 +140,9 @@ export function HomePage() {
 							emptyDescription="Once the worker processes more history, longer windows will show up here."
 						/>
 					</SectionCard>
-				</div>
+				)}
 
-				<div className="space-y-4">
+				{activeTab === "trending" && (
 					<SectionCard
 						eyebrow="Trending"
 						title="Threads with momentum"
@@ -128,7 +175,9 @@ export function HomePage() {
 							/>
 						)}
 					</SectionCard>
+				)}
 
+				{activeTab === "channels" && (
 					<SectionCard
 						eyebrow="Channel activity"
 						title="Where people are gathering"
@@ -148,9 +197,37 @@ export function HomePage() {
 							/>
 						)}
 					</SectionCard>
-				</div>
+				)}
 			</div>
 		</div>
+	);
+}
+
+function TabButton({
+	isActive,
+	onClick,
+	icon,
+	label,
+}: {
+	isActive: boolean;
+	onClick: () => void;
+	icon: ReactNode;
+	label: string;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={cn(
+				"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[0.6rem] px-1 py-1.5 text-[0.62rem] font-medium transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-[0.8rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20cb74]/40",
+				isActive
+					? "bg-[#1fc86f]/15 text-[#29d779]"
+					: "text-[#9da0a8] hover:bg-white/[0.05] hover:text-white",
+			)}
+		>
+			{icon}
+			<span className="truncate">{label}</span>
+		</button>
 	);
 }
 

@@ -16,6 +16,7 @@ import {
 	groupReactions,
 	renderSlackText,
 } from "@/lib/thread-display";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
@@ -23,7 +24,10 @@ import {
 	BookmarkCheck,
 	ChevronDown,
 	ExternalLink,
+	Link2,
+	MessageSquare,
 	Paperclip,
+	Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -38,6 +42,9 @@ export function ThreadPage() {
 		messageTs: string;
 		index: number;
 	} | null>(null);
+	const [activeTab, setActiveTab] = useState<
+		"highlights" | "transcript" | "links" | "files"
+	>("highlights");
 
 	const threadQuery = useQuery(threadQueries.detail(threadId));
 	const savedQuery = useQuery(savedQueries.list());
@@ -56,7 +63,7 @@ export function ThreadPage() {
 
 	if (threadQuery.isPending) {
 		return (
-			<div className="space-y-4">
+			<div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
 				{["skel-a", "skel-b", "skel-c"].map((id) => (
 					<div
 						key={id}
@@ -77,7 +84,6 @@ export function ThreadPage() {
 	}
 
 	const { messages, reply_count: replyCount } = threadQuery.data;
-	const rootMessage = messages[0];
 	const visibleMessages =
 		isExpanded || messages.length <= INITIAL_MESSAGE_COUNT
 			? messages
@@ -118,10 +124,10 @@ export function ThreadPage() {
 		: null;
 
 	return (
-		<div className="space-y-4">
+		<div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
 			<SectionCard
-				eyebrow="Thread detail"
-				title={renderSlackText(rootMessage?.text || "Untitled thread")}
+				eyebrow="Thread Detail"
+				title="Overview"
 				titleClassName="font-normal"
 				overlayActions
 				actions={
@@ -162,8 +168,37 @@ export function ThreadPage() {
 				/>
 			</SectionCard>
 
-			<div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-				<div className="space-y-4">
+			<div className="flex w-full items-center gap-1 rounded-[0.82rem] border border-white/8 bg-[#07090b] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:gap-2 sm:p-2">
+				<TabButton
+					isActive={activeTab === "highlights"}
+					onClick={() => setActiveTab("highlights")}
+					icon={<Sparkles className="size-3.5 shrink-0 sm:size-4" />}
+					label="Highlights"
+				/>
+				<TabButton
+					isActive={activeTab === "transcript"}
+					onClick={() => setActiveTab("transcript")}
+					icon={<MessageSquare className="size-3.5 shrink-0 sm:size-4" />}
+					label="Timeline"
+				/>
+				<TabButton
+					isActive={activeTab === "links"}
+					onClick={() => setActiveTab("links")}
+					icon={<Link2 className="size-3.5 shrink-0 sm:size-4" />}
+					label="Links"
+					disabled={links.length === 0}
+				/>
+				<TabButton
+					isActive={activeTab === "files"}
+					onClick={() => setActiveTab("files")}
+					icon={<Paperclip className="size-3.5 shrink-0 sm:size-4" />}
+					label="Files"
+					disabled={allFiles.length === 0}
+				/>
+			</div>
+
+			<div className="mt-2">
+				{activeTab === "highlights" && (
 					<SectionCard eyebrow="Highlights" title="Important moments">
 						<div className="space-y-2.5">
 							{highlightedMessages.map((message) => (
@@ -180,7 +215,9 @@ export function ThreadPage() {
 							))}
 						</div>
 					</SectionCard>
+				)}
 
+				{activeTab === "transcript" && (
 					<SectionCard eyebrow="Full transcript" title="Conversation timeline">
 						<div className="space-y-2.5">
 							{visibleMessages.map((message) => (
@@ -212,9 +249,9 @@ export function ThreadPage() {
 							</div>
 						) : null}
 					</SectionCard>
-				</div>
+				)}
 
-				<div className="space-y-4">
+				{activeTab === "links" && (
 					<SectionCard eyebrow="Links" title="Linked references">
 						{links.length ? (
 							<ul className="space-y-2 text-[0.82rem]">
@@ -243,7 +280,9 @@ export function ThreadPage() {
 							/>
 						)}
 					</SectionCard>
+				)}
 
+				{activeTab === "files" && (
 					<SectionCard eyebrow="Files" title="Attached files">
 						{allFiles.length ? (
 							<ul className="space-y-2">
@@ -286,7 +325,7 @@ export function ThreadPage() {
 							/>
 						)}
 					</SectionCard>
-				</div>
+				)}
 			</div>
 
 			{selectedFileGroup && selectedFileState ? (
@@ -307,6 +346,39 @@ export function ThreadPage() {
 				/>
 			) : null}
 		</div>
+	);
+}
+
+function TabButton({
+	isActive,
+	onClick,
+	icon,
+	label,
+	disabled,
+}: {
+	isActive: boolean;
+	onClick: () => void;
+	icon: ReactNode;
+	label: string;
+	disabled?: boolean;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			className={cn(
+				"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[0.6rem] px-1 py-1.5 text-[0.62rem] font-medium transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-[0.8rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20cb74]/40",
+				isActive
+					? "bg-[#1fc86f]/15 text-[#29d779]"
+					: "text-[#9da0a8] hover:bg-white/[0.05] hover:text-white",
+				disabled &&
+					"cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[#9da0a8]",
+			)}
+		>
+			{icon}
+			<span className="truncate">{label}</span>
+		</button>
 	);
 }
 

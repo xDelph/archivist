@@ -49,7 +49,9 @@ const SKIN_TONE_MODIFIERS: Record<string, string> = {
 };
 
 const RICH_TOKEN_PATTERN =
-	/(<https?:\/\/[^\s>|]+(?:\|[^>\n]+)?(?:>)?|https?:\/\/[^\s<>()]+|:[a-z0-9_+\-]+:(?::skin-tone-[2-6]:)?)/gi;
+	/(<<?(?:https?|mailto):[^\s>|]+(?:\|[^>\n]+)?(?:>>?)?|<(?:https?|mailto):[^\s>|]+(?:\|[^>\n]+)?>|(?:https?|mailto):[^\s<>()]+|:[a-z0-9_+\-]+:(?::skin-tone-[2-6]:)?)/gi;
+const MENTION_PATTERN =
+	/(?:^|(?<leading>[\s([{"'`]))(?<mention>[@#][^\s.,!?;:()[\]{}<>"']+)/g;
 
 export interface SlackLink {
 	href: string;
@@ -95,8 +97,9 @@ export function channelLabel(
 }
 
 export function extractLinks(text: string) {
+	const normalizedText = decodeHtmlEntities(text);
 	const links = new Map<string, SlackLink>();
-	for (const segment of text.match(RICH_TOKEN_PATTERN) ?? []) {
+	for (const segment of normalizedText.match(RICH_TOKEN_PATTERN) ?? []) {
 		const link = parseSlackLink(segment);
 		if (!link || links.has(link.href)) {
 			continue;
@@ -116,7 +119,8 @@ export function renderSlackTextWithHighlights(
 	text: string,
 	query?: string,
 ): ReactNode {
-	const segments = text.split(RICH_TOKEN_PATTERN);
+	const normalizedText = decodeHtmlEntities(text);
+	const segments = normalizedText.split(RICH_TOKEN_PATTERN);
 	let cursor = 0;
 
 	return segments.map((segment) => {
@@ -133,8 +137,8 @@ export function renderSlackTextWithHighlights(
 				<a
 					key={`link-${key}`}
 					href={slackLink.href}
-					target="_blank"
-					rel="noreferrer"
+					target={slackLink.href.startsWith("mailto:") ? undefined : "_blank"}
+					rel={slackLink.href.startsWith("mailto:") ? undefined : "noreferrer"}
 					className="break-all [overflow-wrap:anywhere] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 transition-colors hover:text-[#89bbff]"
 				>
 					{renderHighlightedText(slackLink.label || slackLink.href, query, key)}
@@ -148,8 +152,11 @@ export function renderSlackTextWithHighlights(
 		}
 
 		return (
-			<span key={`text-${key}`}>
-				{renderHighlightedText(segment, query, key)}
+			<span
+				key={`text-${key}`}
+				className="break-words [overflow-wrap:anywhere]"
+			>
+				{renderMentionText(segment, query, key)}
 			</span>
 		);
 	});
@@ -158,7 +165,7 @@ export function renderSlackTextWithHighlights(
 function parseSlackLink(value: string): SlackLink | undefined {
 	const normalizedValue = value.trim();
 	const slackMatch = normalizedValue.match(
-		/^<(?<href>https?:\/\/[^\s>|]+)(?:\|(?<label>[^>\n]+))?>?$/i,
+		/^<<?(?<href>(?:https?|mailto):[^\s>|]+)(?:\|(?<label>[^>\n]+))?(?:>>?)?$/i,
 	);
 	if (slackMatch?.groups?.href) {
 		const href = sanitizeUrl(slackMatch.groups.href);
@@ -173,7 +180,7 @@ function parseSlackLink(value: string): SlackLink | undefined {
 		};
 	}
 
-	if (/^https?:\/\//i.test(normalizedValue)) {
+	if (/^(?:https?|mailto):/i.test(normalizedValue)) {
 		const href = sanitizeUrl(normalizedValue);
 		if (!href) {
 			return undefined;
@@ -266,12 +273,105 @@ function renderHighlightedText(
 	});
 }
 
+function renderMentionText(
+	text: string,
+	query: string | undefined,
+	keySeed: string,
+): ReactNode {
+	const parts: ReactNode[] = [];
+	let cursor = 0;
+	let mentionIndex = 0;
+
+	for (const match of text.matchAll(MENTION_PATTERN)) {
+		const leading = match.groups?.leading ?? "";
+		const mention = match.groups?.mention;
+		if (!mention) {
+			continue;
+		}
+		const fullMatch = match[0];
+		const start = match.index ?? 0;
+		const mentionStart = start + fullMatch.length - mention.length;
+
+		if (start > cursor) {
+			parts.push(
+				<span key={`${keySeed}-text-${mentionIndex}-${cursor}`}>
+					{renderHighlightedText(
+						text.slice(cursor, start),
+						query,
+						`${keySeed}-${cursor}`,
+					)}
+				</span>,
+			);
+		}
+
+		if (leading) {
+			const leadingStart = mentionStart - leading.length;
+			parts.push(
+				<span key={`${keySeed}-lead-${mentionIndex}-${leadingStart}`}>
+					{renderHighlightedText(
+						text.slice(leadingStart, mentionStart),
+						query,
+						`${keySeed}-${leadingStart}`,
+					)}
+				</span>,
+			);
+		}
+
+		parts.push(
+			<span
+				key={`${keySeed}-mention-${mentionIndex}-${mentionStart}`}
+				className="font-medium text-[#20cb74]"
+			>
+				{renderHighlightedText(mention, query, `${keySeed}-${mentionStart}`)}
+			</span>,
+		);
+
+		cursor = mentionStart + mention.length;
+		mentionIndex += 1;
+	}
+
+	if (cursor < text.length) {
+		parts.push(
+			<span key={`${keySeed}-tail-${cursor}`}>
+				{renderHighlightedText(
+					text.slice(cursor),
+					query,
+					`${keySeed}-${cursor}`,
+				)}
+			</span>,
+		);
+	}
+
+	return parts.length ? parts : text;
+}
+
 function sanitizeUrl(value: string) {
 	return value.replace(/[),.!?]+$/, "");
 }
 
 function sanitizeSlackLabel(value: string | undefined) {
 	return value?.trim().replace(/>$/, "") || null;
+}
+
+function decodeHtmlEntities(value: string) {
+	if (!value.includes("&")) {
+		return value;
+	}
+
+	if (typeof document !== "undefined") {
+		const textarea = document.createElement("textarea");
+		textarea.innerHTML = value;
+		return textarea.value;
+	}
+
+	return value
+		.replace(/&amp;/g, "&")
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/&#x27;/gi, "'")
+		.replace(/&nbsp;/g, " ");
 }
 
 function escapeRegExp(value: string) {

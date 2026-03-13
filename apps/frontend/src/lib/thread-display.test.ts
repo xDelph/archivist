@@ -83,4 +83,24 @@ describe("thread display emoji helpers", () => {
 			"&lt;https://www.linkedin.com/feed/update/urn:li:activity:1234567890",
 		);
 	});
+
+	it("decodes html entities before rendering links and text", () => {
+		const markup = renderToStaticMarkup(
+			renderSlackText("Go --&gt; https://example.com?a=1&amp;b=2"),
+		);
+
+		expect(markup).toContain("--&gt;");
+		expect(markup).toContain("https://example.com?a=1&amp;b=2");
+		expect(markup).not.toContain("--&amp;gt;");
+	});
+
+	it("renders resolved mentions with the shared green accent treatment", () => {
+		const markup = renderToStaticMarkup(
+			renderSlackText("Ask @Thomas in #general today"),
+		);
+
+		expect(markup).toContain('class="font-medium text-[#20cb74]"');
+		expect(markup).toContain("@Thomas");
+		expect(markup).toContain("#general");
+	});
 });
