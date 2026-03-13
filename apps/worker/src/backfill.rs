@@ -1,4 +1,7 @@
 use super::backfill_archive::persist_backfill_file_archives;
+use super::backfill_range::{
+    parse_backfill_request, resolve_oldest_ts, resolve_user_sync_oldest_ts, should_sync_user,
+};
 use super::backfill_slack::{SlackConversation, fetch_channel_history, fetch_public_channels};
 use super::backfill_threads::expand_thread_replies;
 use super::{AppState, ErrorResponse, store_failed};
@@ -10,12 +13,6 @@ use std::{
     collections::HashSet,
     time::{SystemTime, UNIX_EPOCH},
 };
-
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct BackfillChannelRequest {
-    channel_id: Option<String>,
-    cursor: Option<String>,
-}
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct BackfillChannelResponse {
@@ -30,6 +27,7 @@ struct SlackUser {
     id: String,
     deleted: Option<bool>,
     is_bot: Option<bool>,
+    updated: Option<i64>,
     profile: SlackUserProfile,
 }
 
@@ -62,7 +60,6 @@ pub(crate) async fn backfill_channel(
             error: "missing_slack_user_token",
         }),
     ))?;
-    sync_workspace_users(&state, slack_user_token).await?;
 
     if let Some(channel_id) = request
         .channel_id
@@ -70,6 +67,8 @@ pub(crate) async fn backfill_channel(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
+        let oldest_ts = resolve_oldest_ts(&state.store, &request, channel_id).await?;
+        sync_workspace_users(&state, slack_user_token, oldest_ts.as_deref()).await?;
         let channel_catalog = fetch_public_channels(&state.slack_api_base_url, slack_user_token)
             .await
             .unwrap_or_default();
@@ -80,6 +79,7 @@ pub(crate) async fn backfill_channel(
             channel_id,
             resolved_channel.as_ref(),
             request.cursor.as_deref(),
+            oldest_ts.as_deref(),
         )
         .await?;
         return Ok(Json(BackfillChannelResponse {
@@ -100,20 +100,35 @@ pub(crate) async fn backfill_channel(
         channels = channels.len(),
         "resolved public channels for backfill"
     );
+    let workspace_channel_ids = channels
+        .iter()
+        .map(|channel| channel.id.clone())
+        .collect::<Vec<_>>();
+    let user_sync_oldest_ts =
+        resolve_user_sync_oldest_ts(&state.store, &request, &workspace_channel_ids).await?;
+    sync_workspace_users(&state, slack_user_token, user_sync_oldest_ts.as_deref()).await?;
 
     let mut totals = BackfillTotals::default();
     let total_channels = channels.len();
     for (index, channel) in channels.iter().enumerate() {
+        let oldest_ts = resolve_oldest_ts(&state.store, &request, &channel.id).await?;
         tracing::info!(
             channel_index = index + 1,
             total_channels,
             channel_id = %channel.id,
             channel_name = channel.name.as_deref().unwrap_or(""),
+            oldest_ts = oldest_ts.as_deref().unwrap_or(""),
             "starting workspace backfill channel"
         );
-        let (channel_totals, _) =
-            backfill_single_channel(&state, slack_user_token, &channel.id, Some(channel), None)
-                .await?;
+        let (channel_totals, _) = backfill_single_channel(
+            &state,
+            slack_user_token,
+            &channel.id,
+            Some(channel),
+            None,
+            oldest_ts.as_deref(),
+        )
+        .await?;
         totals.messages_inserted += channel_totals.messages_inserted;
         totals.messages_duplicate += channel_totals.messages_duplicate;
         totals.reactions_inserted += channel_totals.reactions_inserted;
@@ -143,6 +158,7 @@ async fn backfill_single_channel(
     channel_id: &str,
     channel: Option<&SlackConversation>,
     cursor: Option<&str>,
+    oldest_ts: Option<&str>,
 ) -> Result<(BackfillTotals, Option<String>), (StatusCode, Json<ErrorResponse>)> {
     tracing::info!(
         channel_id,
@@ -150,13 +166,22 @@ async fn backfill_single_channel(
             .and_then(|value| value.name.as_deref())
             .unwrap_or(""),
         cursor = cursor.unwrap_or(""),
+        oldest_ts = oldest_ts.unwrap_or(""),
         "starting channel backfill"
     );
+    if oldest_ts.is_some() {
+        tracing::warn!(
+            channel_id,
+            oldest_ts = oldest_ts.unwrap_or(""),
+            "incremental backfill skips already-stored channel messages but can still miss late replies on older thread roots until a full backfill runs"
+        );
+    }
     let history = fetch_channel_history(
         &state.slack_api_base_url,
         slack_user_token,
         channel_id,
         cursor,
+        oldest_ts,
     )
     .await?;
     tracing::info!(
@@ -228,13 +253,17 @@ async fn backfill_single_channel(
 async fn sync_workspace_users(
     state: &AppState,
     slack_user_token: &str,
+    updated_since: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if state.store.postgres_pool().is_none() {
         tracing::debug!("skipping workspace user sync for non-postgres store");
         return Ok(());
     }
 
-    tracing::info!("starting workspace user sync");
+    tracing::info!(
+        updated_since = updated_since.unwrap_or(""),
+        "starting workspace user sync"
+    );
     let users = fetch_workspace_users(&state.slack_api_base_url, slack_user_token).await?;
     tracing::info!(
         fetched_users = users.len(),
@@ -244,6 +273,7 @@ async fn sync_workspace_users(
     let mut synced = 0usize;
     let mut skipped_bots = 0usize;
     let mut skipped_duplicates = 0usize;
+    let mut skipped_stale = 0usize;
     for user in users {
         if user.is_bot.unwrap_or(false) || user.id == "USLACKBOT" {
             skipped_bots += 1;
@@ -251,6 +281,10 @@ async fn sync_workspace_users(
         }
         if !seen.insert(user.id.clone()) {
             skipped_duplicates += 1;
+            continue;
+        }
+        if !should_sync_user(user.updated, updated_since) {
+            skipped_stale += 1;
             continue;
         }
         let display_name = user
@@ -303,6 +337,7 @@ async fn sync_workspace_users(
                 synced_users = synced,
                 skipped_bots,
                 skipped_duplicates,
+                skipped_stale,
                 "workspace user sync progress"
             );
         }
@@ -311,6 +346,7 @@ async fn sync_workspace_users(
         synced_users = synced,
         skipped_bots,
         skipped_duplicates,
+        skipped_stale,
         "completed workspace user sync"
     );
     Ok(())
@@ -446,24 +482,6 @@ fn apply_batch_stats(totals: &mut BackfillTotals, stats: BackfillBatchStats) {
     totals.messages_duplicate += stats.messages_duplicate;
     totals.reactions_inserted += stats.reactions_inserted;
     totals.reactions_duplicate += stats.reactions_duplicate;
-}
-
-fn parse_backfill_request(
-    body: &Bytes,
-) -> Result<BackfillChannelRequest, (StatusCode, Json<ErrorResponse>)> {
-    if body.iter().all(u8::is_ascii_whitespace) {
-        return Ok(BackfillChannelRequest::default());
-    }
-
-    serde_json::from_slice(body).map_err(|error| {
-        tracing::warn!(?error, "received invalid backfill request body");
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "invalid_backfill_request",
-            }),
-        )
-    })
 }
 
 #[cfg(test)]

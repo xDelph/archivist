@@ -1,6 +1,7 @@
 mod archive;
 mod backfill;
 mod backfill_archive;
+mod backfill_range;
 mod backfill_slack;
 mod backfill_threads;
 mod storage;

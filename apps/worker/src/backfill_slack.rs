@@ -196,6 +196,7 @@ pub(super) async fn fetch_channel_history(
     slack_user_token: &str,
     channel_id: &str,
     cursor: Option<&str>,
+    oldest_ts: Option<&str>,
 ) -> Result<SlackHistoryResponse, (StatusCode, Json<ErrorResponse>)> {
     let endpoint = format!(
         "{}/conversations.history",
@@ -207,6 +208,8 @@ pub(super) async fn fetch_channel_history(
         .query(&[
             ("channel", channel_id),
             ("cursor", cursor.unwrap_or_default()),
+            ("oldest", oldest_ts.unwrap_or_default()),
+            ("inclusive", "false"),
         ])
         .send()
         .await

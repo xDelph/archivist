@@ -13,6 +13,24 @@ type FileKey = (String, String, String);
 type ReactionKey = (String, String, String, String);
 
 impl PgEventStore {
+    pub async fn latest_message_ts(&self, channel_id: &str) -> Result<Option<String>, StoreError> {
+        let row = sqlx::query(
+            r#"
+            SELECT ts
+            FROM messages
+            WHERE channel_id = $1
+            ORDER BY occurred_at DESC, ts DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(channel_id)
+        .fetch_optional(&self.pool())
+        .await
+        .map_err(StoreError::Sqlx)?;
+
+        Ok(row.map(|row| row.get("ts")))
+    }
+
     pub async fn messages(&self) -> Result<Vec<domain::Message>, StoreError> {
         let rows = sqlx::query(
             r#"

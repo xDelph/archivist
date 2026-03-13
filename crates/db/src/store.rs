@@ -113,6 +113,13 @@ impl EventStore {
         }
     }
 
+    pub async fn latest_message_ts(&self, channel_id: &str) -> Result<Option<String>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.latest_message_ts(channel_id).await),
+            Self::Postgres(store) => store.latest_message_ts(channel_id).await,
+        }
+    }
+
     pub async fn reactions(&self) -> Result<Vec<Reaction>, StoreError> {
         match self {
             Self::Local(store) => Ok(store.reactions().await),

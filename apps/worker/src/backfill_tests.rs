@@ -7,6 +7,7 @@ use axum::{
     routing::get,
 };
 use db::JsonlEventStore;
+use domain::{ChannelKind, EventPayload, ProcessEventJob};
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 use tempfile::tempdir;
@@ -390,6 +391,150 @@ async fn backfill_channel_returns_bad_gateway_when_slack_history_fails() {
 }
 
 #[tokio::test]
+async fn backfill_channel_uses_explicit_oldest_ts() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    let (slack_api_base_url, handle) = spawn_history_server_with_query_assertions(
+        HashMap::from([
+            ("channel".to_owned(), "C123".to_owned()),
+            ("oldest".to_owned(), "1700000000.125".to_owned()),
+            ("inclusive".to_owned(), "false".to_owned()),
+        ]),
+        Json(json!({
+            "ok": true,
+            "messages": [{ "ts": "1700000001.000001", "user": "U123", "text": "newer message" }]
+        })),
+    )
+    .await;
+    let router = build_router(
+        store.clone(),
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url,
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "channel_id": "C123", "oldest_ts": 1700000000.125 }).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let messages = store.messages().await;
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].ts, "1700000001.000001");
+}
+
+#[tokio::test]
+async fn backfill_channel_resume_from_last_message_ts_uses_latest_stored_message() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_existing".to_owned(),
+            event_time: 1_700_000_000,
+            received_at: 1_700_000_000,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U111".to_owned()),
+                text: Some("existing message".to_owned()),
+                ts: "1700000000.000001".to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("insert existing message");
+    let (slack_api_base_url, handle) = spawn_history_server_with_query_assertions(
+        HashMap::from([
+            ("channel".to_owned(), "C123".to_owned()),
+            ("oldest".to_owned(), "1700000000.000001".to_owned()),
+            ("inclusive".to_owned(), "false".to_owned()),
+        ]),
+        Json(json!({
+            "ok": true,
+            "messages": [{ "ts": "1700000000.000002", "user": "U222", "text": "new message" }]
+        })),
+    )
+    .await;
+    let router = build_router(
+        store.clone(),
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url,
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "channel_id": "C123",
+                        "resume_from_last_message_ts": true
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let messages = store.messages().await;
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].ts, "1700000000.000001");
+    assert_eq!(messages[1].ts, "1700000000.000002");
+}
+
+#[tokio::test]
 async fn backfill_without_channel_id_fetches_all_public_channels() {
     let tempdir = tempdir().expect("tempdir");
     let log_path = tempdir.path().join("events.jsonl");
@@ -512,6 +657,60 @@ async fn backfill_channel_rejects_invalid_json_body() {
     assert_eq!(payload["error"], "invalid_backfill_request");
 }
 
+#[tokio::test]
+async fn backfill_channel_rejects_conflicting_range_options() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    let router = build_router(
+        store,
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url: "https://slack.com/api".to_owned(),
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "channel_id": "C123",
+                        "oldest_ts": "1700000000.000001",
+                        "resume_from_last_message_ts": true
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(payload["error"], "invalid_backfill_request");
+}
+
 async fn spawn_history_server(response: Json<serde_json::Value>) -> (String, JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -522,6 +721,34 @@ async fn spawn_history_server(response: Json<serde_json::Value>) -> (String, Joi
         get(move |_body: Bytes| {
             let response = response.clone();
             async move { response }
+        }),
+    );
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server");
+    });
+
+    (format!("http://{address}"), handle)
+}
+
+async fn spawn_history_server_with_query_assertions(
+    expected_query: HashMap<String, String>,
+    response: Json<serde_json::Value>,
+) -> (String, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+    let app = Router::new().route(
+        "/conversations.history",
+        get(move |Query(query): Query<HashMap<String, String>>| {
+            let expected_query = expected_query.clone();
+            let response = response.clone();
+            async move {
+                for (key, expected) in expected_query {
+                    assert_eq!(query.get(&key), Some(&expected), "query mismatch for {key}");
+                }
+                response
+            }
         }),
     );
     let handle = tokio::spawn(async move {

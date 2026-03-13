@@ -82,6 +82,16 @@ impl JsonlEventStore {
         messages
     }
 
+    pub async fn latest_message_ts(&self, channel_id: &str) -> Option<String> {
+        let state = self.state.lock().await;
+        state
+            .messages
+            .values()
+            .filter(|message| message.channel_id == channel_id)
+            .max_by(|left, right| left.ts.cmp(&right.ts))
+            .map(|message| message.ts.clone())
+    }
+
     pub async fn reactions(&self) -> Vec<Reaction> {
         let state = self.state.lock().await;
         let mut reactions = state
