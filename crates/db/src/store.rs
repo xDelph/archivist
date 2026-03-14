@@ -1,6 +1,9 @@
 #[cfg(not(test))]
 use crate::local_store::runtime_database_url;
-use crate::{BackfillBatchStats, JsonlEventStore, PgEventStore, SearchDocumentRow, ThreadSummaryRow};
+use crate::{
+    BackfillBatchStats, GeneratedThreadSummaryRow, JsonlEventStore, PgEventStore,
+    SearchDocumentRow, ThreadSummaryRow,
+};
 use domain::{Channel, File, Message, ProcessEventJob, Reaction};
 use std::path::Path;
 use thiserror::Error;
@@ -155,6 +158,15 @@ impl EventStore {
         }
     }
 
+    pub async fn generated_thread_summaries(
+        &self,
+    ) -> Result<Vec<GeneratedThreadSummaryRow>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.generated_thread_summaries().await),
+            Self::Postgres(store) => store.generated_thread_summaries().await,
+        }
+    }
+
     pub async fn refresh_thread_summaries(&self) -> Result<usize, StoreError> {
         match self {
             Self::Local(store) => Ok(store.refresh_thread_summaries().await),
@@ -203,6 +215,16 @@ impl EventStore {
                     .set_file_archive(file_id, storage_key, storage_url)
                     .await
             }
+        }
+    }
+
+    pub async fn upsert_generated_thread_summary(
+        &self,
+        row: &GeneratedThreadSummaryRow,
+    ) -> Result<(), StoreError> {
+        match self {
+            Self::Local(store) => store.upsert_generated_thread_summary(row).await,
+            Self::Postgres(store) => store.upsert_generated_thread_summary(row).await,
         }
     }
 

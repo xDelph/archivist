@@ -1,5 +1,6 @@
 use crate::{
-    BackfillBatchStats, PgEventStore, StoreError, pg_materialized::refresh_thread_views,
+    BackfillBatchStats, PgEventStore, StoreError,
+    pg_materialized::refresh_thread_views,
     pg_store_backfill_sql::{
         attach_files, insert_message_events, insert_reaction_events, load_touched_roots,
         upsert_files, upsert_messages, upsert_reactions,

@@ -2,9 +2,10 @@ mod backfill_batch;
 mod local_store;
 mod memory;
 mod pg_materialized;
+mod pg_store;
+mod pg_store_ai;
 mod pg_store_backfill;
 mod pg_store_backfill_sql;
-mod pg_store;
 mod pg_store_reads;
 mod pg_support;
 mod search_index;
@@ -19,8 +20,8 @@ pub use local_store::JsonlEventStore;
 pub use memory::InMemoryEventStore;
 pub use pg_store::PgEventStore;
 pub use sqlx_models::{
-    AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SavedItemRow,
-    SearchDocumentRow, ThreadSummaryRow, UserRow,
+    AnalyticsEventRow, ChannelRow, FileRow, GeneratedThreadSummaryRow, MessageRow, ReactionRow,
+    SavedItemRow, SearchDocumentRow, ThreadSummaryRow, UserRow,
 };
 pub use sqlx_queries::{
     attach_file_query, delete_saved_item_query, initial_catch_up_query,
@@ -29,7 +30,8 @@ pub use sqlx_queries::{
     upsert_thread_summary_query, upsert_user_query,
 };
 pub use sqlx_schema::{
-    backfill_search_documents_query, create_saved_items_table_query,
-    create_search_documents_table_query, create_thread_summaries_table_query,
+    backfill_search_documents_query, create_generated_thread_summaries_table_query,
+    create_saved_items_table_query, create_search_documents_table_query,
+    create_thread_summaries_table_query,
 };
 pub use store::{EventStore, RepositoryHealth, RepositoryMode, StoreError, StoreOutcome};

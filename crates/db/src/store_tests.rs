@@ -1,4 +1,4 @@
-use super::{JsonlEventStore, StoreOutcome};
+use super::{GeneratedThreadSummaryRow, JsonlEventStore, StoreOutcome};
 use domain::{ChannelKind, EventPayload, ProcessEventJob, SharedFile};
 use tempfile::tempdir;
 
@@ -346,4 +346,34 @@ async fn message_jobs_refresh_thread_summaries_for_full_threads() {
     let reopened_summaries = reopened.thread_summaries().await;
     assert_eq!(reopened_summaries.len(), 1);
     assert_eq!(reopened_summaries[0].title, "root summary");
+}
+
+#[tokio::test]
+async fn generated_thread_summaries_persist_across_reopens() {
+    let tempdir = tempdir().expect("tempdir");
+    let path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&path).await.expect("store");
+    let row = GeneratedThreadSummaryRow {
+        channel_id: "C123".to_owned(),
+        root_ts: "1700000000.000001".to_owned(),
+        summary: "Launch plan summary".to_owned(),
+        why_it_mattered: Some("It captured the agreed rollout steps.".to_owned()),
+        status: "answered".to_owned(),
+        topic_tags: vec!["launch".to_owned(), "rollout".to_owned()],
+        source_last_activity_ts: "1700000000.000002".to_owned(),
+        model: "openai/gpt-oss-120b:free".to_owned(),
+        generated_at: 1_700_000_123,
+    };
+
+    store
+        .upsert_generated_thread_summary(&row)
+        .await
+        .expect("persist generated summary");
+
+    let stored = store.generated_thread_summaries().await;
+    assert_eq!(stored, vec![row.clone()]);
+
+    let reopened = JsonlEventStore::open(&path).await.expect("reopened");
+    let reopened_summaries = reopened.generated_thread_summaries().await;
+    assert_eq!(reopened_summaries, vec![row]);
 }

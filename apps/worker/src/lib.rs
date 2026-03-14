@@ -1,3 +1,5 @@
+mod ai;
+mod ai_openrouter;
 mod archive;
 mod backfill;
 mod backfill_archive;
@@ -30,6 +32,7 @@ const DEFAULT_PORT: u16 = 4002;
 const DEFAULT_EVENT_LOG_PATH: &str = "logs/process-events.jsonl";
 const DEFAULT_WORKER_BASE_URL: &str = "http://127.0.0.1:4002";
 const DEFAULT_SLACK_API_BASE_URL: &str = "https://slack.com/api";
+const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerConfig {
@@ -38,6 +41,9 @@ pub struct WorkerConfig {
     pub event_log_path: String,
     pub worker_base_url: String,
     pub slack_api_base_url: String,
+    pub openrouter_base_url: String,
+    pub openrouter_api_key: Option<String>,
+    pub openrouter_model: Option<String>,
     pub slack_user_token: Option<String>,
     pub r2_account_id: Option<String>,
     pub r2_access_key_id: Option<String>,
@@ -62,6 +68,10 @@ impl WorkerConfig {
                 .unwrap_or_else(|_| DEFAULT_WORKER_BASE_URL.to_owned()),
             slack_api_base_url: std::env::var("SLACK_API_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_SLACK_API_BASE_URL.to_owned()),
+            openrouter_base_url: std::env::var("OPENROUTER_BASE_URL")
+                .unwrap_or_else(|_| DEFAULT_OPENROUTER_BASE_URL.to_owned()),
+            openrouter_api_key: std::env::var("OPENROUTER_API_KEY").ok(),
+            openrouter_model: std::env::var("OPENROUTER_MODEL").ok(),
             slack_user_token: std::env::var("SLACK_USER_TOKEN").ok(),
             r2_account_id: std::env::var("CLOUDFLARE_R2_ACCOUNT_ID").ok(),
             r2_access_key_id: std::env::var("CLOUDFLARE_R2_ACCESS_KEY_ID").ok(),
@@ -88,6 +98,7 @@ struct AppState {
     heartbeat_url: String,
     refresh_thread_summaries_url: String,
     slack_api_base_url: String,
+    openrouter_config: ai::OpenRouterConfig,
     slack_user_token: Option<String>,
     r2_config: Option<storage::R2Config>,
     r2_key_prefix: Option<String>,
@@ -143,6 +154,10 @@ pub fn build_router(
             "/jobs/refresh_thread_summaries",
             post(refresh_thread_summaries),
         )
+        .route(
+            "/jobs/generate_thread_summaries",
+            post(ai::generate_thread_summaries),
+        )
         .route("/jobs/backfill_channel", post(backfill::backfill_channel))
         .route("/jobs/archive_file", post(archive::archive_file))
         .with_state(AppState {
@@ -152,6 +167,11 @@ pub fn build_router(
             heartbeat_url,
             refresh_thread_summaries_url,
             slack_api_base_url: config.slack_api_base_url,
+            openrouter_config: ai::OpenRouterConfig {
+                api_base_url: config.openrouter_base_url,
+                api_key: config.openrouter_api_key,
+                model: config.openrouter_model,
+            },
             slack_user_token: config.slack_user_token,
             r2_config: storage::R2Config::from_options(
                 config.r2_account_id,

@@ -15,6 +15,9 @@ fn config_uses_local_defaults() {
     assert_eq!(config.event_log_path, "logs/process-events.jsonl");
     assert_eq!(config.worker_base_url, "http://127.0.0.1:4002");
     assert_eq!(config.slack_api_base_url, "https://slack.com/api");
+    assert_eq!(config.openrouter_base_url, "https://openrouter.ai/api/v1");
+    assert_eq!(config.openrouter_api_key, None);
+    assert_eq!(config.openrouter_model, None);
     assert_eq!(config.slack_user_token, None);
     assert_eq!(config.r2_account_id, None);
     assert_eq!(config.r2_access_key_id, None);
@@ -40,6 +43,9 @@ async fn duplicate_events_are_acknowledged() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
             slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
@@ -135,6 +141,9 @@ async fn reaction_events_are_counted_in_health() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
             slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
@@ -209,6 +218,9 @@ async fn file_share_messages_are_counted_in_health() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
             slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,
@@ -307,6 +319,9 @@ async fn refresh_thread_summaries_job_reports_refreshed_threads() {
             event_log_path: log_path.display().to_string(),
             worker_base_url: "http://127.0.0.1:4002".to_owned(),
             slack_api_base_url: "https://slack.com/api".to_owned(),
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
             slack_user_token: None,
             r2_account_id: None,
             r2_access_key_id: None,

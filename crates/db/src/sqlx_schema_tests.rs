@@ -1,6 +1,7 @@
 use super::{
-    backfill_search_documents_query, create_saved_items_table_query,
-    create_search_documents_table_query, create_thread_summaries_table_query,
+    backfill_search_documents_query, create_generated_thread_summaries_table_query,
+    create_saved_items_table_query, create_search_documents_table_query,
+    create_thread_summaries_table_query,
 };
 
 #[test]
@@ -46,4 +47,15 @@ fn saved_items_schema_tracks_saved_threads_per_user() {
     assert!(schema.contains("user_id TEXT NOT NULL"));
     assert!(schema.contains("saved_at TIMESTAMPTZ NOT NULL DEFAULT now()"));
     assert!(schema.contains("saved_items_user_saved_at_idx"));
+}
+
+#[test]
+fn generated_thread_summary_schema_tracks_model_output_per_thread() {
+    let schema = create_generated_thread_summaries_table_query();
+
+    assert!(schema.contains("CREATE TABLE IF NOT EXISTS generated_thread_summaries"));
+    assert!(schema.contains("summary TEXT NOT NULL"));
+    assert!(schema.contains("topic_tags TEXT[] NOT NULL DEFAULT '{}'"));
+    assert!(schema.contains("source_last_activity_ts TEXT NOT NULL"));
+    assert!(schema.contains("generated_thread_summaries_generated_at_idx"));
 }

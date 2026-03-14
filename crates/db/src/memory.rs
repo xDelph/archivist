@@ -1,5 +1,5 @@
 use crate::{
-    RepositoryHealth, SearchDocumentRow, StoreOutcome, ThreadSummaryRow,
+    GeneratedThreadSummaryRow, RepositoryHealth, SearchDocumentRow, StoreOutcome, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
     thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 
 type FileKey = (String, String, String);
 type ReactionKey = (String, String, String, String);
+type GeneratedThreadSummaryKey = (String, String);
 
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryEventStore {
@@ -25,6 +26,7 @@ struct InMemoryState {
     reactions: HashSet<ReactionKey>,
     search_documents: SearchDocumentMap,
     thread_summaries: ThreadSummaryMap,
+    generated_thread_summaries: HashMap<GeneratedThreadSummaryKey, GeneratedThreadSummaryRow>,
 }
 
 impl InMemoryEventStore {
@@ -134,6 +136,26 @@ impl InMemoryEventStore {
             (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
         });
         thread_summaries
+    }
+
+    pub async fn generated_thread_summaries(&self) -> Vec<GeneratedThreadSummaryRow> {
+        let state = self.state.lock().await;
+        let mut generated_thread_summaries = state
+            .generated_thread_summaries
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        generated_thread_summaries.sort_by(|left, right| {
+            (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
+        });
+        generated_thread_summaries
+    }
+
+    pub async fn upsert_generated_thread_summary(&self, row: &GeneratedThreadSummaryRow) {
+        let mut state = self.state.lock().await;
+        state
+            .generated_thread_summaries
+            .insert((row.channel_id.clone(), row.root_ts.clone()), row.clone());
     }
 }
 

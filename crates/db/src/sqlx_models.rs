@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
@@ -69,6 +70,19 @@ pub struct ThreadSummaryRow {
     pub file_count: i64,
     pub root_message_at: String,
     pub last_activity_ts: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, FromRow)]
+pub struct GeneratedThreadSummaryRow {
+    pub channel_id: String,
+    pub root_ts: String,
+    pub summary: String,
+    pub why_it_mattered: Option<String>,
+    pub status: String,
+    pub topic_tags: Vec<String>,
+    pub source_last_activity_ts: String,
+    pub model: String,
+    pub generated_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]

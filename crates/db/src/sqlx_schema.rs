@@ -44,6 +44,31 @@ ON thread_summaries (channel_id, last_activity_at DESC);
 "#
 }
 
+pub const fn create_generated_thread_summaries_table_query() -> &'static str {
+    r#"
+CREATE TABLE IF NOT EXISTS generated_thread_summaries (
+    channel_id TEXT NOT NULL,
+    root_ts TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    why_it_mattered TEXT,
+    status TEXT NOT NULL,
+    topic_tags TEXT[] NOT NULL DEFAULT '{}',
+    source_last_activity_ts TEXT NOT NULL,
+    model TEXT NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (channel_id, root_ts)
+);
+
+CREATE INDEX IF NOT EXISTS generated_thread_summaries_generated_at_idx
+ON generated_thread_summaries (generated_at DESC);
+
+CREATE INDEX IF NOT EXISTS generated_thread_summaries_channel_generated_at_idx
+ON generated_thread_summaries (channel_id, generated_at DESC);
+"#
+}
+
 pub const fn create_saved_items_table_query() -> &'static str {
     r#"
 CREATE TABLE IF NOT EXISTS saved_items (

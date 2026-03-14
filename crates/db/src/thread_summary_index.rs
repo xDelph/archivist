@@ -155,7 +155,10 @@ fn summarize_text(value: &str) -> String {
 }
 
 fn is_root_message(message: &Message) -> bool {
-    message.thread_ts.as_deref().is_none_or(|thread_ts| thread_ts == message.ts)
+    message
+        .thread_ts
+        .as_deref()
+        .is_none_or(|thread_ts| thread_ts == message.ts)
 }
 
 fn normalized_root_ts(message: &Message) -> String {
@@ -163,7 +166,10 @@ fn normalized_root_ts(message: &Message) -> String {
         return message.ts.clone();
     }
 
-    message.thread_ts.clone().unwrap_or_else(|| message.ts.clone())
+    message
+        .thread_ts
+        .clone()
+        .unwrap_or_else(|| message.ts.clone())
 }
 
 fn parse_ts_seconds(value: &str) -> i64 {

@@ -1,6 +1,6 @@
 use crate::{
-    BackfillBatchStats, RepositoryHealth, SearchDocumentRow, StoreError, StoreOutcome,
-    ThreadSummaryRow,
+    BackfillBatchStats, GeneratedThreadSummaryRow, RepositoryHealth, SearchDocumentRow, StoreError,
+    StoreOutcome, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
     thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
@@ -14,10 +14,12 @@ use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 
 type FileKey = (String, String, String);
 type ReactionKey = (String, String, String, String);
+type GeneratedThreadSummaryKey = (String, String);
 
 #[derive(Debug, Clone)]
 pub struct JsonlEventStore {
     path: Arc<PathBuf>,
+    generated_summary_path: Arc<PathBuf>,
     state: Arc<Mutex<StoreState>>,
 }
 
@@ -30,15 +32,20 @@ struct StoreState {
     reactions: HashSet<ReactionKey>,
     search_documents: SearchDocumentMap,
     thread_summaries: ThreadSummaryMap,
+    generated_thread_summaries: HashMap<GeneratedThreadSummaryKey, GeneratedThreadSummaryRow>,
 }
 
 impl JsonlEventStore {
     pub async fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let path = path.as_ref().to_path_buf();
-        let state = load_state(&path).await?;
+        let generated_summary_path = generated_summary_path(&path);
+        let mut state = load_state(&path).await?;
+        state.generated_thread_summaries =
+            load_generated_thread_summaries(&generated_summary_path).await?;
 
         Ok(Self {
             path: Arc::new(path),
+            generated_summary_path: Arc::new(generated_summary_path),
             state: Arc::new(Mutex::new(state)),
         })
     }
@@ -161,6 +168,19 @@ impl JsonlEventStore {
         thread_summaries
     }
 
+    pub async fn generated_thread_summaries(&self) -> Vec<GeneratedThreadSummaryRow> {
+        let state = self.state.lock().await;
+        let mut generated_thread_summaries = state
+            .generated_thread_summaries
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        generated_thread_summaries.sort_by(|left, right| {
+            (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
+        });
+        generated_thread_summaries
+    }
+
     pub async fn refresh_thread_summaries(&self) -> usize {
         let mut state = self.state.lock().await;
         state.thread_summaries =
@@ -186,6 +206,21 @@ impl JsonlEventStore {
                 tracing::debug!(%file_id, %storage_key, "updated local file archive metadata");
             }
         }
+    }
+
+    pub async fn upsert_generated_thread_summary(
+        &self,
+        row: &GeneratedThreadSummaryRow,
+    ) -> Result<(), StoreError> {
+        let mut state = self.state.lock().await;
+        state
+            .generated_thread_summaries
+            .insert((row.channel_id.clone(), row.root_ts.clone()), row.clone());
+        persist_generated_thread_summaries(
+            &self.generated_summary_path,
+            &state.generated_thread_summaries,
+        )
+        .await
     }
 
     pub async fn backfill_channel_jobs(
@@ -330,6 +365,51 @@ async fn append_job(path: &Path, job: &ProcessEventJob) -> Result<(), StoreError
     payload.push(b'\n');
 
     file.write_all(&payload).await.map_err(StoreError::Append)
+}
+
+fn generated_summary_path(path: &Path) -> PathBuf {
+    let filename = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("events.jsonl");
+    path.with_file_name(format!("{filename}.generated-thread-summaries.json"))
+}
+
+async fn load_generated_thread_summaries(
+    path: &Path,
+) -> Result<HashMap<GeneratedThreadSummaryKey, GeneratedThreadSummaryRow>, StoreError> {
+    if !fs::try_exists(path).await.map_err(StoreError::Read)? {
+        return Ok(HashMap::new());
+    }
+
+    let contents = fs::read_to_string(path).await.map_err(StoreError::Read)?;
+    if contents.trim().is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let rows = serde_json::from_str::<Vec<GeneratedThreadSummaryRow>>(&contents)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ((row.channel_id.clone(), row.root_ts.clone()), row))
+        .collect())
+}
+
+async fn persist_generated_thread_summaries(
+    path: &Path,
+    summaries: &HashMap<GeneratedThreadSummaryKey, GeneratedThreadSummaryRow>,
+) -> Result<(), StoreError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(StoreError::CreateDirectory)?;
+    }
+
+    let mut rows = summaries.values().cloned().collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
+    });
+    let payload = serde_json::to_vec_pretty(&rows)?;
+    fs::write(path, payload).await.map_err(StoreError::Append)
 }
 
 #[cfg(not(test))]
