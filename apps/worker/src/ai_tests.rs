@@ -1,3 +1,4 @@
+use super::{same_slack_ts, slack_ts_value};
 use crate::{WorkerConfig, ai_openrouter::chat_completions_url, build_router};
 use axum::{
     Json, Router,
@@ -129,6 +130,15 @@ fn chat_completions_url_accepts_base_or_full_endpoint() {
         chat_completions_url("https://openrouter.ai/api/v1/chat/completions"),
         "https://openrouter.ai/api/v1/chat/completions"
     );
+}
+
+#[test]
+fn same_slack_ts_accepts_equivalent_formats() {
+    assert!(same_slack_ts("1768488821.313469", "1768488821.313469"));
+    assert!(same_slack_ts("1768488821.313469", "1768488821.3134690"));
+    assert!(same_slack_ts("1768488821.100000", "1768488821.1"));
+    assert!(!same_slack_ts("1768488821", "1768488821.313469"));
+    assert!(slack_ts_value("1768488821.1") < slack_ts_value("1768488821.100001"));
 }
 
 #[tokio::test]

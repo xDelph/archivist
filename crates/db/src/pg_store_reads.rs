@@ -174,8 +174,14 @@ impl PgEventStore {
                 participant_count,
                 reaction_count,
                 file_count,
-                CAST(EXTRACT(EPOCH FROM root_message_at) AS bigint)::text AS root_message_at,
-                CAST(EXTRACT(EPOCH FROM last_activity_at) AS bigint)::text AS last_activity_ts
+                to_char(
+                    EXTRACT(EPOCH FROM root_message_at),
+                    'FM999999999999999.000000'
+                ) AS root_message_at,
+                to_char(
+                    EXTRACT(EPOCH FROM last_activity_at),
+                    'FM999999999999999.000000'
+                ) AS last_activity_ts
             FROM thread_summaries
             ORDER BY channel_id ASC, root_ts ASC
             "#,

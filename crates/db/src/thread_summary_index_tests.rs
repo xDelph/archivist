@@ -145,3 +145,38 @@ fn rebuild_thread_summaries_treats_thread_ts_equal_to_ts_as_root() {
         Some(1)
     );
 }
+
+#[test]
+fn rebuild_thread_summaries_keeps_microsecond_precision_for_last_activity() {
+    let messages = HashMap::from([
+        (
+            ("C123".to_owned(), "1700000000.100001".to_owned()),
+            Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000000.100001".to_owned(),
+                thread_ts: None,
+                user_id: Some("U123".to_owned()),
+                text: "root summary".to_owned(),
+            },
+        ),
+        (
+            ("C123".to_owned(), "1700000000.100009".to_owned()),
+            Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000000.100009".to_owned(),
+                thread_ts: Some("1700000000.100001".to_owned()),
+                user_id: Some("U456".to_owned()),
+                text: "later reply in same second".to_owned(),
+            },
+        ),
+    ]);
+
+    let thread_summaries = build_thread_summaries(&messages, &HashSet::new(), &HashMap::new());
+
+    assert_eq!(
+        thread_summaries
+            .get(&("C123".to_owned(), "1700000000.100001".to_owned()))
+            .map(|summary| summary.last_activity_ts.as_str()),
+        Some("1700000000.100009")
+    );
+}

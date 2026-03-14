@@ -7,6 +7,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
+use db::{GeneratedThreadSummaryRow, ThreadSummaryRow};
 use domain::{Channel, File, Message, Reaction};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -15,9 +16,29 @@ use std::collections::{HashMap, HashSet};
 pub(crate) struct ThreadDetailResponse {
     id: String,
     channel_id: String,
+    channel_name: Option<String>,
     root_ts: String,
+    title: Option<String>,
+    preview: Option<String>,
+    last_activity_ts: Option<String>,
     reply_count: usize,
+    participant_count: usize,
+    reaction_count: usize,
+    file_count: usize,
+    summary: ThreadSummaryBlockResponse,
     messages: Vec<ThreadMessageResponse>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct ThreadSummaryBlockResponse {
+    text: Option<String>,
+    why_it_mattered: Option<String>,
+    status: Option<String>,
+    topic_tags: Vec<String>,
+    model: Option<String>,
+    generated_at: Option<i64>,
+    is_stale: bool,
+    source: &'static str,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -56,6 +77,8 @@ struct ThreadDetailData {
     messages: Vec<Message>,
     reactions: Vec<Reaction>,
     files: Vec<File>,
+    thread_summaries: Vec<ThreadSummaryRow>,
+    generated_thread_summaries: Vec<GeneratedThreadSummaryRow>,
 }
 
 pub(crate) async fn thread_detail(
@@ -79,6 +102,12 @@ pub(crate) async fn thread_detail(
             messages: state.store.messages().await.map_err(store_failed)?,
             reactions: state.store.reactions().await.map_err(store_failed)?,
             files: state.store.files().await.map_err(store_failed)?,
+            thread_summaries: state.store.thread_summaries().await.map_err(store_failed)?,
+            generated_thread_summaries: state
+                .store
+                .generated_thread_summaries()
+                .await
+                .map_err(store_failed)?,
         },
         &state.user_store,
     )
@@ -124,6 +153,20 @@ async fn build_thread_detail(
     data: ThreadDetailData,
     user_store: &crate::user_store::UserStore,
 ) -> Option<ThreadDetailResponse> {
+    let channel_name = data
+        .channels
+        .iter()
+        .find(|channel| channel.id == channel_id)
+        .and_then(|channel| channel.name.as_deref().and_then(normalize_text));
+    let thread_summary = data
+        .thread_summaries
+        .into_iter()
+        .find(|summary| summary.channel_id == channel_id && summary.root_ts == root_ts);
+    let generated_summary = data
+        .generated_thread_summaries
+        .into_iter()
+        .find(|summary| summary.channel_id == channel_id && summary.root_ts == root_ts);
+
     let mut thread_messages = data
         .messages
         .into_iter()
@@ -218,14 +261,113 @@ async fn build_thread_detail(
         })
         .collect::<Vec<_>>();
     let reply_count = messages.len().saturating_sub(1);
+    let participant_count = messages
+        .iter()
+        .filter_map(|message| message.user_id.as_deref())
+        .collect::<HashSet<_>>()
+        .len();
+    let reaction_count = messages
+        .iter()
+        .map(|message| message.reactions.len())
+        .sum::<usize>();
+    let file_count = messages
+        .iter()
+        .map(|message| message.files.len())
+        .sum::<usize>();
+    let title = thread_summary.as_ref().and_then(|summary| {
+        normalize_text(&slack_text::render_slack_text(
+            &summary.title,
+            &users,
+            &channel_names,
+        ))
+    });
+    let preview = thread_summary.as_ref().and_then(|summary| {
+        normalize_text(&slack_text::render_slack_text(
+            &summary.preview,
+            &users,
+            &channel_names,
+        ))
+    });
+    let last_activity_ts = messages
+        .last()
+        .map(|message| message.ts.clone())
+        .or_else(|| {
+            thread_summary
+                .as_ref()
+                .map(|summary| summary.last_activity_ts.clone())
+        });
+    let summary = resolve_thread_summary(
+        last_activity_ts.as_deref(),
+        generated_summary.as_ref(),
+        title.clone(),
+        preview.clone(),
+    );
 
     Some(ThreadDetailResponse {
         id: id.to_owned(),
         channel_id: channel_id.to_owned(),
+        channel_name,
         root_ts: root_ts.to_owned(),
+        title,
+        preview,
+        last_activity_ts,
         reply_count,
+        participant_count,
+        reaction_count,
+        file_count,
+        summary,
         messages,
     })
+}
+
+fn resolve_thread_summary(
+    current_last_activity_ts: Option<&str>,
+    generated_summary: Option<&GeneratedThreadSummaryRow>,
+    title: Option<String>,
+    preview: Option<String>,
+) -> ThreadSummaryBlockResponse {
+    if let Some(summary) = generated_summary {
+        let is_stale = current_last_activity_ts.is_some_and(|last_activity_ts| {
+            !same_slack_ts(&summary.source_last_activity_ts, last_activity_ts)
+        });
+        return ThreadSummaryBlockResponse {
+            text: normalize_text(&summary.summary),
+            why_it_mattered: summary.why_it_mattered.as_deref().and_then(normalize_text),
+            status: normalize_text(&summary.status),
+            topic_tags: summary.topic_tags.clone(),
+            model: normalize_text(&summary.model),
+            generated_at: Some(summary.generated_at),
+            is_stale,
+            source: "ai",
+        };
+    }
+
+    let text = title.or(preview);
+    ThreadSummaryBlockResponse {
+        is_stale: false,
+        source: if text.is_some() { "fallback" } else { "none" },
+        text,
+        why_it_mattered: None,
+        status: None,
+        topic_tags: vec![],
+        model: None,
+        generated_at: None,
+    }
+}
+
+fn normalize_text(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn same_slack_ts(left: &str, right: &str) -> bool {
+    match (
+        left.trim().parse::<f64>().ok(),
+        right.trim().parse::<f64>().ok(),
+    ) {
+        (Some(left), Some(right)) => left == right,
+        _ => left == right,
+    }
 }
 
 #[cfg(test)]

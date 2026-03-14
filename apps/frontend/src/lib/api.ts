@@ -85,11 +85,32 @@ export interface SearchResult {
 	score: number;
 }
 
+export type ThreadSummarySource = "ai" | "fallback" | "none";
+
+export interface ThreadSummaryBlock {
+	text: string | null;
+	why_it_mattered: string | null;
+	status: string | null;
+	topic_tags: string[];
+	model: string | null;
+	generated_at: number | null;
+	is_stale: boolean;
+	source: ThreadSummarySource;
+}
+
 export interface ThreadDetailResponse {
 	id: string;
 	channel_id: string;
+	channel_name: string | null;
 	root_ts: string;
+	title: string | null;
+	preview: string | null;
+	last_activity_ts: string | null;
 	reply_count: number;
+	participant_count: number;
+	reaction_count: number;
+	file_count: number;
+	summary: ThreadSummaryBlock;
 	messages: ThreadMessage[];
 }
 

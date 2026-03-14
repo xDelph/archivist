@@ -106,7 +106,8 @@ pub(crate) async fn generate_thread_summaries(
     for summary in candidates {
         let key = (summary.channel_id.clone(), summary.root_ts.clone());
         if existing.get(&key).is_some_and(|row| {
-            row.model == config.model && row.source_last_activity_ts == summary.last_activity_ts
+            row.model == config.model
+                && same_slack_ts(&row.source_last_activity_ts, &summary.last_activity_ts)
         }) {
             tracing::info!(
                 channel_id = %summary.channel_id,
@@ -344,6 +345,16 @@ fn normalized_root_ts(message: &Message) -> String {
 
 fn slack_ts_value(value: &str) -> f64 {
     value.trim().parse::<f64>().unwrap_or_default()
+}
+
+fn same_slack_ts(left: &str, right: &str) -> bool {
+    match (
+        left.trim().parse::<f64>().ok(),
+        right.trim().parse::<f64>().ok(),
+    ) {
+        (Some(left), Some(right)) => left == right,
+        _ => left == right,
+    }
 }
 
 fn current_unix_timestamp() -> i64 {

@@ -20,7 +20,7 @@ struct ThreadSummaryAggregate {
     reaction_count: usize,
     file_count: usize,
     last_activity_ts: String,
-    last_activity_seconds: i64,
+    last_activity_micros: i64,
 }
 
 pub(crate) fn build_thread_summaries(
@@ -56,7 +56,7 @@ pub(crate) fn build_thread_summaries(
                 reaction_count: 0,
                 file_count: 0,
                 last_activity_ts: message.ts.clone(),
-                last_activity_seconds: parse_ts_seconds(&message.ts),
+                last_activity_micros: parse_ts_micros(&message.ts),
             });
 
         if !is_root_message(message) {
@@ -88,7 +88,7 @@ pub(crate) fn build_thread_summaries(
                 reaction_count: 0,
                 file_count: 0,
                 last_activity_ts: message_ts.clone(),
-                last_activity_seconds: parse_ts_seconds(message_ts),
+                last_activity_micros: parse_ts_micros(message_ts),
             });
 
         entry.reaction_count += 1;
@@ -117,7 +117,7 @@ pub(crate) fn build_thread_summaries(
                 reaction_count: 0,
                 file_count: 0,
                 last_activity_ts: file.message_ts.clone(),
-                last_activity_seconds: parse_ts_seconds(&file.message_ts),
+                last_activity_micros: parse_ts_micros(&file.message_ts),
             });
 
         entry.file_count += 1;
@@ -172,18 +172,26 @@ fn normalized_root_ts(message: &Message) -> String {
         .unwrap_or_else(|| message.ts.clone())
 }
 
-fn parse_ts_seconds(value: &str) -> i64 {
-    value
-        .split('.')
-        .next()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or_default()
+fn parse_ts_micros(value: &str) -> i64 {
+    let (seconds, fraction) = value.trim().split_once('.').unwrap_or((value.trim(), "0"));
+    let seconds = seconds.parse::<i64>().unwrap_or_default();
+    let mut micros = fraction
+        .chars()
+        .take(6)
+        .filter(char::is_ascii_digit)
+        .collect::<String>();
+    while micros.len() < 6 {
+        micros.push('0');
+    }
+    seconds
+        .saturating_mul(1_000_000)
+        .saturating_add(micros.parse::<i64>().unwrap_or_default())
 }
 
 fn update_last_activity(aggregate: &mut ThreadSummaryAggregate, ts: &str) {
-    let seconds = parse_ts_seconds(ts);
-    if seconds >= aggregate.last_activity_seconds {
-        aggregate.last_activity_seconds = seconds;
+    let micros = parse_ts_micros(ts);
+    if micros >= aggregate.last_activity_micros {
+        aggregate.last_activity_micros = micros;
         aggregate.last_activity_ts = ts.to_owned();
     }
 }

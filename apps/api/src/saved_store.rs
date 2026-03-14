@@ -156,8 +156,10 @@ impl SavedItemStore {
                     saved_items.root_ts,
                     thread_summaries.title,
                     thread_summaries.preview,
-                    CAST(EXTRACT(EPOCH FROM thread_summaries.last_activity_at) AS bigint)::text
-                        AS last_activity_ts,
+                    to_char(
+                        EXTRACT(EPOCH FROM thread_summaries.last_activity_at),
+                        'FM999999999999999.000000'
+                    ) AS last_activity_ts,
                     CAST(EXTRACT(EPOCH FROM saved_items.saved_at) AS bigint)::text
                         AS saved_at
                 FROM saved_items

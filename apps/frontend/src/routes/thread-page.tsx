@@ -1,21 +1,12 @@
 import { EmptyState } from "@/components/empty-state";
-import { IdentityAvatar } from "@/components/identity-avatar";
 import { SectionCard } from "@/components/section-card";
-import {
-	ThreadFileViewer,
-	type ThreadViewerFile,
-} from "@/components/thread-file-viewer";
-import { ThreadMetrics } from "@/components/thread-metrics";
+import { ThreadFileViewer } from "@/components/thread-file-viewer";
+import { ThreadMessageCard } from "@/components/thread-message-card";
+import { ThreadSummaryPanel } from "@/components/thread-summary-panel";
 import { Button } from "@/components/ui/button";
 import { deleteSavedThread, saveThread } from "@/lib/api";
-import { formatSlackTimestamp } from "@/lib/format";
 import { savedQueries, threadQueries } from "@/lib/queries";
-import {
-	displayAuthorName,
-	extractLinks,
-	groupReactions,
-	renderSlackText,
-} from "@/lib/thread-display";
+import { extractLinks } from "@/lib/thread-display";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
@@ -83,7 +74,8 @@ export function ThreadPage() {
 		);
 	}
 
-	const { messages, reply_count: replyCount } = threadQuery.data;
+	const thread = threadQuery.data;
+	const { messages } = thread;
 	const visibleMessages =
 		isExpanded || messages.length <= INITIAL_MESSAGE_COUNT
 			? messages
@@ -108,15 +100,6 @@ export function ThreadPage() {
 			messageFileIndex: index,
 		})),
 	);
-	const participantCount = new Set(
-		messages
-			.map((message) => message.user_id)
-			.filter((userId): userId is string => Boolean(userId)),
-	).size;
-	const reactionCount = messages.reduce(
-		(total, message) => total + message.reactions.length,
-		0,
-	);
 	const selectedFileGroup = selectedFileState
 		? fileGroups.find(
 				(group) => group.messageTs === selectedFileState.messageTs,
@@ -125,12 +108,9 @@ export function ThreadPage() {
 
 	return (
 		<div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
-			<SectionCard
-				eyebrow="Thread Detail"
-				title="Overview"
-				titleClassName="font-normal"
-				overlayActions
-				actions={
+			<ThreadSummaryPanel
+				thread={thread}
+				action={
 					<Button
 						type="button"
 						variant={savedItem ? "default" : "secondary"}
@@ -159,14 +139,7 @@ export function ThreadPage() {
 						</span>
 					</Button>
 				}
-			>
-				<ThreadMetrics
-					replyCount={replyCount}
-					reactionCount={reactionCount}
-					participantCount={participantCount}
-					fileCount={allFiles.length}
-				/>
-			</SectionCard>
+			/>
 
 			<div className="flex w-full items-center gap-1 rounded-[0.82rem] border border-white/8 bg-[#07090b] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:gap-2 sm:p-2">
 				<TabButton
@@ -202,7 +175,7 @@ export function ThreadPage() {
 					<SectionCard eyebrow="Highlights" title="Important moments">
 						<div className="space-y-2.5">
 							{highlightedMessages.map((message) => (
-								<MessageCard
+								<ThreadMessageCard
 									key={message.ts}
 									message={message}
 									onOpenFile={(fileIndex) =>
@@ -221,7 +194,7 @@ export function ThreadPage() {
 					<SectionCard eyebrow="Full transcript" title="Conversation timeline">
 						<div className="space-y-2.5">
 							{visibleMessages.map((message) => (
-								<MessageCard
+								<ThreadMessageCard
 									key={message.ts}
 									message={message}
 									onOpenFile={(fileIndex) =>
@@ -379,93 +352,5 @@ function TabButton({
 			{icon}
 			<span className="truncate">{label}</span>
 		</button>
-	);
-}
-
-interface MessageProps {
-	message: {
-		ts: string;
-		thread_ts: string | null;
-		user_id: string | null;
-		author: {
-			slack_user_id: string;
-			display_name: string | null;
-			avatar_url: string | null;
-		} | null;
-		text: string;
-		reactions: { user_id: string; name: string }[];
-		files: ThreadViewerFile[];
-	};
-	onOpenFile: (fileIndex: number) => void;
-}
-
-function MessageCard({ message, onOpenFile }: MessageProps) {
-	const reactions = groupReactions(message.reactions);
-
-	return (
-		<article className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3">
-			<div className="flex items-start gap-2.5">
-				<IdentityAvatar
-					author={message.author}
-					fallback={message.user_id}
-					size="sm"
-				/>
-				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-1.5 text-[0.72rem] text-[#868b93]">
-						<span className="text-[0.82rem] font-medium text-white">
-							{displayAuthorName(message.author, message.user_id)}
-						</span>
-						<span className="text-white/15">&middot;</span>
-						<time className="tabular-nums">
-							{formatSlackTimestamp(message.ts)}
-						</time>
-						{message.thread_ts ? (
-							<>
-								<span className="text-white/15">&middot;</span>
-								<span>Reply</span>
-							</>
-						) : null}
-					</div>
-					<div className="mt-1.5 whitespace-pre-wrap text-[0.82rem] leading-6 font-normal text-[#eef0f2]">
-						{renderSlackText(message.text)}
-					</div>
-				</div>
-			</div>
-
-			<div className="mt-3 flex flex-wrap gap-1.5">
-				{reactions.map((reaction) => (
-					<MetaChip
-						key={reaction.name}
-						label={`${reaction.emoji ?? `:${reaction.name}:`} ${reaction.count}`}
-					/>
-				))}
-				{message.files.map((file, index) => (
-					<button
-						key={file.id}
-						type="button"
-						className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.72rem] text-[#c4c8cf] hover:border-[#1fc86f]/22 hover:text-white"
-						onClick={() => onOpenFile(index)}
-					>
-						<Paperclip className="size-3.5" />
-						{file.name}
-					</button>
-				))}
-			</div>
-		</article>
-	);
-}
-
-function MetaChip({
-	label,
-	icon,
-}: {
-	label: string;
-	icon?: ReactNode;
-}) {
-	return (
-		<span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.72rem] text-[#c3c8ce]">
-			{icon}
-			{label}
-		</span>
 	);
 }
