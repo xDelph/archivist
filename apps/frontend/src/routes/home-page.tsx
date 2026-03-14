@@ -3,6 +3,7 @@ import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
 import type { CatchUpChannel } from "@/lib/api";
+import { flattenCatchUpThreads } from "@/lib/catch-up";
 import { formatCompactNumber } from "@/lib/format";
 import { catchUpQueries } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -13,7 +14,6 @@ import {
 	Clock,
 	Flame,
 	Hash,
-	RefreshCcw,
 	TrendingUp,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -44,7 +44,7 @@ export function HomePage() {
 	>("fresh");
 
 	return (
-		<div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
+		<div className="space-y-4 ">
 			<section className="rounded-[0.82rem] border border-white/8 bg-[#07090b] px-3 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:px-3.5">
 				<div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
 					<div className="max-w-3xl">
@@ -57,19 +57,6 @@ export function HomePage() {
 						<p className="mt-1 max-w-2xl text-[0.72rem] leading-5 text-[#92949b]">
 							Public threads, same data model, darker Archivist chrome.
 						</p>
-					</div>
-					<div className="flex shrink-0 items-center gap-3">
-						<Button
-							variant="secondary"
-							onClick={() => {
-								void dayQuery.refetch();
-								void weekQuery.refetch();
-							}}
-							className="rounded-lg border-white/10 bg-white/[0.04] px-3 py-2 text-[0.78rem] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.07]"
-						>
-							<RefreshCcw className="size-3.5" />
-							Refresh
-						</Button>
 					</div>
 				</div>
 
@@ -257,20 +244,15 @@ function CatchUpSection({
 		);
 	}
 
-	const threads = channels.flatMap((channel) =>
-		channel.threads.map((thread) => ({
-			...thread,
-			channelName: channel.name || channel.id,
-		})),
-	);
+	const sortedThreads = flattenCatchUpThreads(channels);
 
-	if (!threads.length) {
+	if (!sortedThreads.length) {
 		return <EmptyState title={emptyTitle} description={emptyDescription} />;
 	}
 
 	return (
 		<div className="space-y-2.5">
-			{threads.map((thread) => (
+			{sortedThreads.map((thread) => (
 				<ThreadCard
 					key={thread.id}
 					threadId={thread.id}

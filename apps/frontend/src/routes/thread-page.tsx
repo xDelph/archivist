@@ -1,6 +1,8 @@
 import { EmptyState } from "@/components/empty-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadFileViewer } from "@/components/thread-file-viewer";
+import { ThreadFilesPanel } from "@/components/thread-files-panel";
+import { ThreadLinksPanel } from "@/components/thread-links-panel";
 import { ThreadMessageCard } from "@/components/thread-message-card";
 import { ThreadSummaryPanel } from "@/components/thread-summary-panel";
 import { Button } from "@/components/ui/button";
@@ -14,7 +16,6 @@ import {
 	Bookmark,
 	BookmarkCheck,
 	ChevronDown,
-	ExternalLink,
 	Link2,
 	MessageSquare,
 	Paperclip,
@@ -107,7 +108,7 @@ export function ThreadPage() {
 		: null;
 
 	return (
-		<div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
+		<div className="space-y-4">
 			<ThreadSummaryPanel
 				thread={thread}
 				action={
@@ -226,70 +227,19 @@ export function ThreadPage() {
 
 				{activeTab === "links" && (
 					<SectionCard eyebrow="Links" title="Linked references">
-						{links.length ? (
-							<ul className="space-y-2 text-[0.82rem]">
-								{links.map((link) => (
-									<li
-										key={link.href}
-										className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3"
-									>
-										<a
-											href={link.href}
-											target="_blank"
-											rel="noreferrer"
-											className="flex items-center gap-2 break-all text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]"
-										>
-											<ExternalLink className="size-4 shrink-0" />
-											{link.label || link.href}
-										</a>
-									</li>
-								))}
-							</ul>
-						) : (
-							<EmptyState
-								title="No links found"
-								description="This thread does not contain extractable URLs."
-								icon={<ExternalLink className="size-5" />}
-							/>
-						)}
+						<ThreadLinksPanel links={links} />
 					</SectionCard>
 				)}
 
 				{activeTab === "files" && (
 					<SectionCard eyebrow="Files" title="Attached files">
 						{allFiles.length ? (
-							<ul className="space-y-2">
-								{allFiles.map((file) => (
-									<li
-										key={`${file.messageTs}-${file.id}-${file.name}`}
-										className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3"
-									>
-										<button
-											type="button"
-											className="w-full text-left"
-											onClick={() =>
-												setSelectedFileState({
-													messageTs: file.messageTs,
-													index: file.messageFileIndex,
-												})
-											}
-										>
-											<p className="text-[0.82rem] font-medium text-white">
-												{file.name}
-											</p>
-											<p className="mt-1 text-[0.72rem] text-[#8f949b]">
-												{file.mimetype || "unknown type"}
-											</p>
-											{file.permalink ? (
-												<span className="mt-2 inline-flex items-center gap-1.5 text-[0.8rem] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]">
-													<Paperclip className="size-4" />
-													Open file
-												</span>
-											) : null}
-										</button>
-									</li>
-								))}
-							</ul>
+							<ThreadFilesPanel
+								files={allFiles}
+								onOpenFile={(messageTs, index) =>
+									setSelectedFileState({ messageTs, index })
+								}
+							/>
 						) : (
 							<EmptyState
 								title="No files attached"

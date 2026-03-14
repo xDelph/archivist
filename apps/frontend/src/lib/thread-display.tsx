@@ -56,6 +56,7 @@ const MENTION_PATTERN =
 export interface SlackLink {
 	href: string;
 	label: string | null;
+	appHref?: string;
 }
 
 export function threadMomentumScore(stats: ThreadStats) {
@@ -133,12 +134,14 @@ export function renderSlackTextWithHighlights(
 
 		const slackLink = parseSlackLink(segment);
 		if (slackLink) {
+			const href = slackLink.appHref ?? slackLink.href;
+			const isExternal = !href.startsWith("/") && !href.startsWith("mailto:");
 			return (
 				<a
 					key={`link-${key}`}
-					href={slackLink.href}
-					target={slackLink.href.startsWith("mailto:") ? undefined : "_blank"}
-					rel={slackLink.href.startsWith("mailto:") ? undefined : "noreferrer"}
+					href={href}
+					target={isExternal ? "_blank" : undefined}
+					rel={isExternal ? "noreferrer" : undefined}
 					className="break-all [overflow-wrap:anywhere] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 transition-colors hover:text-[#89bbff]"
 				>
 					{renderHighlightedText(slackLink.label || slackLink.href, query, key)}
@@ -177,6 +180,7 @@ function parseSlackLink(value: string): SlackLink | undefined {
 		return {
 			href,
 			label,
+			appHref: slackPermalinkToThreadHref(href),
 		};
 	}
 
@@ -189,10 +193,55 @@ function parseSlackLink(value: string): SlackLink | undefined {
 		return {
 			href,
 			label: null,
+			appHref: slackPermalinkToThreadHref(href),
 		};
 	}
 
 	return undefined;
+}
+
+function slackPermalinkToThreadHref(value: string): string | undefined {
+	const url = safeParseUrl(value);
+	if (!url || !url.hostname.endsWith(".slack.com")) {
+		return undefined;
+	}
+
+	const match = url.pathname.match(
+		/^\/archives\/(?<channel>[^/]+)\/p(?<ts>\d+)\/?$/,
+	);
+	const channelId = match?.groups?.channel || url.searchParams.get("cid");
+	const rootTs =
+		normalizeSlackTimestamp(url.searchParams.get("thread_ts")) ||
+		normalizeSlackTimestamp(match?.groups?.ts);
+	if (!channelId || !rootTs) {
+		return undefined;
+	}
+
+	return `/threads/${encodeURIComponent(`${channelId}:${rootTs}`)}`;
+}
+
+function normalizeSlackTimestamp(value: string | undefined | null) {
+	if (!value) {
+		return undefined;
+	}
+
+	const trimmed = value.trim();
+	if (trimmed.includes(".")) {
+		return trimmed;
+	}
+	if (!/^\d+$/.test(trimmed) || trimmed.length <= 6) {
+		return undefined;
+	}
+
+	return `${trimmed.slice(0, -6)}.${trimmed.slice(-6)}`;
+}
+
+function safeParseUrl(value: string) {
+	try {
+		return new URL(value);
+	} catch {
+		return undefined;
+	}
 }
 
 export function groupReactions(reactions: { name: string; user_id: string }[]) {

@@ -85,6 +85,14 @@ export interface SearchResult {
 	score: number;
 }
 
+export interface LinkMetadata {
+	url: string;
+	title: string | null;
+	description: string | null;
+	site_name: string | null;
+	image: string | null;
+}
+
 export type ThreadSummarySource = "ai" | "fallback" | "none";
 
 export interface ThreadSummaryBlock {
@@ -244,6 +252,11 @@ export async function fetchSearchResults({
 	}
 
 	return apiRequest<SearchResponse>(`/api/search?${params.toString()}`);
+}
+
+export async function fetchLinkMetadata(url: string) {
+	const params = new URLSearchParams({ url });
+	return apiRequest<LinkMetadata>(`/api/link-metadata?${params.toString()}`);
 }
 
 export async function fetchThreadDetail(threadId: string) {

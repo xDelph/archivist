@@ -4,6 +4,7 @@ mod auth;
 mod auth_store;
 mod catch_up;
 mod channels;
+mod link_metadata;
 mod saved;
 mod saved_store;
 mod search_api;
@@ -145,6 +146,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
             axum::routing::delete(saved::delete_saved_item),
         )
         .route("/api/search", get(search_api::search))
+        .route("/api/link-metadata", get(link_metadata::link_metadata))
         .route("/api/threads", get(thread_list::thread_list))
         .route("/api/threads/{id}", get(threads::thread_detail))
         .route(

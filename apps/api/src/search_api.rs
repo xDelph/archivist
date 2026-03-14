@@ -11,7 +11,7 @@ use db::{SearchDocumentRow, ThreadSummaryRow};
 use domain::{Channel, Message};
 use search::{SearchFilters, SearchQuery, SearchSort, normalize_query_text};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 const DEFAULT_LIMIT: usize = 20;
 const MAX_LIMIT: usize = 100;
@@ -248,92 +248,125 @@ fn build_search_results(
         .and_then(parse_ts_seconds);
     let date_to = query.filters.date_to.as_deref().and_then(parse_ts_seconds);
 
-    let mut results = search_documents
-        .iter()
-        .filter_map(|document| {
-            if !query.filters.channel_ids.is_empty()
-                && !query.filters.channel_ids.contains(&document.channel_id)
-            {
-                return None;
-            }
+    let mut grouped = HashMap::<(String, String), SearchResult>::new();
 
-            let message_seconds = parse_ts_seconds(&document.message_ts)?;
-            if date_from.is_some_and(|date_from| message_seconds < date_from)
-                || date_to.is_some_and(|date_to| message_seconds > date_to)
-            {
-                return None;
-            }
+    for candidate in search_documents.iter().filter_map(|document| {
+        if !query.filters.channel_ids.is_empty()
+            && !query.filters.channel_ids.contains(&document.channel_id)
+        {
+            return None;
+        }
 
-            let score = score_document(document.title.as_deref(), &document.body, &tokens);
-            if score == 0 {
-                return None;
-            }
+        let message_seconds = parse_ts_seconds(&document.message_ts)?;
+        if date_from.is_some_and(|date_from| message_seconds < date_from)
+            || date_to.is_some_and(|date_to| message_seconds > date_to)
+        {
+            return None;
+        }
 
-            let message =
-                message_lookup.get(&(document.channel_id.clone(), document.message_ts.clone()));
-            let root_ts = message
-                .and_then(|message| message.thread_ts.clone())
-                .unwrap_or_else(|| document.message_ts.clone());
-            let root = roots
-                .get(&(document.channel_id.clone(), root_ts.clone()))
-                .copied()
-                .or(message.copied());
-            let summary = summary_lookup.get(&(document.channel_id.clone(), root_ts.clone()));
+        let score = score_document(document.title.as_deref(), &document.body, &tokens);
+        if score == 0 {
+            return None;
+        }
 
-            Some(SearchResult {
-                id: format!("{}:{}", document.channel_id, document.message_ts),
-                thread_id: format!("{}:{root_ts}", document.channel_id),
-                channel_id: document.channel_id.clone(),
-                channel_name: channel_names
-                    .get(&document.channel_id)
-                    .cloned()
-                    .unwrap_or_default(),
-                author_id: root.and_then(|root| root.user_id.clone()),
-                root_ts: root_ts.clone(),
-                root_seconds: parse_ts_seconds(&root_ts).unwrap_or(message_seconds),
-                message_ts: document.message_ts.clone(),
-                message_seconds,
-                title: root
-                    .map(|root| summarize_text(&root.text))
-                    .or_else(|| document.title.clone())
-                    .unwrap_or_else(|| summarize_text(&document.body)),
-                snippet: build_snippet(&document.body, &tokens),
-                reply_count: summary.map_or(0, |summary| as_count(summary.reply_count)),
-                participant_count: summary.map_or(0, |summary| as_count(summary.participant_count)),
-                reaction_count: summary.map_or(0, |summary| as_count(summary.reaction_count)),
-                file_count: summary.map_or(0, |summary| as_count(summary.file_count)),
-                score,
-            })
+        let message =
+            message_lookup.get(&(document.channel_id.clone(), document.message_ts.clone()));
+        let root_ts = message
+            .and_then(|message| message.thread_ts.clone())
+            .unwrap_or_else(|| document.message_ts.clone());
+        let root = roots
+            .get(&(document.channel_id.clone(), root_ts.clone()))
+            .copied()
+            .or(message.copied());
+        let summary = summary_lookup.get(&(document.channel_id.clone(), root_ts.clone()));
+
+        Some(SearchResult {
+            id: format!("{}:{root_ts}", document.channel_id),
+            thread_id: format!("{}:{root_ts}", document.channel_id),
+            channel_id: document.channel_id.clone(),
+            channel_name: channel_names
+                .get(&document.channel_id)
+                .cloned()
+                .unwrap_or_default(),
+            author_id: root.and_then(|root| root.user_id.clone()),
+            root_ts: root_ts.clone(),
+            root_seconds: parse_ts_seconds(&root_ts).unwrap_or(message_seconds),
+            message_ts: document.message_ts.clone(),
+            message_seconds,
+            title: root
+                .map(|root| summarize_text(&root.text))
+                .or_else(|| document.title.clone())
+                .unwrap_or_else(|| summarize_text(&document.body)),
+            snippet: build_snippet(&document.body, &tokens),
+            reply_count: summary.map_or(0, |summary| as_count(summary.reply_count)),
+            participant_count: summary.map_or(0, |summary| as_count(summary.participant_count)),
+            reaction_count: summary.map_or(0, |summary| as_count(summary.reaction_count)),
+            file_count: summary.map_or(0, |summary| as_count(summary.file_count)),
+            score,
         })
-        .collect::<Vec<_>>();
+    }) {
+        let key = (candidate.channel_id.clone(), candidate.root_ts.clone());
+        match grouped.get_mut(&key) {
+            Some(existing) => merge_search_results(existing, candidate, query.sort),
+            None => {
+                grouped.insert(key, candidate);
+            }
+        }
+    }
+
+    let mut results = grouped.into_values().collect::<Vec<_>>();
 
     results.sort_by(|left, right| match query.sort {
-        SearchSort::Relevance => (
-            right.score,
-            right.message_seconds,
-            right.root_seconds,
-            right.message_ts.as_str(),
-        )
-            .cmp(&(
-                left.score,
-                left.message_seconds,
-                left.root_seconds,
-                left.message_ts.as_str(),
-            )),
-        SearchSort::Newest => (
-            right.message_seconds,
-            right.score,
-            right.root_seconds,
-            right.message_ts.as_str(),
-        )
-            .cmp(&(
-                left.message_seconds,
-                left.score,
-                left.root_seconds,
-                left.message_ts.as_str(),
-            )),
+        SearchSort::Relevance => compare_relevance(left, right),
+        SearchSort::Newest => compare_newest(left, right),
     });
     results
+}
+
+fn merge_search_results(existing: &mut SearchResult, candidate: SearchResult, sort: SearchSort) {
+    let should_replace = match sort {
+        SearchSort::Relevance => compare_relevance(&candidate, existing) == Ordering::Less,
+        SearchSort::Newest => compare_newest(&candidate, existing) == Ordering::Less,
+    };
+    existing.score += candidate.score;
+
+    if should_replace {
+        existing.id = candidate.id;
+        existing.message_ts = candidate.message_ts;
+        existing.message_seconds = candidate.message_seconds;
+        existing.snippet = candidate.snippet;
+        existing.author_id = candidate.author_id;
+    }
+}
+
+fn compare_relevance(left: &SearchResult, right: &SearchResult) -> Ordering {
+    (
+        right.score,
+        right.message_seconds,
+        right.root_seconds,
+        right.message_ts.as_str(),
+    )
+        .cmp(&(
+            left.score,
+            left.message_seconds,
+            left.root_seconds,
+            left.message_ts.as_str(),
+        ))
+}
+
+fn compare_newest(left: &SearchResult, right: &SearchResult) -> Ordering {
+    (
+        right.message_seconds,
+        right.score,
+        right.root_seconds,
+        right.message_ts.as_str(),
+    )
+        .cmp(&(
+            left.message_seconds,
+            left.score,
+            left.root_seconds,
+            left.message_ts.as_str(),
+        ))
 }
 
 fn score_document(title: Option<&str>, body: &str, tokens: &[String]) -> usize {

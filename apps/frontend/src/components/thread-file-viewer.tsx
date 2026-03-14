@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { formatSlackTimestamp } from "@/lib/format";
+import { isImageFile } from "@/lib/thread-files";
 import {
 	ChevronLeft,
 	ChevronRight,
@@ -59,7 +60,10 @@ export function ThreadFileViewer({
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 bg-black/92 backdrop-blur-md">
+		<div
+			className="fixed inset-0 z-50 bg-black/92 backdrop-blur-md"
+			onPointerDown={onClose}
+		>
 			<div className="flex h-full flex-col">
 				<div className="flex items-start justify-between gap-3 border-b border-white/8 px-4 py-3 sm:px-5">
 					<div className="min-w-0">
@@ -74,7 +78,10 @@ export function ThreadFileViewer({
 							{files.length > 1 ? ` · ${currentIndex + 1}/${files.length}` : ""}
 						</p>
 					</div>
-					<div className="flex items-center gap-2">
+					<div
+						className="flex items-center gap-2"
+						onPointerDown={(event) => event.stopPropagation()}
+					>
 						{currentFile.permalink ? (
 							<a
 								href={currentFile.permalink}
@@ -99,13 +106,17 @@ export function ThreadFileViewer({
 				</div>
 
 				<div className="flex min-h-0 flex-1 items-center justify-center gap-2 px-3 py-3 sm:px-5">
-					<NavButton
-						direction="prev"
-						disabled={currentIndex === 0}
-						onClick={() => onChangeIndex(currentIndex - 1)}
-					/>
+					{currentIndex > 0 ? (
+						<NavButton
+							direction="prev"
+							onClick={() => onChangeIndex(currentIndex - 1)}
+						/>
+					) : null}
 
-					<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[1rem] border border-white/8 bg-[#050607]">
+					<div
+						className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[1rem] border border-white/8 bg-[#050607]"
+						onPointerDown={(event) => event.stopPropagation()}
+					>
 						{currentFile.permalink ? (
 							renderFilePreview(currentFile)
 						) : (
@@ -119,11 +130,12 @@ export function ThreadFileViewer({
 						)}
 					</div>
 
-					<NavButton
-						direction="next"
-						disabled={currentIndex >= files.length - 1}
-						onClick={() => onChangeIndex(currentIndex + 1)}
-					/>
+					{currentIndex < files.length - 1 ? (
+						<NavButton
+							direction="next"
+							onClick={() => onChangeIndex(currentIndex + 1)}
+						/>
+					) : null}
 				</div>
 			</div>
 		</div>
@@ -132,11 +144,9 @@ export function ThreadFileViewer({
 
 function NavButton({
 	direction,
-	disabled,
 	onClick,
 }: {
 	direction: "prev" | "next";
-	disabled: boolean;
 	onClick: () => void;
 }) {
 	const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
@@ -147,8 +157,8 @@ function NavButton({
 			variant="secondary"
 			size="sm"
 			className="hidden size-10 shrink-0 rounded-full border-white/10 bg-white/[0.03] px-0 text-white hover:border-[#1fc86f]/25 hover:bg-white/[0.06] sm:inline-flex"
+			onPointerDown={(event) => event.stopPropagation()}
 			onClick={onClick}
-			disabled={disabled}
 		>
 			<Icon className="size-4" />
 		</Button>
@@ -173,8 +183,4 @@ function renderFilePreview(file: ThreadViewerFile) {
 			className="h-full w-full"
 		/>
 	);
-}
-
-function isImageFile(mimetype: string | null) {
-	return mimetype?.startsWith("image/") ?? false;
 }

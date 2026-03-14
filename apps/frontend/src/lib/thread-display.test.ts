@@ -48,6 +48,35 @@ describe("thread display emoji helpers", () => {
 		).toEqual([{ href: "https://example.com/docs", label: "the docs" }]);
 	});
 
+	it("maps slack thread permalinks to Archivist thread routes", () => {
+		const permalink =
+			"https://devwithai.slack.com/archives/C08KYNHH3D0/p1769500777510479?thread_ts=1769429252.836289&cid=C08KYNHH3D0";
+		const markup = renderToStaticMarkup(renderSlackText(`See ${permalink}`));
+
+		expect(markup).toContain('href="/threads/C08KYNHH3D0%3A1769429252.836289"');
+		expect(markup).not.toContain('target="_blank"');
+		expect(extractLinks(`See ${permalink}`)).toEqual([
+			{
+				href: permalink,
+				label: null,
+				appHref: "/threads/C08KYNHH3D0%3A1769429252.836289",
+			},
+		]);
+	});
+
+	it("falls back to the message permalink timestamp when no thread_ts exists", () => {
+		const permalink =
+			"https://devwithai.slack.com/archives/C08KYNHH3D0/p1769500777510479";
+
+		expect(extractLinks(`See ${permalink}`)).toEqual([
+			{
+				href: permalink,
+				label: null,
+				appHref: "/threads/C08KYNHH3D0%3A1769500777.510479",
+			},
+		]);
+	});
+
 	it("renders truncated slack links without leaking the raw angle-bracket syntax", () => {
 		const markup = renderToStaticMarkup(
 			renderSlackText(

@@ -135,7 +135,7 @@ fn build_search_results_respects_filters_and_sorting() {
         &query,
     );
 
-    assert_eq!(items.len(), 2);
+    assert_eq!(items.len(), 1);
     assert_eq!(items[0].channel_id, "C123");
     assert_eq!(items[0].channel_name.as_deref(), Some("product"));
     assert_eq!(items[0].thread_id, "C123:1700000200.000001");
@@ -143,7 +143,155 @@ fn build_search_results_respects_filters_and_sorting() {
     assert_eq!(items[0].participant_count, 2);
     assert_eq!(items[0].reaction_count, 3);
     assert_eq!(items[0].file_count, 4);
-    assert!(items[0].score >= items[1].score);
+    assert!(items[0].score >= 2);
+}
+
+#[test]
+fn build_search_results_returns_one_item_per_thread() {
+    let query = search::SearchQuery {
+        text: "release".to_owned(),
+        filters: search::SearchFilters {
+            channel_ids: vec![],
+            date_from: None,
+            date_to: None,
+        },
+        sort: SearchSort::Relevance,
+    };
+
+    let items = build_search_results(
+        vec![domain::Channel {
+            id: "C123".to_owned(),
+            name: Some("product".to_owned()),
+            kind: domain::ChannelKind::Public,
+            is_archived: false,
+        }],
+        vec![
+            domain::Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000200.000001".to_owned(),
+                thread_ts: None,
+                user_id: Some("U123".to_owned()),
+                text: "release plan".to_owned(),
+            },
+            domain::Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000300.000001".to_owned(),
+                thread_ts: Some("1700000200.000001".to_owned()),
+                user_id: Some("U456".to_owned()),
+                text: "release checklist".to_owned(),
+            },
+        ],
+        vec![
+            SearchDocumentRow {
+                channel_id: "C123".to_owned(),
+                root_ts: "1700000200.000001".to_owned(),
+                message_ts: "1700000200.000001".to_owned(),
+                title: Some("release plan".to_owned()),
+                body: "release plan".to_owned(),
+                message_occurred_at: "1700000200".to_owned(),
+            },
+            SearchDocumentRow {
+                channel_id: "C123".to_owned(),
+                root_ts: "1700000200.000001".to_owned(),
+                message_ts: "1700000300.000001".to_owned(),
+                title: Some("release plan".to_owned()),
+                body: "release checklist".to_owned(),
+                message_occurred_at: "1700000300".to_owned(),
+            },
+        ],
+        vec![ThreadSummaryRow {
+            channel_id: "C123".to_owned(),
+            root_ts: "1700000200.000001".to_owned(),
+            title: "release plan".to_owned(),
+            preview: "release checklist".to_owned(),
+            reply_count: 1,
+            participant_count: 2,
+            reaction_count: 0,
+            file_count: 0,
+            root_message_at: "1700000200".to_owned(),
+            last_activity_ts: "1700000300".to_owned(),
+        }],
+        &query,
+    );
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].thread_id, "C123:1700000200.000001");
+    assert_eq!(items[0].id, "C123:1700000200.000001");
+    assert_eq!(items[0].message_ts, "1700000300.000001");
+    assert!(items[0].score >= 2);
+}
+
+#[test]
+fn build_search_results_keeps_latest_match_for_newest_sort() {
+    let query = search::SearchQuery {
+        text: "release".to_owned(),
+        filters: search::SearchFilters {
+            channel_ids: vec![],
+            date_from: None,
+            date_to: None,
+        },
+        sort: SearchSort::Newest,
+    };
+
+    let items = build_search_results(
+        vec![domain::Channel {
+            id: "C123".to_owned(),
+            name: Some("product".to_owned()),
+            kind: domain::ChannelKind::Public,
+            is_archived: false,
+        }],
+        vec![
+            domain::Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000200.000001".to_owned(),
+                thread_ts: None,
+                user_id: Some("U123".to_owned()),
+                text: "release plan".to_owned(),
+            },
+            domain::Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000300.000001".to_owned(),
+                thread_ts: Some("1700000200.000001".to_owned()),
+                user_id: Some("U456".to_owned()),
+                text: "release checklist".to_owned(),
+            },
+        ],
+        vec![
+            SearchDocumentRow {
+                channel_id: "C123".to_owned(),
+                root_ts: "1700000200.000001".to_owned(),
+                message_ts: "1700000200.000001".to_owned(),
+                title: Some("release plan".to_owned()),
+                body: "release plan".to_owned(),
+                message_occurred_at: "1700000200".to_owned(),
+            },
+            SearchDocumentRow {
+                channel_id: "C123".to_owned(),
+                root_ts: "1700000200.000001".to_owned(),
+                message_ts: "1700000300.000001".to_owned(),
+                title: Some("release plan".to_owned()),
+                body: "release checklist".to_owned(),
+                message_occurred_at: "1700000300".to_owned(),
+            },
+        ],
+        vec![ThreadSummaryRow {
+            channel_id: "C123".to_owned(),
+            root_ts: "1700000200.000001".to_owned(),
+            title: "release plan".to_owned(),
+            preview: "release checklist".to_owned(),
+            reply_count: 1,
+            participant_count: 2,
+            reaction_count: 0,
+            file_count: 0,
+            root_message_at: "1700000200".to_owned(),
+            last_activity_ts: "1700000300".to_owned(),
+        }],
+        &query,
+    );
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].message_ts, "1700000300.000001");
+    assert_eq!(items[0].snippet, "release checklist");
 }
 
 #[tokio::test]
@@ -267,6 +415,15 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
 
     assert_eq!(payload.query, "release notes");
     assert_eq!(payload.items.len(), 2);
+    assert_eq!(
+        payload
+            .items
+            .iter()
+            .map(|item| item.thread_id.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        payload.items.len()
+    );
     assert!(payload.items.iter().all(|item| item.channel_id == "C123"));
     assert!(payload.items.iter().all(|item| item.participant_count >= 1));
     assert!(
