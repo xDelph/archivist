@@ -1,9 +1,11 @@
 import { EmptyState } from "@/components/empty-state";
+import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
 import { highlightMatches } from "@/lib/highlight";
 import { channelQueries, searchQueries } from "@/lib/queries";
+import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CalendarRange, Search, SlidersHorizontal } from "lucide-react";
@@ -142,50 +144,53 @@ export function SearchPage() {
 						: "Start typing to search"
 				}
 			>
-				{searchQuery.isPending && deferredQuery.length > 0 ? (
-					<div className="space-y-3">
-						{["skel-a", "skel-b", "skel-c", "skel-d"].map((id) => (
-							<div
-								key={id}
-								className="h-28 animate-pulse rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-surface)/40"
+				<QueryState
+					isPending={searchQuery.isPending && deferredQuery.length > 0}
+					isError={searchQuery.isError}
+					isEmpty={
+						deferredQuery.length === 0 ||
+						(searchQuery.data?.items.length ?? 0) === 0
+					}
+					loading={
+						<CardSkeletonList
+							count={4}
+							cardClassName="h-28 rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-surface)/40"
+							className="space-y-3"
+						/>
+					}
+					error={
+						<EmptyState
+							title="Search is unavailable"
+							description="The API search route failed for this query. Check the local API session and try again."
+						/>
+					}
+					empty={
+						deferredQuery.length === 0 ? (
+							<EmptyState
+								title="Search needs a query"
+								description="Type a phrase above and the results will stream in with channel and date filters applied."
+								icon={<Search className="size-5" />}
 							/>
-						))}
-					</div>
-				) : searchQuery.isError ? (
-					<EmptyState
-						title="Search is unavailable"
-						description="The API search route failed for this query. Check the local API session and try again."
-					/>
-				) : deferredQuery.length === 0 ? (
-					<EmptyState
-						title="Search needs a query"
-						description="Type a phrase above and the results will stream in with channel and date filters applied."
-						icon={<Search className="size-5" />}
-					/>
-				) : searchQuery.data?.items.length ? (
+						) : (
+							<EmptyState
+								title="No matches yet"
+								description="Try a broader term, remove the channel filter, or widen the date range."
+							/>
+						)
+					}
+				>
 					<div className="space-y-3">
-						{searchQuery.data.items.map((item) => (
+						{searchQuery.data?.items.map((item) => (
 							<ThreadCard
 								key={item.id}
-								threadId={item.thread_id}
-								channelName={item.channel_name || item.channel_id}
-								author={item.author}
-								title={highlightMatches(item.title, deferredQuery)}
-								preview={highlightMatches(item.snippet, deferredQuery)}
-								lastActivityTs={item.message_ts}
-								replyCount={item.reply_count ?? 0}
-								participantCount={item.participant_count ?? 0}
-								reactionCount={item.reaction_count ?? 0}
-								fileCount={item.file_count ?? 0}
+								{...threadCardDataFromSearchResult(item, {
+									title: highlightMatches(item.title, deferredQuery),
+									preview: highlightMatches(item.snippet, deferredQuery),
+								})}
 							/>
 						))}
 					</div>
-				) : (
-					<EmptyState
-						title="No matches yet"
-						description="Try a broader term, remove the channel filter, or widen the date range."
-					/>
-				)}
+				</QueryState>
 			</SectionCard>
 		</div>
 	);

@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/empty-state";
+import { CardSkeletonList } from "@/components/query-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadFileViewer } from "@/components/thread-file-viewer";
 import { ThreadFilesPanel } from "@/components/thread-files-panel";
@@ -6,10 +7,10 @@ import { ThreadLinksPanel } from "@/components/thread-links-panel";
 import { ThreadMessageCard } from "@/components/thread-message-card";
 import { ThreadSummaryPanel } from "@/components/thread-summary-panel";
 import { Button } from "@/components/ui/button";
+import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { deleteSavedThread, saveThread } from "@/lib/api";
 import { savedQueries, threadQueries } from "@/lib/queries";
 import { extractLinks } from "@/lib/thread-display";
-import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
@@ -21,7 +22,6 @@ import {
 	Paperclip,
 	Sparkles,
 } from "lucide-react";
-import type { ReactNode } from "react";
 import { useState } from "react";
 
 const INITIAL_MESSAGE_COUNT = 4;
@@ -55,13 +55,11 @@ export function ThreadPage() {
 
 	if (threadQuery.isPending) {
 		return (
-			<div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
-				{["skel-a", "skel-b", "skel-c"].map((id) => (
-					<div
-						key={id}
-						className="h-36 animate-pulse rounded-[1.75rem] border border-white/8 bg-white/[0.03]"
-					/>
-				))}
+			<div className="mx-auto w-full max-w-3xl pb-8">
+				<CardSkeletonList
+					cardClassName="h-36 rounded-[1.75rem] border border-white/8 bg-white/[0.03]"
+					className="space-y-4"
+				/>
 			</div>
 		);
 	}
@@ -106,6 +104,30 @@ export function ThreadPage() {
 				(group) => group.messageTs === selectedFileState.messageTs,
 			)
 		: null;
+	const tabItems = [
+		{
+			key: "highlights",
+			label: "Highlights",
+			icon: <Sparkles className="size-3.5 shrink-0 sm:size-4" />,
+		},
+		{
+			key: "transcript",
+			label: "Timeline",
+			icon: <MessageSquare className="size-3.5 shrink-0 sm:size-4" />,
+		},
+		{
+			key: "links",
+			label: "Links",
+			icon: <Link2 className="size-3.5 shrink-0 sm:size-4" />,
+			disabled: links.length === 0,
+		},
+		{
+			key: "files",
+			label: "Files",
+			icon: <Paperclip className="size-3.5 shrink-0 sm:size-4" />,
+			disabled: allFiles.length === 0,
+		},
+	] as const;
 
 	return (
 		<div className="space-y-4">
@@ -142,34 +164,11 @@ export function ThreadPage() {
 				}
 			/>
 
-			<div className="flex w-full items-center gap-1 rounded-[0.82rem] border border-white/8 bg-[#07090b] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:gap-2 sm:p-2">
-				<TabButton
-					isActive={activeTab === "highlights"}
-					onClick={() => setActiveTab("highlights")}
-					icon={<Sparkles className="size-3.5 shrink-0 sm:size-4" />}
-					label="Highlights"
-				/>
-				<TabButton
-					isActive={activeTab === "transcript"}
-					onClick={() => setActiveTab("transcript")}
-					icon={<MessageSquare className="size-3.5 shrink-0 sm:size-4" />}
-					label="Timeline"
-				/>
-				<TabButton
-					isActive={activeTab === "links"}
-					onClick={() => setActiveTab("links")}
-					icon={<Link2 className="size-3.5 shrink-0 sm:size-4" />}
-					label="Links"
-					disabled={links.length === 0}
-				/>
-				<TabButton
-					isActive={activeTab === "files"}
-					onClick={() => setActiveTab("files")}
-					icon={<Paperclip className="size-3.5 shrink-0 sm:size-4" />}
-					label="Files"
-					disabled={allFiles.length === 0}
-				/>
-			</div>
+			<SegmentedTabs
+				items={tabItems}
+				value={activeTab}
+				onChange={setActiveTab}
+			/>
 
 			<div className="mt-2">
 				{activeTab === "highlights" && (
@@ -269,38 +268,5 @@ export function ThreadPage() {
 				/>
 			) : null}
 		</div>
-	);
-}
-
-function TabButton({
-	isActive,
-	onClick,
-	icon,
-	label,
-	disabled,
-}: {
-	isActive: boolean;
-	onClick: () => void;
-	icon: ReactNode;
-	label: string;
-	disabled?: boolean;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			disabled={disabled}
-			className={cn(
-				"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[0.6rem] px-1 py-1.5 text-[0.62rem] font-medium transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-[0.8rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20cb74]/40",
-				isActive
-					? "bg-[#1fc86f]/15 text-[#29d779]"
-					: "text-[#9da0a8] hover:bg-white/[0.05] hover:text-white",
-				disabled &&
-					"cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[#9da0a8]",
-			)}
-		>
-			{icon}
-			<span className="truncate">{label}</span>
-		</button>
 	);
 }

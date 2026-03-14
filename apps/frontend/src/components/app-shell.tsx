@@ -36,10 +36,7 @@ export function AppShell() {
 
 					<nav className="hidden items-center rounded-xl border border-white/8 bg-white/[0.035] p-0.5 lg:flex">
 						{navItems.map((item) => {
-							const isActive =
-								item.to === "/"
-									? pathname === item.to
-									: pathname === item.to || pathname.startsWith(`${item.to}/`);
+							const isActive = isNavItemActive(pathname, item.to);
 
 							return (
 								<Link
@@ -90,10 +87,7 @@ export function AppShell() {
 				<div className="mx-auto grid max-w-md grid-cols-3 gap-1 py-1.5">
 					{navItems.map((item) => {
 						const Icon = item.icon;
-						const isActive =
-							item.to === "/"
-								? pathname === item.to
-								: pathname === item.to || pathname.startsWith(`${item.to}/`);
+						const isActive = isNavItemActive(pathname, item.to);
 
 						return (
 							<Link
@@ -115,4 +109,10 @@ export function AppShell() {
 			</nav>
 		</div>
 	);
+}
+
+function isNavItemActive(pathname: string, to: string) {
+	return to === "/"
+		? pathname === to
+		: pathname === to || pathname.startsWith(`${to}/`);
 }

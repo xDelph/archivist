@@ -1,7 +1,8 @@
+import { IdentityAvatar } from "@/components/identity-avatar";
 import { SectionCard } from "@/components/section-card";
 import { Button } from "@/components/ui/button";
 import { logoutCurrentUser } from "@/lib/api";
-import { formatSlackTimestamp, initials } from "@/lib/format";
+import { formatSlackTimestamp } from "@/lib/format";
 import { authQueries } from "@/lib/queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -29,17 +30,20 @@ export function AccountPage() {
 				description="Identity comes from Slack OIDC. The session stays in an HttpOnly cookie."
 			>
 				<div className="mb-5 flex items-center gap-4">
-					{user?.avatar_url ? (
-						<img
-							src={user.avatar_url}
-							alt=""
-							className="size-14 rounded-full object-cover"
-						/>
-					) : (
-						<span className="flex size-14 items-center justify-center rounded-full bg-(--color-accent-soft)/15 text-lg font-semibold text-(--color-accent-soft)">
-							{initials(user?.display_name ?? user?.email)}
-						</span>
-					)}
+					<IdentityAvatar
+						author={
+							user
+								? {
+										slack_user_id: user.slack_user_id,
+										display_name: user.display_name,
+										avatar_url: user.avatar_url,
+									}
+								: null
+						}
+						fallback={user?.display_name ?? user?.email ?? "Archivist"}
+						size="lg"
+						className="size-14 text-lg"
+					/>
 					<div>
 						<p className="text-base font-semibold text-(--color-text-primary)">
 							{user?.display_name || "Signed-in member"}

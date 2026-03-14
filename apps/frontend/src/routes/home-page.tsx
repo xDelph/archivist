@@ -1,22 +1,19 @@
 import { EmptyState } from "@/components/empty-state";
+import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
+import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import type { CatchUpChannel } from "@/lib/api";
 import { flattenCatchUpThreads } from "@/lib/catch-up";
 import { formatCompactNumber } from "@/lib/format";
 import { catchUpQueries } from "@/lib/queries";
+import { threadCardDataFromCatchUpThread } from "@/lib/thread-card-props";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
-import {
-	Calendar,
-	Clock,
-	Flame,
-	Hash,
-	TrendingUp,
-} from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Calendar, Clock, Flame, Hash, TrendingUp } from "lucide-react";
+import { useState } from "react";
 
 export function HomePage() {
 	const { channel: channelFilter } = useSearch({ from: "/app/" });
@@ -42,6 +39,28 @@ export function HomePage() {
 	const [activeTab, setActiveTab] = useState<
 		"fresh" | "steady" | "trending" | "channels"
 	>("fresh");
+	const tabItems = [
+		{
+			key: "fresh",
+			label: "Fresh (24h)",
+			icon: <Clock className="size-3.5 shrink-0 sm:size-4" />,
+		},
+		{
+			key: "steady",
+			label: "This Week",
+			icon: <Calendar className="size-3.5 shrink-0 sm:size-4" />,
+		},
+		{
+			key: "trending",
+			label: "Trending",
+			icon: <Flame className="size-3.5 shrink-0 sm:size-4" />,
+		},
+		{
+			key: "channels",
+			label: "Channels",
+			icon: <TrendingUp className="size-3.5 shrink-0 sm:size-4" />,
+		},
+	] as const;
 
 	return (
 		<div className="space-y-4 ">
@@ -77,32 +96,11 @@ export function HomePage() {
 				</div>
 			</section>
 
-			<div className="flex w-full items-center gap-1 rounded-[0.82rem] border border-white/8 bg-[#07090b] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:gap-2 sm:p-2">
-				<TabButton
-					isActive={activeTab === "fresh"}
-					onClick={() => setActiveTab("fresh")}
-					icon={<Clock className="size-3.5 shrink-0 sm:size-4" />}
-					label="Fresh (24h)"
-				/>
-				<TabButton
-					isActive={activeTab === "steady"}
-					onClick={() => setActiveTab("steady")}
-					icon={<Calendar className="size-3.5 shrink-0 sm:size-4" />}
-					label="This Week"
-				/>
-				<TabButton
-					isActive={activeTab === "trending"}
-					onClick={() => setActiveTab("trending")}
-					icon={<Flame className="size-3.5 shrink-0 sm:size-4" />}
-					label="Trending"
-				/>
-				<TabButton
-					isActive={activeTab === "channels"}
-					onClick={() => setActiveTab("channels")}
-					icon={<TrendingUp className="size-3.5 shrink-0 sm:size-4" />}
-					label="Channels"
-				/>
-			</div>
+			<SegmentedTabs
+				items={tabItems}
+				value={activeTab}
+				onChange={setActiveTab}
+			/>
 
 			<div className="mt-2">
 				{activeTab === "fresh" && (
@@ -140,16 +138,10 @@ export function HomePage() {
 								{trendingThreads.map((thread) => (
 									<ThreadCard
 										key={thread.id}
-										threadId={thread.id}
-										channelName={thread.channelName}
-										author={thread.author}
-										title={thread.title}
-										preview={thread.preview}
-										lastActivityTs={thread.last_activity_ts}
-										replyCount={thread.reply_count}
-										participantCount={thread.participant_count}
-										reactionCount={thread.reaction_count}
-										fileCount={thread.file_count}
+										{...threadCardDataFromCatchUpThread(
+											thread,
+											thread.channelName,
+										)}
 										className="bg-[#07090a]"
 									/>
 								))}
@@ -190,34 +182,6 @@ export function HomePage() {
 	);
 }
 
-function TabButton({
-	isActive,
-	onClick,
-	icon,
-	label,
-}: {
-	isActive: boolean;
-	onClick: () => void;
-	icon: ReactNode;
-	label: string;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={cn(
-				"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[0.6rem] px-1 py-1.5 text-[0.62rem] font-medium transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-[0.8rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20cb74]/40",
-				isActive
-					? "bg-[#1fc86f]/15 text-[#29d779]"
-					: "text-[#9da0a8] hover:bg-white/[0.05] hover:text-white",
-			)}
-		>
-			{icon}
-			<span className="truncate">{label}</span>
-		</button>
-	);
-}
-
 function CatchUpSection({
 	channels,
 	isPending,
@@ -231,56 +195,31 @@ function CatchUpSection({
 	emptyTitle: string;
 	emptyDescription: string;
 }) {
-	if (isPending) {
-		return <LoadingGrid />;
-	}
-
-	if (isError) {
-		return (
-			<EmptyState
-				title="The catch-up feed is unavailable"
-				description="The API route is reachable, but the current query failed. Retry once the local API is healthy again."
-			/>
-		);
-	}
-
 	const sortedThreads = flattenCatchUpThreads(channels);
 
-	if (!sortedThreads.length) {
-		return <EmptyState title={emptyTitle} description={emptyDescription} />;
-	}
-
 	return (
-		<div className="space-y-2.5">
-			{sortedThreads.map((thread) => (
-				<ThreadCard
-					key={thread.id}
-					threadId={thread.id}
-					channelName={thread.channelName}
-					author={thread.author}
-					title={thread.title}
-					preview={thread.preview}
-					lastActivityTs={thread.last_activity_ts}
-					replyCount={thread.reply_count}
-					participantCount={thread.participant_count}
-					reactionCount={thread.reaction_count}
-					fileCount={thread.file_count}
+		<QueryState
+			isPending={isPending}
+			isError={isError}
+			isEmpty={sortedThreads.length === 0}
+			loading={<CardSkeletonList />}
+			error={
+				<EmptyState
+					title="The catch-up feed is unavailable"
+					description="The API route is reachable, but the current query failed. Retry once the local API is healthy again."
 				/>
-			))}
-		</div>
-	);
-}
-
-function LoadingGrid() {
-	return (
-		<div className="space-y-2.5">
-			{["skel-a", "skel-b", "skel-c"].map((id) => (
-				<div
-					key={id}
-					className="h-36 animate-pulse rounded-[1.45rem] border border-white/8 bg-white/[0.03]"
-				/>
-			))}
-		</div>
+			}
+			empty={<EmptyState title={emptyTitle} description={emptyDescription} />}
+		>
+			<div className="space-y-2.5">
+				{sortedThreads.map((thread) => (
+					<ThreadCard
+						key={thread.id}
+						{...threadCardDataFromCatchUpThread(thread, thread.channelName)}
+					/>
+				))}
+			</div>
+		</QueryState>
 	);
 }
 
