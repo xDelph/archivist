@@ -68,40 +68,40 @@ function LinkPreviewCard({
 			href={link.appHref ?? link.href}
 			target={link.appHref ? undefined : "_blank"}
 			rel={link.appHref ? undefined : "noreferrer"}
-			className="group flex items-stretch gap-3 overflow-hidden rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3 transition-colors hover:border-[#1fc86f]/20 hover:bg-[#0d1114]"
+			className="surface-subpanel group flex items-stretch gap-3 overflow-hidden p-3 transition-colors hover:border-(--color-border-accent) hover:bg-(--color-bg-surface)"
 		>
 			{showPreview ? (
 				<div className="min-w-0 flex-1">
-					<p className="text-[0.62rem] font-medium uppercase tracking-[0.18em] text-[#6f747c]">
+					<p className="text-copy-quiet text-[0.62rem] font-medium uppercase tracking-[0.18em]">
 						{siteName}
 					</p>
-					<p className="mt-1 text-[0.92rem] font-medium text-white group-hover:text-[#dff7e9]">
+					<p className="mt-1 text-[0.92rem] font-medium text-white group-hover:text-(--color-text-bright)">
 						{title}
 					</p>
 					{description ? (
-						<p className="mt-1 line-clamp-2 text-[0.78rem] leading-5 text-[#9aa0a8]">
+						<p className="mt-1 line-clamp-2 text-[0.78rem] leading-5 text-(--color-text-secondary)">
 							{description}
 						</p>
 					) : isPending ? (
-						<p className="mt-1 text-[0.78rem] text-[#6f747c]">
+						<p className="text-copy-quiet mt-1 text-[0.78rem]">
 							Loading preview…
 						</p>
 					) : null}
-					<div className="mt-2 inline-flex items-center gap-1.5 text-[0.74rem] text-[#5ea7ff]">
+					<div className="mt-2 inline-flex items-center gap-1.5 text-[0.74rem] text-(--color-link)">
 						<ExternalLink className="size-3.5" />
 						<span className="truncate">{host}</span>
 					</div>
 				</div>
 			) : (
 				<div className="min-w-0 flex-1">
-					<div className="inline-flex items-center gap-2 break-all text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 group-hover:text-[#89bbff]">
+					<div className="link-accent inline-flex items-center gap-2 break-all">
 						<Link2 className="size-4 shrink-0" />
 						{link.label || link.href}
 					</div>
 				</div>
 			)}
 			{image ? (
-				<div className="relative hidden h-24 w-28 shrink-0 overflow-hidden rounded-[0.85rem] border border-white/8 bg-[#050607] sm:block">
+				<div className="surface-thumbnail relative hidden h-24 w-28 shrink-0 overflow-hidden sm:block">
 					<img src={image} alt={title} className="h-full w-full object-cover" />
 				</div>
 			) : null}

@@ -140,8 +140,8 @@ export function ThreadPage() {
 						size="sm"
 						className={
 							savedItem
-								? "size-9 rounded-full px-0 text-black hover:bg-[#2ae38a] sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem] bg-[#18cc77]"
-								: "size-9 rounded-full border-white/10 bg-white/[0.03] px-0 text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06] sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
+								? "size-9 rounded-full bg-(--color-accent) px-0 text-black hover:bg-(--color-accent-strong) sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
+								: "size-9 rounded-full border-(--color-border-strong) bg-white/[0.03] px-0 text-white hover:border-(--color-border-accent) hover:bg-white/[0.06] sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
 						}
 						onClick={() => saveMutation.mutate()}
 						disabled={saveMutation.isPending}
@@ -211,7 +211,7 @@ export function ThreadPage() {
 								<Button
 									type="button"
 									variant="secondary"
-									className="border-white/10 bg-white/[0.03] px-3 py-2 text-[0.78rem] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06]"
+									className="border-(--color-border-strong) bg-white/[0.03] px-3 py-2 text-[0.78rem] text-white hover:border-(--color-border-accent) hover:bg-white/[0.06]"
 									onClick={() => setIsExpanded((current) => !current)}
 								>
 									<ChevronDown className="size-3.5" />

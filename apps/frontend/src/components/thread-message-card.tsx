@@ -33,7 +33,7 @@ export function ThreadMessageCard({
 	const reactions = groupReactions(message.reactions);
 
 	return (
-		<article className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3">
+		<article className="surface-subpanel p-3">
 			<div className="flex items-start gap-2.5">
 				<IdentityAvatar
 					author={message.author}
@@ -41,7 +41,7 @@ export function ThreadMessageCard({
 					size="sm"
 				/>
 				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-1.5 text-[0.72rem] text-[#868b93]">
+					<div className="text-copy-soft flex flex-wrap items-center gap-1.5 text-[0.72rem]">
 						<span className="text-[0.82rem] font-medium text-white">
 							{displayAuthorName(message.author, message.user_id)}
 						</span>
@@ -56,7 +56,7 @@ export function ThreadMessageCard({
 							</>
 						) : null}
 					</div>
-					<div className="mt-1.5 whitespace-pre-wrap text-[0.82rem] leading-6 font-normal text-[#eef0f2]">
+					<div className="text-copy-bright mt-1.5 whitespace-pre-wrap text-[0.82rem] leading-6 font-normal">
 						{renderSlackText(message.text)}
 					</div>
 				</div>
@@ -73,7 +73,7 @@ export function ThreadMessageCard({
 					<button
 						key={file.id}
 						type="button"
-						className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.72rem] text-[#c4c8cf] hover:border-[#1fc86f]/22 hover:text-white"
+						className="subtle-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.72rem] hover:border-(--color-border-accent) hover:text-white"
 						onClick={() => onOpenFile(index)}
 					>
 						<Paperclip className="size-3.5" />
@@ -93,7 +93,7 @@ function MetaChip({
 	icon?: ReactNode;
 }) {
 	return (
-		<span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.72rem] text-[#c3c8ce]">
+		<span className="subtle-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.72rem]">
 			{icon}
 			{label}
 		</span>

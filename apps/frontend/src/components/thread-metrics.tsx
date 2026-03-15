@@ -34,7 +34,7 @@ export function ThreadMetrics({
 	return (
 		<div
 			className={cn(
-				"flex flex-wrap items-center gap-2.5 text-[0.72rem] text-[#8f9299]",
+				"text-copy-soft flex flex-wrap items-center gap-2.5 text-[0.72rem]",
 				className,
 			)}
 		>

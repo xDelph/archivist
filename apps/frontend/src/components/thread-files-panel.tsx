@@ -19,7 +19,7 @@ export function ThreadFilesPanel({ files, onOpenFile }: ThreadFilesPanelProps) {
 			{files.map((file) => (
 				<li
 					key={`${file.messageTs}-${file.id}-${file.name}`}
-					className="rounded-[0.9rem] border border-white/8 bg-[#0a0d0f] p-3"
+					className="surface-subpanel p-3"
 				>
 					<button
 						type="button"
@@ -31,11 +31,11 @@ export function ThreadFilesPanel({ files, onOpenFile }: ThreadFilesPanelProps) {
 							<p className="truncate text-[0.82rem] font-medium text-white">
 								{file.name}
 							</p>
-							<p className="mt-1 text-[0.72rem] text-[#8f949b]">
+							<p className="text-copy-soft mt-1 text-[0.72rem]">
 								{file.mimetype || "unknown type"}
 							</p>
 							{file.permalink ? (
-								<span className="mt-2 inline-flex items-center gap-1.5 text-[0.8rem] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 hover:text-[#89bbff]">
+								<span className="link-accent mt-2 inline-flex items-center gap-1.5 text-[0.8rem]">
 									<Paperclip className="size-4" />
 									Open file
 								</span>
@@ -51,7 +51,7 @@ export function ThreadFilesPanel({ files, onOpenFile }: ThreadFilesPanelProps) {
 function FileThumbnail({ file }: { file: ThreadViewerFile }) {
 	if (file.permalink && isImageFile(file.mimetype)) {
 		return (
-			<div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[0.9rem] border border-white/8 bg-[#06080a]">
+			<div className="surface-thumbnail relative h-16 w-16 shrink-0 overflow-hidden">
 				<img
 					src={file.permalink}
 					alt={file.name}
@@ -62,7 +62,7 @@ function FileThumbnail({ file }: { file: ThreadViewerFile }) {
 	}
 
 	return (
-		<div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[0.9rem] border border-white/8 bg-[#06080a] text-[#8f949b]">
+		<div className="surface-thumbnail text-copy-soft flex h-16 w-16 shrink-0 items-center justify-center">
 			<Paperclip className="size-5" />
 		</div>
 	);

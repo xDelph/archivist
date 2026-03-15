@@ -49,8 +49,8 @@ export function SearchPage() {
 
 	return (
 		<div className="space-y-4">
-			<section className="rounded-[0.9rem] border border-white/8 bg-[#07090b] p-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-4">
-				<p className="text-[0.62rem] font-medium uppercase tracking-[0.28em] text-[#20cb74]">
+			<section className="surface-panel p-3.5 sm:p-4">
+				<p className="text-eyebrow text-[0.62rem] font-medium uppercase tracking-[0.28em]">
 					Search
 				</p>
 				<h2 className="mt-2 text-[1.45rem] font-semibold tracking-tight text-white sm:text-[1.65rem]">
@@ -58,13 +58,13 @@ export function SearchPage() {
 				</h2>
 				<div className="mt-4 grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px_200px]">
 					<label className="sm:col-span-2">
-						<span className="mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em] text-[#70737b]">
+						<span className="text-copy-quiet mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em]">
 							Query
 						</span>
-						<div className="flex items-center gap-2.5 rounded-[0.8rem] border border-white/8 bg-[#121417] px-3 py-2.5 focus-within:border-[#1fc86f]/28">
-							<Search className="size-3.5 shrink-0 text-[#6c7078]" />
+						<div className="surface-input flex items-center gap-2.5 px-3 py-2.5 focus-within:border-(--color-border-accent)">
+							<Search className="text-copy-quiet size-3.5 shrink-0" />
 							<input
-								className="w-full bg-transparent text-[0.92rem] text-white outline-none placeholder:text-[#6f7279]"
+								className="w-full bg-transparent text-[0.92rem] text-white outline-none placeholder:text-(--color-text-quiet)"
 								value={query}
 								onChange={(e) =>
 									updateSearch({ q: e.target.value || undefined })
@@ -96,20 +96,20 @@ export function SearchPage() {
 							label="From"
 							type="date"
 							value={dateFrom}
-							icon={<CalendarRange className="size-4 text-[#6c7078]" />}
+							icon={<CalendarRange className="text-copy-quiet size-4" />}
 							onChange={(v) => updateSearch({ date_from: v || undefined })}
 						/>
 						<FilterField
 							label="To"
 							type="date"
 							value={dateTo}
-							icon={<CalendarRange className="size-4 text-[#6c7078]" />}
+							icon={<CalendarRange className="text-copy-quiet size-4" />}
 							onChange={(v) => updateSearch({ date_to: v || undefined })}
 						/>
 					</div>
 				</div>
 				<div className="mt-3 flex flex-wrap items-center gap-1.5">
-					<span className="inline-flex items-center gap-2 rounded-[0.7rem] border border-white/8 bg-white/[0.03] px-2.5 py-1.25 text-[0.62rem] uppercase tracking-[0.18em] text-[#757983]">
+					<span className="inline-flex items-center gap-2 rounded-[0.7rem] border border-(--color-border-subtle) bg-white/[0.03] px-2.5 py-1.25 text-[0.62rem] uppercase tracking-[0.18em] text-(--color-text-muted)">
 						<SlidersHorizontal className="size-3.5" />
 						Sort
 					</span>
@@ -121,8 +121,8 @@ export function SearchPage() {
 							size="sm"
 							className={
 								sort === option
-									? "bg-[#18cc77] text-black hover:bg-[#2ae38a]"
-									: "border-white/10 bg-white/[0.03] text-white hover:border-[#1fc86f]/30 hover:bg-white/[0.06]"
+									? "bg-(--color-accent) text-black hover:bg-(--color-accent-strong)"
+									: "border-(--color-border-strong) bg-white/[0.03] text-white hover:border-(--color-border-accent) hover:bg-white/[0.06]"
 							}
 							onClick={() =>
 								updateSearch({
@@ -211,21 +211,21 @@ function FilterSelect({
 }) {
 	return (
 		<label>
-			<span className="mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em] text-[#70737b]">
+			<span className="text-copy-quiet mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em]">
 				{label}
 			</span>
-			<div className="flex items-center gap-2 rounded-[0.8rem] border border-white/8 bg-[#121417] px-3 py-2.5">
+			<div className="surface-input flex items-center gap-2 px-3 py-2.5">
 				<select
 					value={value}
 					onChange={(e) => onChange(e.target.value)}
 					disabled={disabled}
-					className="w-full bg-transparent text-[0.88rem] text-white outline-none disabled:cursor-not-allowed disabled:text-[#6f7279]"
+					className="w-full bg-transparent text-[0.88rem] text-white outline-none disabled:cursor-not-allowed disabled:text-(--color-text-quiet)"
 				>
 					{options.map((option) => (
 						<option
 							key={option.value || "__all_channels__"}
 							value={option.value}
-							className="bg-[#121417] text-white"
+							className="bg-(--color-bg-input) text-white"
 						>
 							{option.label}
 						</option>
@@ -271,17 +271,17 @@ function FilterField({
 }) {
 	return (
 		<label>
-			<span className="mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em] text-[#70737b]">
+			<span className="text-copy-quiet mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em]">
 				{label}
 			</span>
-			<div className="flex items-center gap-2 rounded-[0.8rem] border border-white/8 bg-[#121417] px-3 py-2.5">
+			<div className="surface-input flex items-center gap-2 px-3 py-2.5">
 				{icon}
 				<input
 					type={type}
 					value={value}
 					onChange={(e) => onChange(e.target.value)}
 					placeholder={placeholder}
-					className="w-full bg-transparent text-[0.88rem] text-white outline-none placeholder:text-[#6f7279]"
+					className="w-full bg-transparent text-[0.88rem] text-white outline-none placeholder:text-(--color-text-quiet)"
 				/>
 			</div>
 		</label>

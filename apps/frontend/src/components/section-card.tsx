@@ -22,12 +22,7 @@ export function SectionCard({
 	children,
 }: SectionCardProps) {
 	return (
-		<section
-			className={cn(
-				"rounded-[0.82rem] border border-white/8 bg-[#07090b] p-3 shadow-[0_8px_24px_rgba(0,0,0,0.18)] sm:p-3.5",
-				className,
-			)}
-		>
+		<section className={cn("surface-panel p-3 sm:p-3.5", className)}>
 			<div
 				className={cn(
 					"flex items-start justify-between gap-3",
@@ -36,7 +31,7 @@ export function SectionCard({
 			>
 				<div className="min-w-0">
 					{eyebrow ? (
-						<p className="text-[0.58rem] font-medium uppercase tracking-[0.25em] text-[#20cb74]">
+						<p className="text-eyebrow text-[0.58rem] font-medium uppercase tracking-[0.25em]">
 							{eyebrow}
 						</p>
 					) : null}
@@ -49,7 +44,7 @@ export function SectionCard({
 						{title}
 					</h2>
 					{description ? (
-						<p className="mt-1 text-[0.76rem] leading-relaxed text-[#92959c]">
+						<p className="text-copy-muted mt-1 text-[0.76rem] leading-relaxed">
 							{description}
 						</p>
 					) : null}

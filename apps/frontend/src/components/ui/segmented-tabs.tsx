@@ -24,7 +24,7 @@ export function SegmentedTabs<T extends string>({
 	return (
 		<div
 			className={cn(
-				"flex w-full items-center gap-1 rounded-[0.82rem] border border-white/8 bg-[#07090b] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:gap-2 sm:p-2",
+				"surface-panel surface-panel-soft flex w-full items-center gap-1 p-1.5 sm:gap-2 sm:p-2",
 				className,
 			)}
 		>
@@ -35,12 +35,12 @@ export function SegmentedTabs<T extends string>({
 					onClick={() => onChange(item.key)}
 					disabled={item.disabled}
 					className={cn(
-						"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[0.6rem] px-1 py-1.5 text-[0.62rem] font-medium transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-[0.8rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20cb74]/40",
+						"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[0.6rem] px-1 py-1.5 text-[0.62rem] font-medium transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-[0.8rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40",
 						value === item.key
-							? "bg-[#1fc86f]/15 text-[#29d779]"
-							: "text-[#9da0a8] hover:bg-white/[0.05] hover:text-white",
+							? "bg-(--color-accent-soft)/15 text-(--color-accent-soft)"
+							: "text-(--color-text-secondary) hover:bg-white/[0.05] hover:text-white",
 						item.disabled &&
-							"cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[#9da0a8]",
+							"cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--color-text-secondary)",
 					)}
 				>
 					{item.icon}

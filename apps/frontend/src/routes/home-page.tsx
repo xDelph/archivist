@@ -64,16 +64,16 @@ export function HomePage() {
 
 	return (
 		<div className="space-y-4 ">
-			<section className="rounded-[0.82rem] border border-white/8 bg-[#07090b] px-3 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.16)] sm:px-3.5">
+			<section className="surface-panel surface-panel-soft px-3 py-3 sm:px-3.5">
 				<div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
 					<div className="max-w-3xl">
-						<p className="text-[0.58rem] font-medium uppercase tracking-[0.24em] text-[#20cb74]">
+						<p className="text-eyebrow text-[0.58rem] font-medium uppercase tracking-[0.24em]">
 							Public-channel catch-up
 						</p>
 						<h1 className="mt-1.5 text-[1.18rem] font-semibold tracking-tight text-white sm:text-[1.38rem]">
 							Catch up without reopening the full Slack firehose.
 						</h1>
-						<p className="mt-1 max-w-2xl text-[0.72rem] leading-5 text-[#92949b]">
+						<p className="text-copy-muted mt-1 max-w-2xl text-[0.72rem] leading-5">
 							Public threads, same data model, darker Archivist chrome.
 						</p>
 					</div>
@@ -131,7 +131,7 @@ export function HomePage() {
 					<SectionCard
 						eyebrow="Trending"
 						title="Threads with momentum"
-						actions={<Flame className="size-5 text-[#20cb74]" />}
+						actions={<Flame className="text-eyebrow size-5" />}
 					>
 						{trendingThreads.length ? (
 							<div className="space-y-2.5">
@@ -142,7 +142,7 @@ export function HomePage() {
 											thread,
 											thread.channelName,
 										)}
-										className="bg-[#07090a]"
+										className="bg-(--color-bg-panel)"
 									/>
 								))}
 							</div>
@@ -160,7 +160,7 @@ export function HomePage() {
 					<SectionCard
 						eyebrow="Channel activity"
 						title="Where people are gathering"
-						actions={<TrendingUp className="size-5 text-[#20cb74]" />}
+						actions={<TrendingUp className="text-eyebrow size-5" />}
 					>
 						{highlights.length ? (
 							<div className="space-y-2.5">
@@ -239,8 +239,8 @@ function ChannelPill({
 			className={cn(
 				"rounded-[0.65rem] border px-2.5 py-1 text-[0.7rem] font-medium transition-colors",
 				isActive
-					? "border-[#1fc86f]/35 bg-[#122318] text-[#29d779]"
-					: "border-white/10 bg-white/[0.03] text-[#9da0a8] hover:border-white/16 hover:bg-white/[0.05] hover:text-white",
+					? "border-(--color-border-accent) bg-(--color-accent)/12 text-(--color-accent-soft)"
+					: "border-(--color-border-strong) bg-white/[0.03] text-(--color-text-secondary) hover:border-white/16 hover:bg-white/[0.05] hover:text-white",
 			)}
 		>
 			{label}
@@ -250,23 +250,23 @@ function ChannelPill({
 
 function HighlightCard({ channel }: { channel: CatchUpChannel }) {
 	return (
-		<div className="rounded-[0.9rem] border border-white/8 bg-[#07090a] px-3 py-3">
+		<div className="surface-subpanel px-3 py-3">
 			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
-					<p className="text-[0.62rem] font-medium uppercase tracking-[0.22em] text-[#71747d]">
+					<p className="text-copy-quiet text-[0.62rem] font-medium uppercase tracking-[0.22em]">
 						Channel
 					</p>
 					<p className="mt-1.5 truncate text-[0.95rem] font-semibold text-white">
 						#{channel.name || channel.id}
 					</p>
 				</div>
-				<div className="rounded-full border border-[#1fc86f]/25 bg-[#132118] px-2.5 py-0.5 text-[0.72rem] font-medium text-[#29d779]">
+				<div className="accent-pill rounded-full px-2.5 py-0.5 text-[0.72rem] font-medium">
 					{formatCompactNumber(channel.thread_count)}
 				</div>
 			</div>
 			<div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
 				<div
-					className="h-full rounded-full bg-linear-to-r from-[#14a64e] to-[#29d779]"
+					className="h-full rounded-full bg-linear-to-r from-(--color-accent) to-(--color-accent-strong)"
 					style={{
 						width: `${Math.max(12, Math.min(100, channel.thread_count * 12))}%`,
 					}}

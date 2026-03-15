@@ -50,13 +50,13 @@ export function ThreadCard({
 	return (
 		<article
 			className={cn(
-				"group rounded-[0.82rem] border border-white/8 bg-[#07090b] px-2.5 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition-colors hover:border-[#22c55e]/28 hover:bg-[#090b0d]",
+				"surface-panel surface-panel-soft group px-2.5 py-2.5 transition-colors hover:border-(--color-border-accent) hover:bg-(--color-bg-base)",
 				className,
 			)}
 		>
 			<div className="flex items-start gap-2">
 				{typeof rank === "number" ? (
-					<div className="hidden min-w-5 justify-center pt-0.5 text-[1.15rem] font-semibold leading-none text-[#22c55e] xl:flex">
+					<div className="hidden min-w-5 justify-center pt-0.5 text-[1.15rem] font-semibold leading-none text-(--color-accent) xl:flex">
 						{rank}
 					</div>
 				) : null}
@@ -80,22 +80,22 @@ export function ThreadCard({
 								</p>
 								<ChannelBadge name={channelName} />
 							</div>
-							<div className="mt-1 break-words text-[0.84rem] leading-snug font-normal text-[#eef0f2]">
+							<div className="text-copy-bright mt-1 break-words text-[0.84rem] leading-snug font-normal">
 								{renderRichNode(title)}
 							</div>
 							{previewIsDuplicate ? null : (
-								<div className="mt-0.5 line-clamp-2 break-words text-[0.74rem] leading-relaxed text-[#a6a9b1]">
+								<div className="mt-0.5 line-clamp-2 break-words text-[0.74rem] leading-relaxed text-(--color-text-secondary)">
 									{renderRichNode(preview)}
 								</div>
 							)}
 						</div>
 
 						<div className="hidden shrink-0 text-right lg:block">
-							<time className="block text-[0.7rem] text-[#83868e]">
+							<time className="text-copy-soft block text-[0.7rem]">
 								{formatSlackTimestamp(lastActivityTs)}
 							</time>
 							{typeof score === "number" ? (
-								<div className="mt-2 rounded-[0.65rem] border border-[#1fc86f]/20 bg-[#112017] px-2 py-0.5 text-[0.7rem] font-medium text-[#29d779]">
+								<div className="accent-pill mt-2 rounded-[0.65rem] px-2 py-0.5 text-[0.7rem] font-medium">
 									{score}
 								</div>
 							) : null}
@@ -111,11 +111,11 @@ export function ThreadCard({
 					/>
 
 					<div className="mt-1.5 flex items-center justify-between gap-3 lg:hidden">
-						<time className="text-[0.68rem] text-[#8b8b93]">
+						<time className="text-copy-soft text-[0.68rem]">
 							{formatSlackTimestamp(lastActivityTs)}
 						</time>
 						{typeof score === "number" ? (
-							<span className="rounded-[0.65rem] border border-[#1fc86f]/20 bg-[#112017] px-2 py-0.5 text-[0.7rem] font-medium text-[#29d779]">
+							<span className="accent-pill rounded-[0.65rem] px-2 py-0.5 text-[0.7rem] font-medium">
 								{score}
 							</span>
 						) : null}
