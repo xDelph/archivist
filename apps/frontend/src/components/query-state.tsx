@@ -42,7 +42,7 @@ interface CardSkeletonListProps {
 
 export function CardSkeletonList({
 	count = 3,
-	cardClassName = "h-36 rounded-[1.45rem] border border-white/8 bg-white/[0.03]",
+	cardClassName = "surface-frost h-36 rounded-[1.45rem]",
 	className = "space-y-2.5",
 }: CardSkeletonListProps) {
 	return (

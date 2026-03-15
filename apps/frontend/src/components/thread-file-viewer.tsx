@@ -67,13 +67,13 @@ export function ThreadFileViewer({
 			<div className="flex h-full flex-col">
 				<div className="flex items-start justify-between gap-3 border-b border-white/8 px-4 py-3 sm:px-5">
 					<div className="min-w-0">
-						<p className="text-[0.62rem] font-medium uppercase tracking-[0.22em] text-[#20cb74]">
+						<p className="text-eyebrow text-[0.62rem] font-medium uppercase tracking-[0.22em]">
 							File preview
 						</p>
 						<h3 className="mt-1 truncate text-[0.95rem] font-medium text-white">
 							{currentFile.name}
 						</h3>
-						<p className="mt-1 text-[0.72rem] text-[#8f949b]">
+						<p className="text-copy-soft mt-1 text-[0.72rem]">
 							{formatSlackTimestamp(messageTs)}
 							{files.length > 1 ? ` · ${currentIndex + 1}/${files.length}` : ""}
 						</p>
@@ -87,7 +87,7 @@ export function ThreadFileViewer({
 								href={currentFile.permalink}
 								target="_blank"
 								rel="noreferrer"
-								className="inline-flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 text-[0.74rem] text-white hover:border-[#1fc86f]/25 hover:bg-white/[0.06]"
+								className="viewer-action-button inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[0.74rem]"
 							>
 								<ExternalLink className="size-3.5" />
 								<span className="hidden sm:inline">Open</span>
@@ -97,7 +97,7 @@ export function ThreadFileViewer({
 							type="button"
 							variant="secondary"
 							size="sm"
-							className="size-9 rounded-full border-white/10 bg-white/[0.03] px-0 text-white hover:border-[#1fc86f]/25 hover:bg-white/[0.06]"
+							className="viewer-action-button size-9 rounded-full px-0"
 							onClick={onClose}
 						>
 							<X className="size-4" />
@@ -114,13 +114,13 @@ export function ThreadFileViewer({
 					) : null}
 
 					<div
-						className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[1rem] border border-white/8 bg-[#050607]"
+						className="viewer-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden"
 						onPointerDown={(event) => event.stopPropagation()}
 					>
 						{currentFile.permalink ? (
 							renderFilePreview(currentFile)
 						) : (
-							<div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center text-[#8f949b]">
+							<div className="viewer-empty flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
 								<Paperclip className="size-8" />
 								<p className="text-sm text-white">{currentFile.name}</p>
 								<p className="text-[0.78rem]">
@@ -156,7 +156,7 @@ function NavButton({
 			type="button"
 			variant="secondary"
 			size="sm"
-			className="hidden size-10 shrink-0 rounded-full border-white/10 bg-white/[0.03] px-0 text-white hover:border-[#1fc86f]/25 hover:bg-white/[0.06] sm:inline-flex"
+			className="viewer-action-button hidden size-10 shrink-0 rounded-full px-0 sm:inline-flex"
 			onPointerDown={(event) => event.stopPropagation()}
 			onClick={onClick}
 		>

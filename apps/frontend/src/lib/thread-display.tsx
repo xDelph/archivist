@@ -16,19 +16,19 @@ interface ThreadStats {
 }
 
 const CHANNEL_TONES = [
-	"border-[#3b7f44]/40 bg-[#0f2915] text-[#4ade80]",
-	"border-[#8f5a22]/40 bg-[#281707] text-[#fb923c]",
-	"border-[#0f6f87]/40 bg-[#071f27] text-[#22d3ee]",
-	"border-[#7c2552]/40 bg-[#240914] text-[#f472b6]",
-	"border-[#5b6318]/40 bg-[#1a1e08] text-[#bef264]",
+	"channel-tone-1",
+	"channel-tone-2",
+	"channel-tone-3",
+	"channel-tone-4",
+	"channel-tone-5",
 ];
 
 const AVATAR_TONES = [
-	"from-[#102d17] to-[#08110b] text-[#61d985]",
-	"from-[#2b1708] to-[#120b06] text-[#fb923c]",
-	"from-[#102735] to-[#09131a] text-[#7dd3fc]",
-	"from-[#2a1022] to-[#14070f] text-[#f9a8d4]",
-	"from-[#2c2c0d] to-[#141406] text-[#fde047]",
+	"avatar-tone-1",
+	"avatar-tone-2",
+	"avatar-tone-3",
+	"avatar-tone-4",
+	"avatar-tone-5",
 ];
 
 const SLACK_EMOJI_ALIASES: Record<string, string> = {
@@ -142,7 +142,7 @@ export function renderSlackTextWithHighlights(
 					href={href}
 					target={isExternal ? "_blank" : undefined}
 					rel={isExternal ? "noreferrer" : undefined}
-					className="break-all [overflow-wrap:anywhere] text-[#5ea7ff] underline decoration-[#2d5cc2] underline-offset-3 transition-colors hover:text-[#89bbff]"
+					className="link-accent break-all [overflow-wrap:anywhere] transition-colors"
 				>
 					{renderHighlightedText(slackLink.label || slackLink.href, query, key)}
 				</a>
@@ -369,7 +369,7 @@ function renderMentionText(
 		parts.push(
 			<span
 				key={`${keySeed}-mention-${mentionIndex}-${mentionStart}`}
-				className="font-medium text-[#20cb74]"
+				className="mention-accent"
 			>
 				{renderHighlightedText(mention, query, `${keySeed}-${mentionStart}`)}
 			</span>,

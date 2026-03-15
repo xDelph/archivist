@@ -38,7 +38,7 @@ export function SegmentedTabs<T extends string>({
 						"flex min-w-0 flex-1 items-center justify-center gap-1 rounded-[0.6rem] px-1 py-1.5 text-[0.62rem] font-medium transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-[0.8rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40",
 						value === item.key
 							? "bg-(--color-accent-soft)/15 text-(--color-accent-soft)"
-							: "text-(--color-text-secondary) hover:bg-white/[0.05] hover:text-white",
+							: "hover-surface-soft text-(--color-text-secondary)",
 						item.disabled &&
 							"cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--color-text-secondary)",
 					)}

@@ -240,7 +240,7 @@ function ChannelPill({
 				"rounded-[0.65rem] border px-2.5 py-1 text-[0.7rem] font-medium transition-colors",
 				isActive
 					? "border-(--color-border-accent) bg-(--color-accent)/12 text-(--color-accent-soft)"
-					: "border-(--color-border-strong) bg-white/[0.03] text-(--color-text-secondary) hover:border-white/16 hover:bg-white/[0.05] hover:text-white",
+					: "surface-ghost surface-ghost-hover text-(--color-text-secondary)",
 			)}
 		>
 			{label}
@@ -264,7 +264,7 @@ function HighlightCard({ channel }: { channel: CatchUpChannel }) {
 					{formatCompactNumber(channel.thread_count)}
 				</div>
 			</div>
-			<div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+			<div className="progress-track mt-3 h-1.5 overflow-hidden rounded-full">
 				<div
 					className="h-full rounded-full bg-linear-to-r from-(--color-accent) to-(--color-accent-strong)"
 					style={{

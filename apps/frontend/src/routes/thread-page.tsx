@@ -57,7 +57,7 @@ export function ThreadPage() {
 		return (
 			<div className="mx-auto w-full max-w-3xl pb-8">
 				<CardSkeletonList
-					cardClassName="h-36 rounded-[1.75rem] border border-white/8 bg-white/[0.03]"
+					cardClassName="surface-frost h-36 rounded-[1.75rem]"
 					className="space-y-4"
 				/>
 			</div>
@@ -141,7 +141,7 @@ export function ThreadPage() {
 						className={
 							savedItem
 								? "size-9 rounded-full bg-(--color-accent) px-0 text-black hover:bg-(--color-accent-strong) sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
-								: "size-9 rounded-full border-(--color-border-strong) bg-white/[0.03] px-0 text-white hover:border-(--color-border-accent) hover:bg-white/[0.06] sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
+								: "button-ghost size-9 rounded-full px-0 sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
 						}
 						onClick={() => saveMutation.mutate()}
 						disabled={saveMutation.isPending}
@@ -211,7 +211,7 @@ export function ThreadPage() {
 								<Button
 									type="button"
 									variant="secondary"
-									className="border-(--color-border-strong) bg-white/[0.03] px-3 py-2 text-[0.78rem] text-white hover:border-(--color-border-accent) hover:bg-white/[0.06]"
+									className="button-ghost px-3 py-2 text-[0.78rem]"
 									onClick={() => setIsExpanded((current) => !current)}
 								>
 									<ChevronDown className="size-3.5" />

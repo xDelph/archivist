@@ -46,7 +46,7 @@ export function AppShell() {
 										"rounded-md px-3 py-1.25 text-[0.8rem] text-(--color-text-secondary) transition-colors",
 										isActive
 											? "bg-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.24)]"
-											: "hover:bg-white/[0.04] hover:text-white",
+											: "hover-surface-subtle",
 									)}
 								>
 									{item.label}
@@ -57,7 +57,7 @@ export function AppShell() {
 
 					<Link
 						to="/account"
-						className="ml-auto flex items-center justify-center rounded-full border border-(--color-border-strong) bg-white/[0.035] p-1 transition-colors hover:border-white/16 hover:bg-white/[0.06]"
+						className="button-ghost ml-auto flex items-center justify-center rounded-full bg-white/[0.035] p-1 transition-colors hover:border-white/16"
 					>
 						<IdentityAvatar
 							author={

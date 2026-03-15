@@ -110,7 +110,7 @@ export function SearchPage() {
 					</div>
 				</div>
 				<div className="mt-3 flex flex-wrap items-center gap-1.5">
-					<span className="inline-flex items-center gap-2 rounded-[0.7rem] border border-(--color-border-subtle) bg-white/[0.03] px-2.5 py-1.25 text-[0.62rem] uppercase tracking-[0.18em] text-(--color-text-muted)">
+					<span className="surface-frost inline-flex items-center gap-2 rounded-[0.7rem] px-2.5 py-1.25 text-[0.62rem] uppercase tracking-[0.18em] text-(--color-text-muted)">
 						<SlidersHorizontal className="size-3.5" />
 						Sort
 					</span>
@@ -123,7 +123,7 @@ export function SearchPage() {
 							className={
 								sort === option
 									? "bg-(--color-accent) text-black hover:bg-(--color-accent-strong)"
-									: "border-(--color-border-strong) bg-white/[0.03] text-white hover:border-(--color-border-accent) hover:bg-white/[0.06]"
+									: "button-ghost"
 							}
 							onClick={() =>
 								updateSearch({

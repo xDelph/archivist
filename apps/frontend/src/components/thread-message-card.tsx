@@ -45,13 +45,13 @@ export function ThreadMessageCard({
 						<span className="text-[0.82rem] font-medium text-white">
 							{displayAuthorName(message.author, message.user_id)}
 						</span>
-						<span className="text-white/15">&middot;</span>
+						<span className="separator-faint">&middot;</span>
 						<time className="tabular-nums">
 							{formatSlackTimestamp(message.ts)}
 						</time>
 						{message.thread_ts ? (
 							<>
-								<span className="text-white/15">&middot;</span>
+								<span className="separator-faint">&middot;</span>
 								<span>Reply</span>
 							</>
 						) : null}

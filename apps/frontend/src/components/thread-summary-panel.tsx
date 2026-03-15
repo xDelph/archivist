@@ -31,7 +31,7 @@ export function ThreadSummaryPanel({
 			eyebrow={summary.source === "ai" ? "AI Summary" : "Thread Detail"}
 			title={
 				summary.primary ? (
-					<span className="leading-tight text-[#f3f5f7]">
+					<span className="leading-tight text-(--color-text-primary)">
 						{renderSlackText(summary.primary)}
 					</span>
 				) : (
@@ -44,14 +44,14 @@ export function ThreadSummaryPanel({
 			className="overflow-hidden"
 		>
 			<div className="space-y-3">
-				<div className="flex flex-wrap items-center gap-2.5 text-[0.76rem] text-[#9aa0a8]">
+				<div className="flex flex-wrap items-center gap-2.5 text-[0.76rem] text-(--color-text-secondary)">
 					<div className="inline-flex items-center gap-2">
 						<IdentityAvatar
 							author={rootMessage?.author}
 							fallback={rootMessage?.user_id ?? thread.channel_name}
 							size="sm"
 						/>
-						<span className="text-[#eef0f2]">
+						<span className="text-(--color-text-bright)">
 							{displayAuthorName(
 								rootMessage?.author,
 								rootMessage?.user_id ?? thread.channel_name,
@@ -65,14 +65,14 @@ export function ThreadSummaryPanel({
 						/>
 					) : null}
 					{lastActivityTs ? (
-						<time className="tabular-nums text-[#7f8791]">
+						<time className="text-copy-soft tabular-nums">
 							Active {formatSlackTimestamp(lastActivityTs)}
 						</time>
 					) : null}
 				</div>
 
 				{summary.secondary ? (
-					<p className="max-w-2xl text-[0.84rem] leading-6 text-[#aeb3ba]">
+					<p className="max-w-2xl text-[0.84rem] leading-6 text-(--color-text-secondary)">
 						{renderSlackText(summary.secondary)}
 					</p>
 				) : null}
@@ -82,7 +82,7 @@ export function ThreadSummaryPanel({
 						{thread.summary.is_stale ? (
 							<SummaryChip
 								label="May be outdated"
-								className="border-[#6a5321] bg-[#211807] text-[#e9cf7a]"
+								className="summary-chip-stale"
 							/>
 						) : null}
 						{status ? (
@@ -102,7 +102,7 @@ export function ThreadSummaryPanel({
 					reactionCount={thread.reaction_count}
 					participantCount={thread.participant_count}
 					fileCount={thread.file_count}
-					className="pt-1 text-[0.75rem] text-[#8d929a]"
+					className="pt-1 text-[0.75rem]"
 				/>
 			</div>
 		</SectionCard>
@@ -120,7 +120,7 @@ function SummaryChip({
 		<span
 			className={cn(
 				"inline-flex items-center rounded-full border px-2.5 py-1 text-[0.68rem] font-medium tracking-[0.02em]",
-				"border-white/10 bg-white/[0.04] text-[#c9cfd6]",
+				"summary-chip",
 				className,
 			)}
 		>
@@ -132,17 +132,17 @@ function SummaryChip({
 function statusTone(status: string | null) {
 	switch (normalizeLabel(status)) {
 		case "answered":
-			return "border-[#175d36] bg-[#0f2317] text-[#63d98e]";
+			return "summary-chip-answered";
 		case "announcement":
-			return "border-[#205b6d] bg-[#091b21] text-[#78daf2]";
+			return "summary-chip-announcement";
 		case "resource":
-			return "border-[#5c5121] bg-[#1f1908] text-[#e8d47b]";
+			return "summary-chip-resource";
 		case "unresolved":
-			return "border-[#7a3f27] bg-[#26120a] text-[#f5a774]";
+			return "summary-chip-unresolved";
 		case "debate":
-			return "border-[#6a2550] bg-[#210914] text-[#f29ac9]";
+			return "summary-chip-debate";
 		default:
-			return "border-[#3a454c] bg-[#0f1418] text-[#bcc3cb]";
+			return "summary-chip-default";
 	}
 }
 

@@ -128,7 +128,7 @@ describe("thread display emoji helpers", () => {
 			renderSlackText("Ask @Thomas in #general today"),
 		);
 
-		expect(markup).toContain('class="font-medium text-[#20cb74]"');
+		expect(markup).toContain('class="mention-accent"');
 		expect(markup).toContain("@Thomas");
 		expect(markup).toContain("#general");
 	});

@@ -31,7 +31,7 @@ export function IdentityAvatar({
 				src={author.avatar_url}
 				alt={displayAuthorName(author, fallback)}
 				className={cn(
-					"rounded-full border border-white/10 object-cover",
+					"avatar-shell rounded-full object-cover",
 					sizes[size],
 					className,
 				)}
@@ -42,7 +42,7 @@ export function IdentityAvatar({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center justify-center rounded-full border border-white/10 bg-linear-to-br font-semibold",
+				"avatar-shell inline-flex items-center justify-center rounded-full bg-linear-to-br font-semibold",
 				authorAvatarTone(author?.slack_user_id || fallback),
 				sizes[size],
 				className,
