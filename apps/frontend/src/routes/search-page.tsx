@@ -3,13 +3,14 @@ import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
+import { InputField, SelectField } from "@/components/ui/form-field";
 import { highlightMatches } from "@/lib/highlight";
 import { channelQueries, searchQueries } from "@/lib/queries";
 import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CalendarRange, Search, SlidersHorizontal } from "lucide-react";
-import { type ReactNode, useDeferredValue } from "react";
+import { useDeferredValue } from "react";
 
 export function SearchPage() {
 	const search = useSearch({ from: "/app/search" });
@@ -57,31 +58,27 @@ export function SearchPage() {
 					Search public-channel history without losing the thread context.
 				</h2>
 				<div className="mt-4 grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px_200px]">
-					<label className="sm:col-span-2">
-						<span className="text-copy-quiet mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em]">
-							Query
-						</span>
-						<div className="surface-input flex items-center gap-2.5 px-3 py-2.5 focus-within:border-(--color-border-accent)">
-							<Search className="text-copy-quiet size-3.5 shrink-0" />
-							<input
-								className="w-full bg-transparent text-[0.92rem] text-white outline-none placeholder:text-(--color-text-quiet)"
-								value={query}
-								onChange={(e) =>
-									updateSearch({ q: e.target.value || undefined })
-								}
-								placeholder="Search for a question, project, or decision"
-								inputMode="search"
-								enterKeyHint="search"
-							/>
-						</div>
-					</label>
-					<FilterSelect
+					<InputField
+						label="Query"
+						value={query}
+						onValueChange={(value) => updateSearch({ q: value || undefined })}
+						placeholder="Search for a question, project, or decision"
+						inputMode="search"
+						enterKeyHint="search"
+						icon={<Search className="text-copy-quiet size-3.5 shrink-0" />}
+						fieldClassName="sm:col-span-2"
+						shellClassName="gap-2.5 focus-within:border-(--color-border-accent)"
+						inputClassName="text-[0.92rem]"
+					/>
+					<SelectField
 						label="Channel"
 						value={channelId}
-						onChange={(v) => updateSearch({ channel_id: v || undefined })}
+						onValueChange={(value) =>
+							updateSearch({ channel_id: value || undefined })
+						}
 						disabled={channelsQuery.isPending || channelsQuery.isError}
 						options={[
-							{ value: "", label: "All channels" },
+							{ key: "__all_channels__", value: "", label: "All channels" },
 							...channelOptions.map((channel) => ({
 								value: channel.id,
 								label: `#${channel.name ?? channel.id}`,
@@ -92,19 +89,23 @@ export function SearchPage() {
 						]}
 					/>
 					<div className="grid grid-cols-2 gap-2">
-						<FilterField
+						<InputField
 							label="From"
 							type="date"
 							value={dateFrom}
 							icon={<CalendarRange className="text-copy-quiet size-4" />}
-							onChange={(v) => updateSearch({ date_from: v || undefined })}
+							onValueChange={(value) =>
+								updateSearch({ date_from: value || undefined })
+							}
 						/>
-						<FilterField
+						<InputField
 							label="To"
 							type="date"
 							value={dateTo}
 							icon={<CalendarRange className="text-copy-quiet size-4" />}
-							onChange={(v) => updateSearch({ date_to: v || undefined })}
+							onValueChange={(value) =>
+								updateSearch({ date_to: value || undefined })
+							}
 						/>
 					</div>
 				</div>
@@ -196,46 +197,6 @@ export function SearchPage() {
 	);
 }
 
-function FilterSelect({
-	label,
-	value,
-	onChange,
-	options,
-	disabled = false,
-}: {
-	label: string;
-	value: string;
-	onChange: (value: string) => void;
-	options: { value: string; label: string }[];
-	disabled?: boolean;
-}) {
-	return (
-		<label>
-			<span className="text-copy-quiet mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em]">
-				{label}
-			</span>
-			<div className="surface-input flex items-center gap-2 px-3 py-2.5">
-				<select
-					value={value}
-					onChange={(e) => onChange(e.target.value)}
-					disabled={disabled}
-					className="w-full bg-transparent text-[0.88rem] text-white outline-none disabled:cursor-not-allowed disabled:text-(--color-text-quiet)"
-				>
-					{options.map((option) => (
-						<option
-							key={option.value || "__all_channels__"}
-							value={option.value}
-							className="bg-(--color-bg-input) text-white"
-						>
-							{option.label}
-						</option>
-					))}
-				</select>
-			</div>
-		</label>
-	);
-}
-
 function getDefaultSearchDateRange() {
 	const today = new Date();
 	const yesterday = new Date(today);
@@ -252,38 +213,4 @@ function formatDateInputValue(value: Date) {
 	const month = String(value.getMonth() + 1).padStart(2, "0");
 	const day = String(value.getDate()).padStart(2, "0");
 	return `${year}-${month}-${day}`;
-}
-
-function FilterField({
-	label,
-	value,
-	onChange,
-	type = "text",
-	placeholder,
-	icon,
-}: {
-	label: string;
-	value: string;
-	onChange: (value: string) => void;
-	type?: "text" | "date";
-	placeholder?: string;
-	icon?: ReactNode;
-}) {
-	return (
-		<label>
-			<span className="text-copy-quiet mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em]">
-				{label}
-			</span>
-			<div className="surface-input flex items-center gap-2 px-3 py-2.5">
-				{icon}
-				<input
-					type={type}
-					value={value}
-					onChange={(e) => onChange(e.target.value)}
-					placeholder={placeholder}
-					className="w-full bg-transparent text-[0.88rem] text-white outline-none placeholder:text-(--color-text-quiet)"
-				/>
-			</div>
-		</label>
-	);
 }
