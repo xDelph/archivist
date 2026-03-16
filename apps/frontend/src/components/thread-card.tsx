@@ -5,7 +5,7 @@ import { formatSlackTimestamp } from "@/lib/format";
 import {
 	type ThreadAuthor,
 	displayAuthorName,
-	renderSlackText,
+	renderSlackTextWithoutLinks,
 } from "@/lib/thread-display";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
@@ -52,7 +52,7 @@ export function ThreadCard({
 	return (
 		<article
 			className={cn(
-				"surface-panel surface-panel-soft group px-3 py-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-base) hover:shadow-[0_18px_40px_rgba(0,0,0,0.24)] focus-within:border-(--color-border-accent)",
+				"surface-panel surface-panel-soft group relative px-3 py-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-base) hover:shadow-[0_18px_40px_rgba(0,0,0,0.24)] focus-within:border-(--color-border-accent)",
 				className,
 			)}
 		>
@@ -72,7 +72,10 @@ export function ThreadCard({
 				<Link
 					to="/threads/$threadId"
 					params={{ threadId }}
-					className="min-w-0 flex-1 rounded-[0.75rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
+					className={cn(
+						"min-w-0 flex-1 rounded-[0.75rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40",
+						action ? "pr-12 sm:pr-24" : "",
+					)}
 				>
 					<div className="flex items-start justify-between gap-2.5">
 						<div className="min-w-0">
@@ -119,14 +122,18 @@ export function ThreadCard({
 					</div>
 				</Link>
 
-				{action ? <div className="shrink-0 pt-1">{action}</div> : null}
+				{action ? (
+					<div className="absolute top-3 right-3 z-10 shrink-0">{action}</div>
+				) : null}
 			</div>
 		</article>
 	);
 }
 
 function renderRichNode(content: ReactNode) {
-	return typeof content === "string" ? renderSlackText(content) : content;
+	return typeof content === "string"
+		? renderSlackTextWithoutLinks(content)
+		: content;
 }
 
 export function shouldRenderThreadPreview(

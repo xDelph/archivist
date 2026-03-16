@@ -116,9 +116,14 @@ export function renderSlackText(text: string): ReactNode {
 	return renderSlackTextWithHighlights(text);
 }
 
+export function renderSlackTextWithoutLinks(text: string): ReactNode {
+	return renderSlackTextWithHighlights(text, undefined, false);
+}
+
 export function renderSlackTextWithHighlights(
 	text: string,
 	query?: string,
+	allowLinks = true,
 ): ReactNode {
 	const normalizedText = decodeHtmlEntities(text);
 	const segments = normalizedText.split(RICH_TOKEN_PATTERN);
@@ -134,6 +139,21 @@ export function renderSlackTextWithHighlights(
 
 		const slackLink = parseSlackLink(segment);
 		if (slackLink) {
+			if (!allowLinks) {
+				return (
+					<span
+						key={`link-text-${key}`}
+						className="break-words [overflow-wrap:anywhere]"
+					>
+						{renderHighlightedText(
+							slackLink.label || slackLink.href,
+							query,
+							key,
+						)}
+					</span>
+				);
+			}
+
 			const href = slackLink.appHref ?? slackLink.href;
 			const isExternal = !href.startsWith("/") && !href.startsWith("mailto:");
 			return (

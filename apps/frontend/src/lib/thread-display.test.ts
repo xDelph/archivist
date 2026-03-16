@@ -2,6 +2,7 @@ import {
 	extractLinks,
 	groupReactions,
 	renderSlackText,
+	renderSlackTextWithoutLinks,
 	slackEmojiToUnicode,
 } from "@/lib/thread-display";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -46,6 +47,17 @@ describe("thread display emoji helpers", () => {
 				"Read <https://example.com/docs|the docs> and https://example.com/docs",
 			),
 		).toEqual([{ href: "https://example.com/docs", label: "the docs" }]);
+	});
+
+	it("renders card-safe slack text without nested anchor tags", () => {
+		const markup = renderToStaticMarkup(
+			renderSlackTextWithoutLinks(
+				"Read <https://example.com/docs|the docs> today",
+			),
+		);
+
+		expect(markup).toContain(">the docs<");
+		expect(markup).not.toContain("<a");
 	});
 
 	it("maps slack thread permalinks to Archivist thread routes", () => {
