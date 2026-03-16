@@ -47,10 +47,12 @@ export function ThreadCard({
 	action,
 }: ThreadCardProps) {
 	const previewIsDuplicate = !shouldRenderThreadPreview(title, preview);
+	const displayMessage = previewIsDuplicate ? title : preview;
+
 	return (
 		<article
 			className={cn(
-				"surface-panel surface-panel-soft group px-2.5 py-2.5 transition-colors hover:border-(--color-border-accent) hover:bg-(--color-bg-base)",
+				"surface-panel surface-panel-soft group px-3 py-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-base) hover:shadow-[0_18px_40px_rgba(0,0,0,0.24)] focus-within:border-(--color-border-accent)",
 				className,
 			)}
 		>
@@ -70,28 +72,23 @@ export function ThreadCard({
 				<Link
 					to="/threads/$threadId"
 					params={{ threadId }}
-					className="min-w-0 flex-1"
+					className="min-w-0 flex-1 rounded-[0.75rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
 				>
 					<div className="flex items-start justify-between gap-2.5">
 						<div className="min-w-0">
 							<div className="flex flex-wrap items-center gap-1.5">
-								<p className="truncate text-[0.82rem] font-medium text-white">
+								<p className="truncate text-[0.88rem] font-medium text-white">
 									{displayAuthorName(author, authorFallback || channelName)}
 								</p>
 								<ChannelBadge name={channelName} />
 							</div>
-							<div className="text-copy-bright mt-1 break-words text-[0.84rem] leading-snug font-normal">
-								{renderRichNode(title)}
+							<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4]">
+								{renderRichNode(displayMessage)}
 							</div>
-							{previewIsDuplicate ? null : (
-								<div className="mt-0.5 line-clamp-2 break-words text-[0.74rem] leading-relaxed text-(--color-text-secondary)">
-									{renderRichNode(preview)}
-								</div>
-							)}
 						</div>
 
 						<div className="hidden shrink-0 text-right lg:block">
-							<time className="text-copy-soft block text-[0.7rem]">
+							<time className="text-copy-soft block text-[0.76rem]">
 								{formatSlackTimestamp(lastActivityTs)}
 							</time>
 							{typeof score === "number" ? (
@@ -110,8 +107,8 @@ export function ThreadCard({
 						fileCount={fileCount}
 					/>
 
-					<div className="mt-1.5 flex items-center justify-between gap-3 lg:hidden">
-						<time className="text-copy-soft text-[0.68rem]">
+					<div className="mt-2 flex items-center justify-between gap-3 lg:hidden">
+						<time className="text-copy-soft text-[0.76rem]">
 							{formatSlackTimestamp(lastActivityTs)}
 						</time>
 						{typeof score === "number" ? (

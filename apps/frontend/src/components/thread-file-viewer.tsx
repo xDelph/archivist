@@ -62,7 +62,14 @@ export function ThreadFileViewer({
 	return (
 		<div
 			className="fixed inset-0 z-50 bg-black/92 backdrop-blur-md"
-			onPointerDown={onClose}
+			onPointerUp={(event) => {
+				if (event.target !== event.currentTarget) {
+					return;
+				}
+				event.preventDefault();
+				event.stopPropagation();
+				onClose();
+			}}
 		>
 			<div className="flex h-full flex-col">
 				<div className="flex items-start justify-between gap-3 border-b border-white/8 px-4 py-3 sm:px-5">
@@ -78,10 +85,7 @@ export function ThreadFileViewer({
 							{files.length > 1 ? ` · ${currentIndex + 1}/${files.length}` : ""}
 						</p>
 					</div>
-					<div
-						className="flex items-center gap-2"
-						onPointerDown={(event) => event.stopPropagation()}
-					>
+					<div className="flex items-center gap-2">
 						{currentFile.permalink ? (
 							<a
 								href={currentFile.permalink}
@@ -113,10 +117,7 @@ export function ThreadFileViewer({
 						/>
 					) : null}
 
-					<div
-						className="viewer-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden"
-						onPointerDown={(event) => event.stopPropagation()}
-					>
+					<div className="viewer-stage flex min-h-0 flex-1 items-center justify-center overflow-hidden">
 						{currentFile.permalink ? (
 							renderFilePreview(currentFile)
 						) : (

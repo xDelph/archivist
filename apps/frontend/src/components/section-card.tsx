@@ -22,29 +22,29 @@ export function SectionCard({
 	children,
 }: SectionCardProps) {
 	return (
-		<section className={cn("surface-panel p-3 sm:p-3.5", className)}>
+		<section className={cn("surface-panel p-4 sm:p-4.5", className)}>
 			<div
 				className={cn(
-					"flex items-start justify-between gap-3",
+					"flex items-start justify-between gap-4",
 					overlayActions && "relative block",
 				)}
 			>
 				<div className="min-w-0">
 					{eyebrow ? (
-						<p className="text-eyebrow text-[0.58rem] font-medium uppercase tracking-[0.25em]">
+						<p className="text-eyebrow text-[0.72rem] font-medium uppercase tracking-[0.18em]">
 							{eyebrow}
 						</p>
 					) : null}
 					<h2
 						className={cn(
-							"mt-1 text-[1.02rem] font-semibold tracking-tight text-white sm:text-[1.14rem]",
+							"mt-1.5 max-w-[26ch] text-[clamp(1.1rem,2vw,1.35rem)] font-semibold leading-tight tracking-tight text-white",
 							titleClassName,
 						)}
 					>
 						{title}
 					</h2>
 					{description ? (
-						<p className="text-copy-muted mt-1 text-[0.76rem] leading-relaxed">
+						<p className="text-copy-muted mt-1.5 max-w-[70ch] text-[0.92rem] leading-relaxed">
 							{description}
 						</p>
 					) : null}
@@ -60,7 +60,7 @@ export function SectionCard({
 					</div>
 				) : null}
 			</div>
-			<div className="mt-2.5">{children}</div>
+			<div className="mt-3.5">{children}</div>
 		</section>
 	);
 }

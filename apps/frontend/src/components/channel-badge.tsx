@@ -11,7 +11,7 @@ export function ChannelBadge({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center rounded-[0.75rem] border px-2 py-0.75 text-[0.68rem] font-medium leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+				"inline-flex max-w-full items-center truncate rounded-[0.8rem] border px-2.5 py-1 text-[0.72rem] font-medium leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
 				channelTone(name),
 				className,
 			)}

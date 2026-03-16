@@ -33,7 +33,7 @@ export function ThreadMessageCard({
 	const reactions = groupReactions(message.reactions);
 
 	return (
-		<article className="surface-subpanel p-3">
+		<article className="surface-subpanel p-3.5">
 			<div className="flex items-start gap-2.5">
 				<IdentityAvatar
 					author={message.author}
@@ -41,8 +41,8 @@ export function ThreadMessageCard({
 					size="sm"
 				/>
 				<div className="min-w-0 flex-1">
-					<div className="text-copy-soft flex flex-wrap items-center gap-1.5 text-[0.72rem]">
-						<span className="text-[0.82rem] font-medium text-white">
+					<div className="text-copy-soft flex flex-wrap items-center gap-1.5 text-[0.78rem]">
+						<span className="text-[0.9rem] font-medium text-white">
 							{displayAuthorName(message.author, message.user_id)}
 						</span>
 						<span className="separator-faint">&middot;</span>
@@ -56,7 +56,7 @@ export function ThreadMessageCard({
 							</>
 						) : null}
 					</div>
-					<div className="text-copy-bright mt-1.5 whitespace-pre-wrap text-[0.82rem] leading-6 font-normal">
+					<div className="text-copy-bright mt-2 whitespace-pre-wrap text-[0.92rem] leading-7 font-normal">
 						{renderSlackText(message.text)}
 					</div>
 				</div>
@@ -73,7 +73,7 @@ export function ThreadMessageCard({
 					<button
 						key={file.id}
 						type="button"
-						className="subtle-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.72rem] hover:border-(--color-border-accent) hover:text-white"
+						className="subtle-chip inline-flex min-h-9 items-center gap-1 rounded-full px-2.5 py-1 text-[0.78rem] hover:border-(--color-border-accent) hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
 						onClick={() => onOpenFile(index)}
 					>
 						<Paperclip className="size-3.5" />
@@ -93,7 +93,7 @@ function MetaChip({
 	icon?: ReactNode;
 }) {
 	return (
-		<span className="subtle-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.72rem]">
+		<span className="subtle-chip inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 py-1 text-[0.76rem]">
 			{icon}
 			{label}
 		</span>

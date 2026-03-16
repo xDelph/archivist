@@ -26,7 +26,7 @@ function FormField({
 			<label
 				htmlFor={controlId}
 				className={cn(
-					"text-copy-quiet mb-1.5 block text-[0.62rem] font-medium uppercase tracking-[0.24em]",
+					"text-copy-quiet mb-2 block text-[0.72rem] font-medium uppercase tracking-[0.2em]",
 					labelClassName,
 				)}
 			>
@@ -46,7 +46,7 @@ function FormFieldShell({ children, className }: FormFieldShellProps) {
 	return (
 		<div
 			className={cn(
-				"surface-input flex items-center gap-2 px-3 py-2.5",
+				"surface-input flex min-h-11 items-center gap-2.5 px-3 py-2.5 focus-within:border-(--color-border-accent) focus-within:bg-(--color-bg-surface) focus-within:shadow-[0_0_0_2px_rgba(32,203,116,0.12)] sm:min-h-10",
 				className,
 			)}
 		>
@@ -95,7 +95,7 @@ export function InputField({
 					value={value}
 					onChange={(event) => onValueChange(event.target.value)}
 					className={cn(
-						"w-full bg-transparent text-[0.88rem] text-white outline-none placeholder:text-(--color-text-quiet)",
+						"w-full bg-transparent text-[0.95rem] text-white outline-none placeholder:text-(--color-text-quiet)",
 						inputClassName,
 					)}
 				/>
@@ -149,7 +149,7 @@ export function SelectField({
 					value={value}
 					onChange={(event) => onValueChange(event.target.value)}
 					className={cn(
-						"w-full bg-transparent text-[0.88rem] text-white outline-none disabled:cursor-not-allowed disabled:text-(--color-text-quiet)",
+						"w-full bg-transparent text-[0.95rem] text-white outline-none disabled:cursor-not-allowed disabled:text-(--color-text-quiet)",
 						selectClassName,
 					)}
 				>

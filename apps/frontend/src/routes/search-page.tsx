@@ -50,19 +50,20 @@ export function SearchPage() {
 
 	return (
 		<div className="space-y-4">
-			<section className="surface-panel p-3.5 sm:p-4">
-				<p className="text-eyebrow text-[0.62rem] font-medium uppercase tracking-[0.28em]">
+			<section className="surface-panel p-4 sm:p-5">
+				<p className="text-eyebrow text-[0.72rem] font-medium uppercase tracking-[0.18em]">
 					Search
 				</p>
-				<h2 className="mt-2 text-[1.45rem] font-semibold tracking-tight text-white sm:text-[1.65rem]">
-					Search public-channel history without losing the thread context.
+				<h2 className="mt-2 text-[clamp(1.4rem,3vw,2rem)] font-semibold tracking-tight text-white">
+					Search public-thread history, then open the full conversation when a
+					snippet looks promising.
 				</h2>
 				<div className="mt-4 grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px_200px]">
 					<InputField
 						label="Query"
 						value={query}
 						onValueChange={(value) => updateSearch({ q: value || undefined })}
-						placeholder="Search for a question, project, or decision"
+						placeholder="Search for a question, project, decision, or phrase"
 						inputMode="search"
 						enterKeyHint="search"
 						icon={<Search className="text-copy-quiet size-3.5 shrink-0" />}
@@ -109,8 +110,8 @@ export function SearchPage() {
 						/>
 					</div>
 				</div>
-				<div className="mt-3 flex flex-wrap items-center gap-1.5">
-					<span className="surface-frost inline-flex items-center gap-2 rounded-[0.7rem] px-2.5 py-1.25 text-[0.62rem] uppercase tracking-[0.18em] text-(--color-text-muted)">
+				<div className="mt-4 flex flex-wrap items-center gap-2">
+					<span className="surface-frost inline-flex min-h-10 items-center gap-2 rounded-[0.8rem] px-3 py-2 text-[0.74rem] uppercase tracking-[0.14em] text-(--color-text-muted)">
 						<SlidersHorizontal className="size-3.5" />
 						Sort
 					</span>
@@ -142,7 +143,7 @@ export function SearchPage() {
 				title={
 					deferredQuery
 						? `Results for "${deferredQuery}"`
-						: "Start typing to search"
+						: "Search the archive"
 				}
 			>
 				<QueryState
@@ -169,7 +170,7 @@ export function SearchPage() {
 						deferredQuery.length === 0 ? (
 							<EmptyState
 								title="Search needs a query"
-								description="Type a phrase above and the results will stream in with channel and date filters applied."
+								description="Type a phrase above to search across public threads with channel and date filters applied."
 								icon={<Search className="size-5" />}
 							/>
 						) : (

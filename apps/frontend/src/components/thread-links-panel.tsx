@@ -68,33 +68,33 @@ function LinkPreviewCard({
 			href={link.appHref ?? link.href}
 			target={link.appHref ? undefined : "_blank"}
 			rel={link.appHref ? undefined : "noreferrer"}
-			className="surface-subpanel group flex items-stretch gap-3 overflow-hidden p-3 transition-colors hover:border-(--color-border-accent) hover:bg-(--color-bg-surface)"
+			className="surface-subpanel group flex items-stretch gap-3 overflow-hidden p-3.5 transition-[background-color,border-color,box-shadow] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-surface) hover:shadow-[0_18px_36px_rgba(0,0,0,0.22)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
 		>
 			{showPreview ? (
 				<div className="min-w-0 flex-1">
-					<p className="text-copy-quiet text-[0.62rem] font-medium uppercase tracking-[0.18em]">
+					<p className="text-copy-quiet text-[0.72rem] font-medium uppercase tracking-[0.14em]">
 						{siteName}
 					</p>
-					<p className="mt-1 text-[0.92rem] font-medium text-white group-hover:text-(--color-text-bright)">
+					<p className="mt-1.5 text-[1rem] font-medium text-white group-hover:text-(--color-text-bright)">
 						{title}
 					</p>
 					{description ? (
-						<p className="mt-1 line-clamp-2 text-[0.78rem] leading-5 text-(--color-text-secondary)">
+						<p className="mt-1.5 line-clamp-2 text-[0.84rem] leading-6 text-(--color-text-secondary)">
 							{description}
 						</p>
 					) : isPending ? (
-						<p className="text-copy-quiet mt-1 text-[0.78rem]">
+						<p className="text-copy-quiet mt-1.5 text-[0.82rem]">
 							Loading preview…
 						</p>
 					) : null}
-					<div className="mt-2 inline-flex items-center gap-1.5 text-[0.74rem] text-(--color-link)">
+					<div className="mt-3 inline-flex items-center gap-1.5 text-[0.8rem] text-(--color-link)">
 						<ExternalLink className="size-3.5" />
 						<span className="truncate">{host}</span>
 					</div>
 				</div>
 			) : (
 				<div className="min-w-0 flex-1">
-					<div className="link-accent inline-flex items-center gap-2 break-all">
+					<div className="link-accent inline-flex items-center gap-2 break-all text-[0.92rem]">
 						<Link2 className="size-4 shrink-0" />
 						{link.label || link.href}
 					</div>
