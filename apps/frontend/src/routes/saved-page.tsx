@@ -1,10 +1,7 @@
 import { EmptyState } from "@/components/empty-state";
 import { CardSkeletonList, QueryState } from "@/components/query-state";
+import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
-import { ThreadCard } from "@/components/thread-card";
-import { Button } from "@/components/ui/button";
-import { deleteSavedThread } from "@/lib/api";
-import { removeOfflineSavedThread } from "@/lib/offline-library";
 import {
 	filterSavedItemsWithSnapshots,
 	resolveSavedItemsForReading,
@@ -12,26 +9,17 @@ import {
 import { offlineQueries, savedQueries } from "@/lib/queries";
 import { threadCardDataFromSavedItem } from "@/lib/thread-card-props";
 import { useNetworkStatus } from "@/lib/use-network-status";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, BookmarkX } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Bookmark } from "lucide-react";
 
 export function SavedPage() {
 	const { isOnline } = useNetworkStatus();
-	const queryClient = useQueryClient();
 	const savedQuery = useQuery({
 		...savedQueries.list(),
 		enabled: isOnline,
 	});
 	const offlineSavedQuery = useQuery(offlineQueries.saved());
 	const offlineThreadIdsQuery = useQuery(offlineQueries.threadIds());
-	const deleteMutation = useMutation({
-		mutationFn: deleteSavedThread,
-		onSuccess: async (_data, threadId) => {
-			await removeOfflineSavedThread(threadId);
-			await queryClient.invalidateQueries({ queryKey: ["saved"] });
-			await queryClient.invalidateQueries({ queryKey: ["offline"] });
-		},
-	});
 	const availableItems = resolveSavedItemsForReading(
 		savedQuery.data?.items,
 		offlineSavedQuery.data,
@@ -84,31 +72,12 @@ export function SavedPage() {
 				>
 					<div className="space-y-3">
 						{items.map((item) => (
-							<ThreadCard
+							<SavableThreadCard
 								key={item.id}
 								{...threadCardDataFromSavedItem(item)}
-								action={
-									<Button
-										type="button"
-										variant="secondary"
-										size="sm"
-										className="button-ghost size-9 rounded-full px-0 sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
-										onClick={() => deleteMutation.mutate(item.thread_id)}
-										title={
-											isOnline ? undefined : "Reconnect to manage saved threads"
-										}
-										disabled={
-											!isOnline ||
-											(deleteMutation.isPending &&
-												deleteMutation.variables === item.thread_id)
-										}
-									>
-										<BookmarkX className="size-4" />
-										<span className="hidden sm:inline">
-											{isOfflineReading ? "Saved offline" : "Unsave"}
-										</span>
-									</Button>
-								}
+								savedItem={item}
+								isOnline={isOnline}
+								savedState={isOfflineReading ? "offline" : "saved"}
 							/>
 						))}
 					</div>

@@ -7,9 +7,22 @@ import {
 	displayAuthorName,
 	renderSlackTextWithoutLinks,
 } from "@/lib/thread-display";
+import {
+	THREAD_SWIPE_ACTION_WIDTH,
+	clampSwipeOffset,
+	resolveSwipeOffset,
+} from "@/lib/thread-swipe";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { Children, type ReactNode, isValidElement } from "react";
+import { BookmarkCheck, CloudOff } from "lucide-react";
+import {
+	Children,
+	type ReactNode,
+	type TouchEvent,
+	isValidElement,
+	useRef,
+	useState,
+} from "react";
 
 interface ThreadCardProps {
 	threadId: string;
@@ -27,6 +40,17 @@ interface ThreadCardProps {
 	rank?: number;
 	className?: string;
 	action?: ReactNode;
+	savedState?: "saved" | "offline";
+	leadingSwipeAction?: ThreadCardSwipeAction;
+	trailingSwipeAction?: ThreadCardSwipeAction;
+}
+
+interface ThreadCardSwipeAction {
+	label: string;
+	icon: ReactNode;
+	onAction: () => void;
+	disabled?: boolean;
+	tone?: "accent" | "danger";
 }
 
 export function ThreadCard({
@@ -45,88 +69,261 @@ export function ThreadCard({
 	rank,
 	className,
 	action,
+	savedState,
+	leadingSwipeAction,
+	trailingSwipeAction,
 }: ThreadCardProps) {
 	const previewIsDuplicate = !shouldRenderThreadPreview(title, preview);
 	const displayMessage = previewIsDuplicate ? title : preview;
+	const leadingWidth = leadingSwipeAction ? THREAD_SWIPE_ACTION_WIDTH : 0;
+	const trailingWidth = trailingSwipeAction ? THREAD_SWIPE_ACTION_WIDTH : 0;
+	const [swipeOffset, setSwipeOffset] = useState(0);
+	const [isDragging, setIsDragging] = useState(false);
+	const touchStateRef = useRef<{
+		startX: number;
+		startY: number;
+		startOffset: number;
+		axis: "x" | "y" | null;
+	} | null>(null);
+
+	function closeSwipeActions() {
+		setSwipeOffset(0);
+		setIsDragging(false);
+	}
+
+	function handleTouchStart(event: TouchEvent<HTMLElement>) {
+		if (!leadingSwipeAction && !trailingSwipeAction) {
+			return;
+		}
+
+		const touch = event.touches[0];
+		touchStateRef.current = {
+			startX: touch.clientX,
+			startY: touch.clientY,
+			startOffset: swipeOffset,
+			axis: null,
+		};
+	}
+
+	function handleTouchMove(event: TouchEvent<HTMLElement>) {
+		if (!touchStateRef.current) {
+			return;
+		}
+
+		const touch = event.touches[0];
+		const deltaX = touch.clientX - touchStateRef.current.startX;
+		const deltaY = touch.clientY - touchStateRef.current.startY;
+
+		if (touchStateRef.current.axis === null) {
+			if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) {
+				return;
+			}
+
+			touchStateRef.current.axis =
+				Math.abs(deltaX) > Math.abs(deltaY) ? "x" : "y";
+		}
+
+		if (touchStateRef.current.axis !== "x") {
+			return;
+		}
+
+		setIsDragging(true);
+		setSwipeOffset(
+			clampSwipeOffset(
+				touchStateRef.current.startOffset + deltaX,
+				leadingWidth,
+				trailingWidth,
+			),
+		);
+	}
+
+	function handleTouchEnd() {
+		if (!touchStateRef.current) {
+			return;
+		}
+
+		if (touchStateRef.current.axis === "x") {
+			setSwipeOffset(
+				resolveSwipeOffset(swipeOffset, leadingWidth, trailingWidth),
+			);
+		}
+
+		touchStateRef.current = null;
+		setIsDragging(false);
+	}
 
 	return (
-		<article
-			className={cn(
-				"surface-panel surface-panel-soft group relative px-3 py-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-base) hover:shadow-[0_18px_40px_rgba(0,0,0,0.24)] focus-within:border-(--color-border-accent)",
-				className,
-			)}
-		>
-			<div className="flex items-start gap-2">
-				{typeof rank === "number" ? (
-					<div className="hidden min-w-5 justify-center pt-0.5 text-[1.15rem] font-semibold leading-none text-(--color-accent) xl:flex">
-						{rank}
-					</div>
-				) : null}
-
-				<IdentityAvatar
-					author={author}
-					fallback={authorFallback || channelName}
-					size="md"
+		<div className="relative overflow-hidden">
+			{leadingSwipeAction ? (
+				<SwipeActionSurface
+					side="leading"
+					action={leadingSwipeAction}
+					onAction={closeSwipeActions}
 				/>
+			) : null}
+			{trailingSwipeAction ? (
+				<SwipeActionSurface
+					side="trailing"
+					action={trailingSwipeAction}
+					onAction={closeSwipeActions}
+				/>
+			) : null}
 
-				<Link
-					to="/threads/$threadId"
-					params={{ threadId }}
-					className={cn(
-						"min-w-0 flex-1 rounded-[0.75rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40",
-						action ? "pr-12 sm:pr-24" : "",
-					)}
-				>
-					<div className="flex items-start justify-between gap-2.5">
-						<div className="min-w-0">
-							<div className="flex flex-wrap items-center gap-1.5">
-								<p className="truncate text-[0.88rem] font-medium text-white">
-									{displayAuthorName(author, authorFallback || channelName)}
-								</p>
-								<ChannelBadge name={channelName} />
+			<article
+				className={cn(
+					"surface-panel surface-panel-soft group relative px-3 py-3 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-base) hover:shadow-[0_18px_40px_rgba(0,0,0,0.24)] focus-within:border-(--color-border-accent)",
+					isDragging ? "duration-0" : "ease-[cubic-bezier(0.22,1,0.36,1)]",
+					className,
+				)}
+				style={{
+					transform:
+						swipeOffset === 0
+							? undefined
+							: `translate3d(${swipeOffset}px, 0, 0)`,
+					touchAction:
+						leadingSwipeAction || trailingSwipeAction ? "pan-y" : undefined,
+				}}
+				onTouchStart={handleTouchStart}
+				onTouchMove={handleTouchMove}
+				onTouchEnd={handleTouchEnd}
+				onTouchCancel={handleTouchEnd}
+			>
+				<div className="flex items-start gap-2">
+					{typeof rank === "number" ? (
+						<div className="hidden min-w-5 justify-center pt-0.5 text-[1.15rem] font-semibold leading-none text-(--color-accent) xl:flex">
+							{rank}
+						</div>
+					) : null}
+
+					<IdentityAvatar
+						author={author}
+						fallback={authorFallback || channelName}
+						size="md"
+					/>
+
+					<Link
+						to="/threads/$threadId"
+						params={{ threadId }}
+						onClickCapture={(event) => {
+							if (swipeOffset !== 0) {
+								event.preventDefault();
+								closeSwipeActions();
+							}
+						}}
+						className={cn(
+							"min-w-0 flex-1 rounded-[0.75rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40",
+							action ? "sm:pr-16" : "",
+						)}
+					>
+						<div className="flex items-start justify-between gap-2.5">
+							<div className="min-w-0">
+								<div className="flex flex-wrap items-center gap-1.5">
+									<p className="truncate text-[0.88rem] font-medium text-white">
+										{displayAuthorName(author, authorFallback || channelName)}
+									</p>
+									<ChannelBadge name={channelName} />
+									{savedState ? <SavedStateBadge state={savedState} /> : null}
+								</div>
+								<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4]">
+									{renderRichNode(displayMessage)}
+								</div>
 							</div>
-							<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4]">
-								{renderRichNode(displayMessage)}
+
+							<div className="hidden shrink-0 text-right lg:block">
+								<time className="text-copy-soft block text-[0.76rem]">
+									{formatSlackTimestamp(lastActivityTs)}
+								</time>
+								{typeof score === "number" ? (
+									<div className="accent-pill mt-2 rounded-[0.65rem] px-2 py-0.5 text-[0.7rem] font-medium">
+										{score}
+									</div>
+								) : null}
 							</div>
 						</div>
 
-						<div className="hidden shrink-0 text-right lg:block">
-							<time className="text-copy-soft block text-[0.76rem]">
+						<ThreadMetrics
+							className="mt-2.5"
+							replyCount={replyCount}
+							reactionCount={reactionCount}
+							participantCount={participantCount}
+							fileCount={fileCount}
+						/>
+
+						<div className="mt-2 flex items-center justify-between gap-3 lg:hidden">
+							<time className="text-copy-soft text-[0.76rem]">
 								{formatSlackTimestamp(lastActivityTs)}
 							</time>
 							{typeof score === "number" ? (
-								<div className="accent-pill mt-2 rounded-[0.65rem] px-2 py-0.5 text-[0.7rem] font-medium">
+								<span className="accent-pill rounded-[0.65rem] px-2 py-0.5 text-[0.7rem] font-medium">
 									{score}
-								</div>
+								</span>
 							) : null}
 						</div>
-					</div>
+					</Link>
 
-					<ThreadMetrics
-						className="mt-2.5"
-						replyCount={replyCount}
-						reactionCount={reactionCount}
-						participantCount={participantCount}
-						fileCount={fileCount}
-					/>
+					{action ? (
+						<div className="absolute top-3 right-3 z-10 shrink-0">{action}</div>
+					) : null}
+				</div>
+			</article>
+		</div>
+	);
+}
 
-					<div className="mt-2 flex items-center justify-between gap-3 lg:hidden">
-						<time className="text-copy-soft text-[0.76rem]">
-							{formatSlackTimestamp(lastActivityTs)}
-						</time>
-						{typeof score === "number" ? (
-							<span className="accent-pill rounded-[0.65rem] px-2 py-0.5 text-[0.7rem] font-medium">
-								{score}
-							</span>
-						) : null}
-					</div>
-				</Link>
+function SavedStateBadge({ state }: { state: "saved" | "offline" }) {
+	return (
+		<span
+			className={cn(
+				"inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.67rem] font-semibold tracking-[0.02em]",
+				state === "offline"
+					? "border-(--color-border-accent) bg-(--color-accent)/10 text-(--color-accent-soft)"
+					: "border-(--color-border-default) bg-(--color-bg-elevated) text-(--color-text-secondary)",
+			)}
+		>
+			{state === "offline" ? (
+				<CloudOff className="size-3" />
+			) : (
+				<BookmarkCheck className="size-3" />
+			)}
+			{state === "offline" ? "Offline" : "Saved"}
+		</span>
+	);
+}
 
-				{action ? (
-					<div className="absolute top-3 right-3 z-10 shrink-0">{action}</div>
-				) : null}
-			</div>
-		</article>
+function SwipeActionSurface({
+	side,
+	action,
+	onAction,
+}: {
+	side: "leading" | "trailing";
+	action: ThreadCardSwipeAction;
+	onAction: () => void;
+}) {
+	return (
+		<div
+			className={cn(
+				"absolute inset-y-0 z-0 flex w-[92px] items-stretch p-1.5 sm:hidden",
+				side === "leading" ? "left-0 justify-start" : "right-0 justify-end",
+			)}
+		>
+			<button
+				type="button"
+				className={cn(
+					"flex w-full flex-col items-center justify-center gap-1 rounded-[1.35rem] px-2 text-[0.72rem] font-semibold tracking-[0.01em] transition-[background-color,color,transform] duration-200 active:scale-[0.98] disabled:opacity-55",
+					action.tone === "danger"
+						? "bg-[color-mix(in_srgb,var(--color-destructive)_72%,var(--color-bg-surface))] text-white"
+						: "bg-[color-mix(in_srgb,var(--color-accent)_26%,var(--color-bg-surface))] text-(--color-accent-soft)",
+				)}
+				disabled={action.disabled}
+				onClick={() => {
+					onAction();
+					action.onAction();
+				}}
+			>
+				{action.icon}
+				<span>{action.label}</span>
+			</button>
+		</div>
 	);
 }
 

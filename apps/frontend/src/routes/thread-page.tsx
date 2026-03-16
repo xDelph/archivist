@@ -8,20 +8,16 @@ import { ThreadMessageCard } from "@/components/thread-message-card";
 import { ThreadSummaryPanel } from "@/components/thread-summary-panel";
 import { Button } from "@/components/ui/button";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
-import { deleteSavedThread, saveThread } from "@/lib/api";
-import {
-	removeOfflineSavedThread,
-	storeOfflineSavedThread,
-	storeOfflineThreadDetail,
-} from "@/lib/offline-library";
+import { storeOfflineThreadDetail } from "@/lib/offline-library";
 import {
 	findSavedItemForReading,
 	resolveThreadForReading,
 } from "@/lib/offline-reading";
 import { offlineQueries, savedQueries, threadQueries } from "@/lib/queries";
 import { extractLinks } from "@/lib/thread-display";
+import { useThreadSaveAction } from "@/lib/thread-save";
 import { useNetworkStatus } from "@/lib/use-network-status";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
 	Bookmark,
@@ -71,32 +67,10 @@ export function ThreadPage() {
 		offlineThreadQuery.data,
 	);
 	const isOfflineSnapshot = !threadQuery.data && Boolean(thread);
-
-	const saveMutation = useMutation({
-		mutationFn: async () => {
-			if (savedItem) {
-				await deleteSavedThread(threadId);
-				return { kind: "removed" } as const;
-			}
-
-			return {
-				kind: "saved",
-				result: await saveThread(threadId),
-			} as const;
-		},
-		onSuccess: async (result) => {
-			if (!thread) {
-				return;
-			}
-
-			if (result.kind === "removed") {
-				await removeOfflineSavedThread(threadId);
-			} else {
-				await storeOfflineSavedThread(result.result.item, thread);
-			}
-			await queryClient.invalidateQueries({ queryKey: ["saved"] });
-			await queryClient.invalidateQueries({ queryKey: ["offline"] });
-		},
+	const saveMutation = useThreadSaveAction({
+		threadId,
+		savedItem,
+		threadDetail: thread,
 	});
 
 	useEffect(() => {

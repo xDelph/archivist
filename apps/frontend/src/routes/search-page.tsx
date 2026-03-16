@@ -1,12 +1,13 @@
 import { EmptyState } from "@/components/empty-state";
 import { CardSkeletonList, QueryState } from "@/components/query-state";
+import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
-import { ThreadCard } from "@/components/thread-card";
 import { Button } from "@/components/ui/button";
 import { InputField, SelectField } from "@/components/ui/form-field";
 import { highlightMatches } from "@/lib/highlight";
-import { channelQueries, searchQueries } from "@/lib/queries";
+import { channelQueries, savedQueries, searchQueries } from "@/lib/queries";
 import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
+import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CalendarRange, Search, SlidersHorizontal } from "lucide-react";
@@ -25,6 +26,10 @@ export function SearchPage() {
 
 	const deferredQuery = useDeferredValue(query.trim());
 	const channelsQuery = useQuery(channelQueries.list());
+	const savedQuery = useQuery(savedQueries.list());
+	const savedItemsByThreadId = indexSavedItemsByThreadId(
+		savedQuery.data?.items,
+	);
 
 	const searchQuery = useQuery(
 		searchQueries.results({
@@ -183,12 +188,14 @@ export function SearchPage() {
 				>
 					<div className="space-y-3">
 						{searchQuery.data?.items.map((item) => (
-							<ThreadCard
+							<SavableThreadCard
 								key={item.id}
 								{...threadCardDataFromSearchResult(item, {
 									title: highlightMatches(item.title, deferredQuery),
 									preview: highlightMatches(item.snippet, deferredQuery),
 								})}
+								savedItem={savedItemsByThreadId.get(item.thread_id)}
+								isOnline={true}
 							/>
 						))}
 					</div>

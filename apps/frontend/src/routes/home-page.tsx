@@ -1,9 +1,9 @@
 import { EmptyState } from "@/components/empty-state";
 import { CardSkeletonList, QueryState } from "@/components/query-state";
+import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
-import { ThreadCard } from "@/components/thread-card";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
-import type { CatchUpSort, CatchUpWindow } from "@/lib/api";
+import type { CatchUpSort, CatchUpWindow, SavedItem } from "@/lib/api";
 import {
 	CATCH_UP_PAGE_SIZE,
 	flattenCatchUpPages,
@@ -15,8 +15,9 @@ import {
 	normalizeHomeTab,
 	toHomeTabSearch,
 } from "@/lib/home-tabs";
-import { catchUpQueries } from "@/lib/queries";
+import { catchUpQueries, savedQueries } from "@/lib/queries";
 import { threadCardDataFromCatchUpThread } from "@/lib/thread-card-props";
+import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
@@ -30,6 +31,10 @@ export function HomePage() {
 	const activeFilter = channelFilter ?? "all";
 	const activeChannelId = activeFilter === "all" ? undefined : activeFilter;
 	const overviewQuery = useQuery(catchUpQueries.summary("7d"));
+	const savedQuery = useQuery(savedQueries.list());
+	const savedItemsByThreadId = indexSavedItemsByThreadId(
+		savedQuery.data?.items,
+	);
 	const dayFeedQuery = useCatchUpFeed({
 		window: "24h",
 		channelId: activeChannelId,
@@ -138,6 +143,7 @@ export function HomePage() {
 					<SectionCard eyebrow="Last 24 hours" title="Fresh threads">
 						<CatchUpFeedSection
 							query={dayFeedQuery}
+							savedItemsByThreadId={savedItemsByThreadId}
 							emptyTitle="No recent public activity"
 							emptyDescription="Nothing crossed the 24-hour threshold for the selected channels."
 						/>
@@ -148,6 +154,7 @@ export function HomePage() {
 					<SectionCard eyebrow="This week" title="Steady conversations">
 						<CatchUpFeedSection
 							query={weekFeedQuery}
+							savedItemsByThreadId={savedItemsByThreadId}
 							emptyTitle="No weekly catch-up yet"
 							emptyDescription="Once the worker processes more history, longer windows will show up here."
 						/>
@@ -162,6 +169,7 @@ export function HomePage() {
 					>
 						<CatchUpFeedSection
 							query={trendingFeedQuery}
+							savedItemsByThreadId={savedItemsByThreadId}
 							cardClassName="bg-(--color-bg-panel)"
 							emptyTitle="Trending needs more history"
 							emptyDescription="This panel fills in automatically as the worker accumulates more public-channel thread summaries."
@@ -269,6 +277,7 @@ function useCatchUpFeed({
 
 function CatchUpFeedSection({
 	query,
+	savedItemsByThreadId,
 	emptyTitle,
 	emptyDescription,
 	errorTitle = "The catch-up feed is unavailable",
@@ -276,6 +285,7 @@ function CatchUpFeedSection({
 	cardClassName,
 }: {
 	query: ReturnType<typeof useCatchUpFeed>;
+	savedItemsByThreadId: Map<string, SavedItem>;
 	emptyTitle: string;
 	emptyDescription: string;
 	errorTitle?: string;
@@ -295,12 +305,14 @@ function CatchUpFeedSection({
 		>
 			<div className="space-y-2.5">
 				{threads.map((thread) => (
-					<ThreadCard
+					<SavableThreadCard
 						key={thread.id}
 						{...threadCardDataFromCatchUpThread(
 							thread,
 							getCatchUpThreadChannelName(thread),
 						)}
+						savedItem={savedItemsByThreadId.get(thread.id)}
+						isOnline={true}
 						className={cardClassName}
 					/>
 				))}
