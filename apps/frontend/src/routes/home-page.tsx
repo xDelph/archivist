@@ -3,16 +3,14 @@ import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
-import type { CatchUpChannel, CatchUpSort, CatchUpWindow } from "@/lib/api";
+import type { CatchUpSort, CatchUpWindow } from "@/lib/api";
 import { fetchCatchUp } from "@/lib/api";
 import {
 	CATCH_UP_PAGE_SIZE,
 	flattenCatchUpPages,
 	getCatchUpChannelLabel,
 	getCatchUpThreadChannelName,
-	pickChannelHighlights,
 } from "@/lib/catch-up";
-import { formatCompactNumber } from "@/lib/format";
 import {
 	type HomeTab,
 	normalizeHomeTab,
@@ -23,7 +21,7 @@ import { threadCardDataFromCatchUpThread } from "@/lib/thread-card-props";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Calendar, Clock, Flame, Hash, TrendingUp } from "lucide-react";
+import { Calendar, Clock, Flame } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export function HomePage() {
@@ -54,9 +52,6 @@ export function HomePage() {
 		(left, right) =>
 			getCatchUpChannelLabel(left).localeCompare(getCatchUpChannelLabel(right)),
 	);
-	const highlights = pickChannelHighlights(
-		filterChannels(overviewQuery.data?.channels ?? [], activeFilter),
-	);
 	const tabItems = [
 		{
 			key: "fresh",
@@ -75,12 +70,6 @@ export function HomePage() {
 			label: "Trending",
 			shortLabel: "Trend",
 			icon: <Flame className="size-3.5 shrink-0 sm:size-4" />,
-		},
-		{
-			key: "channels",
-			label: "Channels",
-			shortLabel: "Rooms",
-			icon: <TrendingUp className="size-3.5 shrink-0 sm:size-4" />,
 		},
 	] as const;
 
@@ -172,40 +161,6 @@ export function HomePage() {
 							errorTitle="Trending is unavailable"
 							errorDescription="The API route is reachable, but the trending query failed. Retry once the local API is healthy again."
 						/>
-					</SectionCard>
-				)}
-
-				{activeTab === "channels" && (
-					<SectionCard
-						eyebrow="Channel activity"
-						title="Where people are gathering"
-						actions={<TrendingUp className="text-eyebrow size-5" />}
-					>
-						<QueryState
-							isPending={overviewQuery.isPending}
-							isError={overviewQuery.isError}
-							isEmpty={highlights.length === 0}
-							loading={<CardSkeletonList count={3} />}
-							error={
-								<EmptyState
-									title="Channel highlights are unavailable"
-									description="The overview query failed. Retry once the local API is healthy again."
-								/>
-							}
-							empty={
-								<EmptyState
-									title="No channel highlights yet"
-									description="More public-channel thread summaries will populate this panel automatically."
-									icon={<Hash className="size-5" />}
-								/>
-							}
-						>
-							<div className="space-y-2.5">
-								{highlights.map((channel) => (
-									<HighlightCard key={channel.id} channel={channel} />
-								))}
-							</div>
-						</QueryState>
 					</SectionCard>
 				)}
 			</div>
@@ -362,40 +317,4 @@ function ChannelPill({
 			{label}
 		</Link>
 	);
-}
-
-function HighlightCard({ channel }: { channel: CatchUpChannel }) {
-	return (
-		<div className="surface-subpanel px-3 py-3">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<p className="text-copy-quiet text-[0.62rem] font-medium uppercase tracking-[0.22em]">
-						Channel
-					</p>
-					<p className="mt-1.5 truncate text-[0.95rem] font-semibold text-white">
-						#{getCatchUpChannelLabel(channel)}
-					</p>
-				</div>
-				<div className="accent-pill rounded-full px-2.5 py-0.5 text-[0.72rem] font-medium">
-					{formatCompactNumber(channel.thread_count)}
-				</div>
-			</div>
-			<div className="progress-track mt-3 h-1.5 overflow-hidden rounded-full">
-				<div
-					className="h-full rounded-full bg-linear-to-r from-(--color-accent) to-(--color-accent-strong)"
-					style={{
-						width: `${Math.max(12, Math.min(100, channel.thread_count * 12))}%`,
-					}}
-				/>
-			</div>
-		</div>
-	);
-}
-
-function filterChannels(channels: CatchUpChannel[], activeFilter: string) {
-	if (activeFilter === "all") {
-		return channels;
-	}
-
-	return channels.filter((channel) => channel.id === activeFilter);
 }
