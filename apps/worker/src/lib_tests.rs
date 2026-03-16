@@ -354,3 +354,63 @@ async fn refresh_thread_summaries_job_reports_refreshed_threads() {
     assert_eq!(payload["ok"], true);
     assert_eq!(payload["refreshed"], 1);
 }
+
+#[tokio::test]
+async fn local_worker_with_signing_keys_still_accepts_unsigned_refresh_jobs() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    let router = build_router(
+        store,
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url: "https://slack.com/api".to_owned(),
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
+            slack_user_token: None,
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: Some("current".to_owned()),
+            next_signing_key: Some("next".to_owned()),
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/refresh_thread_summaries")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let health = router
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .expect("health request"),
+        )
+        .await
+        .expect("health response");
+    let health_body = to_bytes(health.into_body(), usize::MAX)
+        .await
+        .expect("health body");
+    let health_payload: serde_json::Value =
+        serde_json::from_slice(&health_body).expect("health json");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(health_payload["queue_signature_verification"], false);
+}

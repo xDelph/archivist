@@ -97,6 +97,7 @@ struct AppState {
     process_event_url: String,
     heartbeat_url: String,
     refresh_thread_summaries_url: String,
+    queue_signature_verification: bool,
     slack_api_base_url: String,
     openrouter_config: ai::OpenRouterConfig,
     slack_user_token: Option<String>,
@@ -145,6 +146,11 @@ pub fn build_router(
     let heartbeat_url = build_heartbeat_endpoint(&config.worker_base_url)?;
     let refresh_thread_summaries_url =
         build_refresh_thread_summaries_endpoint(&config.worker_base_url)?;
+    let queue_signature_verification = signature_verification_enabled(
+        &config.worker_base_url,
+        config.current_signing_key.as_deref(),
+        config.next_signing_key.as_deref(),
+    );
 
     Ok(Router::new()
         .route("/health", get(health))
@@ -166,6 +172,7 @@ pub fn build_router(
             process_event_url,
             heartbeat_url,
             refresh_thread_summaries_url,
+            queue_signature_verification,
             slack_api_base_url: config.slack_api_base_url,
             openrouter_config: ai::OpenRouterConfig {
                 api_base_url: config.openrouter_base_url,
@@ -201,10 +208,7 @@ async fn health(
         version: env!("CARGO_PKG_VERSION"),
         repository_mode: state.store.mode().as_str(),
         event_log_path: state.event_log_path,
-        queue_signature_verification: signature_verification_enabled(
-            state.current_signing_key.as_deref(),
-            state.next_signing_key.as_deref(),
-        ),
+        queue_signature_verification: state.queue_signature_verification,
         tracked_events: repository_health.tracked_events,
         tracked_messages: repository_health.tracked_messages,
         tracked_reactions: repository_health.tracked_reactions,
@@ -218,6 +222,7 @@ async fn process_event(
     body: Bytes,
 ) -> Result<Json<ProcessEventResponse>, (StatusCode, Json<ErrorResponse>)> {
     validate_qstash_delivery(
+        state.queue_signature_verification,
         &headers,
         &body,
         &state.process_event_url,
@@ -257,6 +262,7 @@ async fn heartbeat(
     body: Bytes,
 ) -> Result<Json<HeartbeatResponse>, (StatusCode, Json<ErrorResponse>)> {
     validate_qstash_delivery(
+        state.queue_signature_verification,
         &headers,
         &body,
         &state.heartbeat_url,
@@ -277,6 +283,7 @@ async fn refresh_thread_summaries(
     body: Bytes,
 ) -> Result<Json<summaries::RefreshThreadSummariesResponse>, (StatusCode, Json<ErrorResponse>)> {
     validate_qstash_delivery(
+        state.queue_signature_verification,
         &headers,
         &body,
         &state.refresh_thread_summaries_url,
@@ -298,13 +305,14 @@ fn store_failed(error: StoreError) -> (StatusCode, Json<ErrorResponse>) {
 }
 
 fn validate_qstash_delivery(
+    queue_signature_verification: bool,
     headers: &HeaderMap,
     body: &[u8],
     expected_url: &str,
     current_signing_key: Option<&str>,
     next_signing_key: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if !signature_verification_enabled(current_signing_key, next_signing_key) {
+    if !queue_signature_verification {
         return Ok(());
     }
 
@@ -320,13 +328,26 @@ fn validate_qstash_delivery(
 }
 
 fn signature_verification_enabled(
+    worker_base_url: &str,
     current_signing_key: Option<&str>,
     next_signing_key: Option<&str>,
 ) -> bool {
+    signing_keys_present(current_signing_key, next_signing_key)
+        && !is_loopback_worker_base_url(worker_base_url)
+}
+
+fn signing_keys_present(current_signing_key: Option<&str>, next_signing_key: Option<&str>) -> bool {
     [current_signing_key, next_signing_key]
         .into_iter()
         .flatten()
         .any(|value| !value.trim().is_empty())
+}
+
+fn is_loopback_worker_base_url(worker_base_url: &str) -> bool {
+    reqwest::Url::parse(worker_base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
 }
 
 fn header_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
