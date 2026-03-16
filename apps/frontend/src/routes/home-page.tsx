@@ -21,7 +21,7 @@ import { threadCardDataFromCatchUpThread } from "@/lib/thread-card-props";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Calendar, Clock, Flame } from "lucide-react";
+import { Calendar, ChevronDown, Clock, Flame, Hash } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export function HomePage() {
@@ -88,7 +88,15 @@ export function HomePage() {
 					</div>
 				</div>
 
-				<div className="relative mt-4 flex flex-wrap gap-2">
+				<div className="relative mt-4 sm:hidden">
+					<MobileChannelFilter
+						activeFilter={activeFilter}
+						activeTab={activeTab}
+						availableChannels={availableChannels}
+					/>
+				</div>
+
+				<div className="relative mt-4 hidden flex-wrap gap-2 sm:flex">
 					<ChannelPill
 						isActive={activeFilter === "all"}
 						label="All channels"
@@ -165,6 +173,76 @@ export function HomePage() {
 				)}
 			</div>
 		</div>
+	);
+}
+
+function MobileChannelFilter({
+	activeFilter,
+	activeTab,
+	availableChannels,
+}: {
+	activeFilter: string;
+	activeTab: HomeTab;
+	availableChannels: {
+		id: string;
+		name: string | null;
+	}[];
+}) {
+	const navigate = useNavigate();
+	const selectedChannel =
+		activeFilter === "all"
+			? null
+			: (availableChannels.find((channel) => channel.id === activeFilter) ??
+				null);
+	const selectedLabel =
+		activeFilter === "all"
+			? "All channels"
+			: getCatchUpChannelLabel(
+					selectedChannel ?? { id: activeFilter, name: null },
+				);
+
+	return (
+		<label className="surface-input relative flex min-h-12 items-center gap-3 rounded-[1rem] px-3 py-2.5">
+			<div className="flex min-w-0 flex-1 items-center gap-2.5">
+				<div className="flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] bg-(--color-accent)/12 text-(--color-accent-soft)">
+					<Hash className="size-4" />
+				</div>
+				<div className="min-w-0">
+					<p className="text-copy-quiet text-[0.62rem] font-medium uppercase tracking-[0.18em]">
+						Channel
+					</p>
+					<p className="truncate text-[0.94rem] font-medium text-white">
+						{selectedLabel}
+					</p>
+				</div>
+			</div>
+
+			<select
+				aria-label="Filter by channel"
+				value={activeFilter}
+				onChange={(event) => {
+					const nextValue = event.target.value;
+					void navigate({
+						to: "/",
+						search: {
+							channel: nextValue === "all" ? undefined : nextValue,
+							tab: toHomeTabSearch(activeTab),
+						},
+						replace: false,
+					});
+				}}
+				className="absolute inset-0 opacity-0"
+			>
+				<option value="all">All channels</option>
+				{availableChannels.map((channel) => (
+					<option key={channel.id} value={channel.id}>
+						{getCatchUpChannelLabel(channel)}
+					</option>
+				))}
+			</select>
+
+			<ChevronDown className="text-copy-quiet size-4 shrink-0" />
+		</label>
 	);
 }
 
