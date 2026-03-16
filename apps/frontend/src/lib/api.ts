@@ -27,6 +27,8 @@ export interface CurrentUserResponse {
 export interface CatchUpResponse {
 	window: "24h" | "7d";
 	channels: CatchUpChannel[];
+	items: CatchUpThread[];
+	next_cursor: string | null;
 }
 
 export interface CatchUpChannel {
@@ -35,11 +37,12 @@ export interface CatchUpChannel {
 	kind: string;
 	is_archived: boolean;
 	thread_count: number;
-	threads: CatchUpThread[];
 }
 
 export interface CatchUpThread {
 	id: string;
+	channel_id: string;
+	channel_name: string | null;
 	root_ts: string;
 	author: ThreadAuthor | null;
 	title: string;
@@ -146,11 +149,27 @@ export interface SavedItem {
 	thread_id: string;
 	channel_id: string;
 	channel_name: string | null;
+	author: ThreadAuthor | null;
 	root_ts: string;
 	title: string;
 	preview: string;
+	reply_count: number;
+	participant_count: number;
+	reaction_count: number;
+	file_count: number;
 	last_activity_ts: string;
 	saved_at: string;
+}
+
+export type CatchUpWindow = "24h" | "7d";
+export type CatchUpSort = "activity" | "trending";
+
+export interface CatchUpParams {
+	window: CatchUpWindow;
+	channelId?: string;
+	cursor?: string;
+	limit?: number;
+	sort?: CatchUpSort;
 }
 
 export interface ThreadFile {
@@ -214,8 +233,28 @@ export async function logoutCurrentUser() {
 	});
 }
 
-export async function fetchCatchUp(window: "24h" | "7d") {
-	return apiRequest<CatchUpResponse>(`/api/catch-up?window=${window}`);
+export async function fetchCatchUp({
+	window,
+	channelId,
+	cursor,
+	limit,
+	sort = "activity",
+}: CatchUpParams) {
+	const params = new URLSearchParams({
+		window,
+		sort,
+	});
+	if (channelId) {
+		params.set("channel_id", channelId);
+	}
+	if (cursor) {
+		params.set("cursor", cursor);
+	}
+	if (limit !== undefined) {
+		params.set("limit", String(limit));
+	}
+
+	return apiRequest<CatchUpResponse>(`/api/catch-up?${params.toString()}`);
 }
 
 export async function fetchChannels() {

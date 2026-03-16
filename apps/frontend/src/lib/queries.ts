@@ -1,4 +1,6 @@
 import {
+	type CatchUpSort,
+	type CatchUpWindow,
 	type ChannelSummary,
 	type SearchParams,
 	fetchCatchUp,
@@ -32,12 +34,21 @@ export const authQueries = {
 };
 
 export const catchUpQueries = {
-	window: (window: "24h" | "7d") =>
+	summary: (window: CatchUpWindow) =>
 		queryOptions({
-			queryKey: ["catch-up", window],
-			queryFn: () => fetchCatchUp(window),
+			queryKey: ["catch-up", window, "summary"],
+			queryFn: () => fetchCatchUp({ window, limit: 1 }),
 			staleTime: 30_000,
 		}),
+	feedKey: ({
+		window,
+		channelId,
+		sort = "activity",
+	}: {
+		window: CatchUpWindow;
+		channelId?: string;
+		sort?: CatchUpSort;
+	}) => ["catch-up", window, channelId ?? "all", sort] as const,
 };
 
 export const channelQueries = {

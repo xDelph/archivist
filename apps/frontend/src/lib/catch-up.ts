@@ -1,36 +1,26 @@
-import type { CatchUpChannel, CatchUpThread } from "@/lib/api";
+import type { CatchUpChannel, CatchUpResponse, CatchUpThread } from "@/lib/api";
 
-export interface CatchUpFeedThread extends CatchUpThread {
-	channelName: string;
+export const CATCH_UP_PAGE_SIZE = 20;
+
+export function flattenCatchUpPages(
+	pages: Pick<CatchUpResponse, "items">[],
+): CatchUpThread[] {
+	return pages.flatMap((page) => page.items);
 }
 
-export function flattenCatchUpThreads(
-	channels: CatchUpChannel[],
-): CatchUpFeedThread[] {
-	return channels
-		.flatMap((channel) =>
-			channel.threads.map((thread) => ({
-				...thread,
-				channelName: channel.name || channel.id,
-			})),
-		)
-		.sort((left, right) => compareCatchUpThreads(left, right));
+export function getCatchUpChannelLabel(channel: {
+	id: string;
+	name: string | null;
+}) {
+	return channel.name || channel.id;
 }
 
-function compareCatchUpThreads(
-	left: CatchUpFeedThread,
-	right: CatchUpFeedThread,
-) {
-	return (
-		parseSlackTs(right.last_activity_ts) -
-			parseSlackTs(left.last_activity_ts) ||
-		right.reply_count - left.reply_count ||
-		right.reaction_count - left.reaction_count ||
-		right.file_count - left.file_count ||
-		left.id.localeCompare(right.id)
-	);
+export function getCatchUpThreadChannelName(thread: CatchUpThread) {
+	return thread.channel_name || thread.channel_id;
 }
 
-function parseSlackTs(value: string) {
-	return Number.parseFloat(value) || 0;
+export function pickChannelHighlights(channels: CatchUpChannel[]) {
+	return [...channels]
+		.sort((left, right) => right.thread_count - left.thread_count)
+		.slice(0, 5);
 }

@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { isApiErrorWithStatus } from "@/lib/api";
+import { homeTabSchema } from "@/lib/home-tabs";
 import {
 	authQueries,
 	catchUpQueries,
@@ -55,6 +56,7 @@ const appRoute = createRoute({
 
 const homeSearchSchema = z.object({
 	channel: z.string().optional().catch(undefined),
+	tab: homeTabSchema.optional().catch(undefined),
 });
 
 const indexRoute = createRoute({
@@ -62,10 +64,9 @@ const indexRoute = createRoute({
 	path: "/",
 	component: HomePage,
 	validateSearch: homeSearchSchema,
-	loaderDeps: ({ search }) => ({ channel: search.channel }),
+	loaderDeps: ({ search }) => ({ channel: search.channel, tab: search.tab }),
 	loader: ({ context }) => {
-		void context.queryClient.ensureQueryData(catchUpQueries.window("24h"));
-		void context.queryClient.ensureQueryData(catchUpQueries.window("7d"));
+		void context.queryClient.ensureQueryData(catchUpQueries.summary("7d"));
 	},
 });
 

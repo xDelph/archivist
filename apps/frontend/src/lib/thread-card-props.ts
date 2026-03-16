@@ -26,7 +26,7 @@ export function threadCardDataFromCatchUpThread(
 ): ThreadCardData {
 	return {
 		threadId: thread.id,
-		channelName,
+		channelName: channelName ?? thread.channel_name ?? thread.channel_id,
 		author: thread.author,
 		title: thread.title,
 		preview: thread.preview,
@@ -63,12 +63,13 @@ export function threadCardDataFromSavedItem(item: SavedItem): ThreadCardData {
 	return {
 		threadId: item.thread_id,
 		channelName: item.channel_name || item.channel_id,
+		author: item.author,
 		title: item.title,
 		preview: item.preview,
 		lastActivityTs: item.last_activity_ts,
-		replyCount: 0,
-		participantCount: 0,
-		reactionCount: 0,
-		fileCount: 0,
+		replyCount: item.reply_count,
+		participantCount: item.participant_count,
+		reactionCount: item.reaction_count,
+		fileCount: item.file_count,
 	};
 }

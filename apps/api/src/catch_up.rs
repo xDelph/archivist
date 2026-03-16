@@ -1,5 +1,9 @@
 use crate::{
-    AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
+    AppState,
+    analytics::record_analytics,
+    auth::SessionClaims,
+    slack_text,
+    thread_text::{build_root_message_text_map, lookup_root_message_text},
     view_models::UserSummaryResponse,
 };
 use axum::{
@@ -14,31 +18,40 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DAY_SECONDS: i64 = 24 * 60 * 60;
+const DEFAULT_LIMIT: usize = 20;
+const MAX_LIMIT: usize = 100;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct CatchUpQuery {
     window: Option<String>,
+    channel_id: Option<String>,
+    cursor: Option<String>,
+    limit: Option<usize>,
+    sort: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct CatchUpResponse {
     window: &'static str,
     channels: Vec<CatchUpChannelResponse>,
+    items: Vec<CatchUpThreadResponse>,
+    next_cursor: Option<String>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 struct CatchUpChannelResponse {
     id: String,
     name: Option<String>,
     kind: &'static str,
     is_archived: bool,
     thread_count: usize,
-    threads: Vec<CatchUpThreadResponse>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 struct CatchUpThreadResponse {
     id: String,
+    channel_id: String,
+    channel_name: Option<String>,
     root_ts: String,
     author: Option<UserSummaryResponse>,
     title: String,
@@ -53,6 +66,19 @@ struct CatchUpThreadResponse {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct ErrorResponse {
     error: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CatchUpData {
+    channels: Vec<CatchUpChannelResponse>,
+    items: Vec<CatchUpThreadResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CatchUpThreadItem {
+    response: CatchUpThreadResponse,
+    last_activity_seconds: i64,
+    trend_score: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +111,36 @@ impl CatchUpWindow {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CatchUpSort {
+    Activity,
+    Trending,
+}
+
+impl CatchUpSort {
+    fn parse(value: Option<&str>) -> Option<Self> {
+        match value.unwrap_or("activity") {
+            "activity" => Some(Self::Activity),
+            "trending" => Some(Self::Trending),
+            _ => None,
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Activity => "activity",
+            Self::Trending => "trending",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CatchUpFilters<'a> {
+    window: CatchUpWindow,
+    channel_id: Option<&'a str>,
+    sort: CatchUpSort,
+}
+
 pub(crate) async fn catch_up(
     State(state): State<AppState>,
     Extension(claims): Extension<SessionClaims>,
@@ -96,29 +152,56 @@ pub(crate) async fn catch_up(
             error: "invalid_window",
         }),
     ))?;
+    let sort = CatchUpSort::parse(query.sort.as_deref()).ok_or((
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error: "invalid_sort",
+        }),
+    ))?;
+    let cursor = parse_cursor(query.cursor.as_deref())?;
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let channels = state.store.channels().await.map_err(store_failed)?;
     let thread_summaries = state.store.thread_summaries().await.map_err(store_failed)?;
     let messages = state.store.messages().await.map_err(store_failed)?;
-    let channels = build_catch_up(
+    let catch_up = build_catch_up(
         channels,
         thread_summaries,
         messages,
         &state.user_store,
-        window,
+        CatchUpFilters {
+            window,
+            channel_id: query.channel_id.as_deref(),
+            sort,
+        },
         current_unix_timestamp(),
     )
     .await;
+    let items = catch_up
+        .items
+        .iter()
+        .skip(cursor)
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>();
+    let next_cursor =
+        (cursor + items.len() < catch_up.items.len()).then(|| (cursor + items.len()).to_string());
 
     record_analytics(
         &state,
         "catch_up_view",
         Some(&claims.slack_user_id),
-        serde_json::json!({ "window": window.as_str() }),
+        serde_json::json!({
+            "window": window.as_str(),
+            "sort": sort.as_str(),
+            "channel_id": query.channel_id,
+        }),
     );
 
     Ok(Json(CatchUpResponse {
         window: window.as_str(),
-        channels,
+        channels: catch_up.channels,
+        items,
+        next_cursor,
     }))
 }
 
@@ -127,21 +210,40 @@ async fn build_catch_up(
     thread_summaries: Vec<ThreadSummaryRow>,
     messages: Vec<Message>,
     user_store: &crate::user_store::UserStore,
-    window: CatchUpWindow,
+    filters: CatchUpFilters<'_>,
     now: i64,
-) -> Vec<CatchUpChannelResponse> {
-    let cutoff = window.cutoff(now);
+) -> CatchUpData {
+    let cutoff = filters.window.cutoff(now);
+    let channel_filter = filters
+        .channel_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let channel_names = slack_text::build_channel_name_map(&channels);
     let channel_metadata = channels
         .into_iter()
         .map(|channel| (channel.id.clone(), channel))
         .collect::<HashMap<_, _>>();
+    let root_texts = build_root_message_text_map(&messages);
     let root_users = messages
-        .into_iter()
-        .filter(|message| message.thread_ts.is_none())
-        .map(|message| ((message.channel_id, message.ts), message.user_id))
+        .iter()
+        .filter(|message| {
+            message
+                .thread_ts
+                .as_deref()
+                .is_none_or(|thread_ts| thread_ts == message.ts)
+        })
+        .map(|message| {
+            (
+                (message.channel_id.clone(), message.ts.clone()),
+                message.user_id.clone(),
+            )
+        })
         .collect::<HashMap<_, _>>();
-    let mut user_ids = thread_summaries
+    let filtered_summaries = thread_summaries
+        .into_iter()
+        .filter(|summary| parse_ts_seconds(&summary.last_activity_ts) >= cutoff)
+        .collect::<Vec<_>>();
+    let mut user_ids = filtered_summaries
         .iter()
         .filter_map(|summary| {
             root_users
@@ -150,50 +252,72 @@ async fn build_catch_up(
         })
         .collect::<std::collections::HashSet<_>>();
     user_ids.extend(slack_text::collect_user_mention_ids(
-        thread_summaries
-            .iter()
-            .flat_map(|summary| [summary.title.as_str(), summary.preview.as_str()]),
+        root_texts.values().map(String::as_str),
     ));
     let users = user_store
         .find_users(&user_ids.into_iter().collect::<Vec<_>>())
         .await;
-    let mut grouped = HashMap::<String, Vec<ThreadSummaryRow>>::new();
+    let mut channel_counts = HashMap::<String, usize>::new();
+    let mut channel_activity = HashMap::<String, i64>::new();
+    let mut items = Vec::<CatchUpThreadItem>::new();
 
-    for summary in thread_summaries
-        .into_iter()
-        .filter(|summary| parse_ts_seconds(&summary.last_activity_ts) >= cutoff)
-    {
-        grouped
+    for summary in filtered_summaries {
+        let last_activity_seconds = parse_ts_seconds(&summary.last_activity_ts);
+        *channel_counts
             .entry(summary.channel_id.clone())
-            .or_default()
-            .push(summary);
+            .or_default() += 1;
+        channel_activity
+            .entry(summary.channel_id.clone())
+            .and_modify(|current| *current = (*current).max(last_activity_seconds))
+            .or_insert(last_activity_seconds);
+
+        if channel_filter.is_some_and(|channel_id| channel_id != summary.channel_id) {
+            continue;
+        }
+
+        let root_ts = summary.root_ts.clone();
+        let root_text = lookup_root_message_text(&root_texts, &summary.channel_id, &root_ts);
+        let channel_name = channel_metadata
+            .get(&summary.channel_id)
+            .and_then(|channel| channel.name.clone());
+        let response = CatchUpThreadResponse {
+            id: format!("{}:{}", summary.channel_id, root_ts),
+            channel_id: summary.channel_id.clone(),
+            channel_name,
+            author: root_users
+                .get(&(summary.channel_id.clone(), root_ts.clone()))
+                .and_then(|user_id| user_id.as_ref())
+                .and_then(|user_id| users.get(user_id))
+                .cloned()
+                .map(Into::into),
+            root_ts,
+            title: slack_text::render_slack_text(&root_text, &users, &channel_names),
+            preview: slack_text::render_slack_text(&root_text, &users, &channel_names),
+            reply_count: summary.reply_count,
+            participant_count: summary.participant_count,
+            reaction_count: summary.reaction_count,
+            file_count: summary.file_count,
+            last_activity_ts: summary.last_activity_ts,
+        };
+
+        items.push(CatchUpThreadItem {
+            last_activity_seconds,
+            trend_score: calculate_trend_score(&response),
+            response,
+        });
     }
 
-    let mut channels = grouped
+    items.sort_by(|left, right| compare_catch_up_items(left, right, filters.sort));
+
+    let mut channels = channel_counts
         .into_iter()
-        .map(|(channel_id, mut summaries)| {
-            summaries.sort_by(|left, right| {
-                (
-                    parse_ts_seconds(&right.last_activity_ts),
-                    right.reply_count,
-                    right.reaction_count,
-                    right.file_count,
-                    right.root_ts.as_str(),
-                )
-                    .cmp(&(
-                        parse_ts_seconds(&left.last_activity_ts),
-                        left.reply_count,
-                        left.reaction_count,
-                        left.file_count,
-                        left.root_ts.as_str(),
-                    ))
-            });
+        .map(|(channel_id, thread_count)| {
             let metadata = channel_metadata.get(&channel_id);
 
             (
-                summaries
-                    .first()
-                    .map(|summary| parse_ts_seconds(&summary.last_activity_ts))
+                channel_activity
+                    .get(&channel_id)
+                    .copied()
                     .unwrap_or_default(),
                 CatchUpChannelResponse {
                     id: channel_id.clone(),
@@ -202,35 +326,7 @@ async fn build_catch_up(
                         .map(|channel| channel.kind.as_str())
                         .unwrap_or_else(|| ChannelKind::from_channel_id(&channel_id).as_str()),
                     is_archived: metadata.is_some_and(|channel| channel.is_archived),
-                    thread_count: summaries.len(),
-                    threads: summaries
-                        .into_iter()
-                        .map(|summary| CatchUpThreadResponse {
-                            id: format!("{}:{}", summary.channel_id, summary.root_ts),
-                            author: root_users
-                                .get(&(summary.channel_id.clone(), summary.root_ts.clone()))
-                                .and_then(|user_id| user_id.as_ref())
-                                .and_then(|user_id| users.get(user_id))
-                                .cloned()
-                                .map(Into::into),
-                            root_ts: summary.root_ts,
-                            title: slack_text::render_slack_text(
-                                &summary.title,
-                                &users,
-                                &channel_names,
-                            ),
-                            preview: slack_text::render_slack_text(
-                                &summary.preview,
-                                &users,
-                                &channel_names,
-                            ),
-                            reply_count: summary.reply_count,
-                            participant_count: summary.participant_count,
-                            reaction_count: summary.reaction_count,
-                            file_count: summary.file_count,
-                            last_activity_ts: summary.last_activity_ts,
-                        })
-                        .collect(),
+                    thread_count,
                 },
             )
         })
@@ -250,7 +346,71 @@ async fn build_catch_up(
             ))
     });
 
-    channels.into_iter().map(|(_, channel)| channel).collect()
+    CatchUpData {
+        channels: channels.into_iter().map(|(_, channel)| channel).collect(),
+        items: items.into_iter().map(|item| item.response).collect(),
+    }
+}
+
+fn parse_cursor(cursor: Option<&str>) -> Result<usize, (StatusCode, Json<ErrorResponse>)> {
+    cursor
+        .map(str::parse::<usize>)
+        .transpose()
+        .map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_cursor",
+                }),
+            )
+        })
+        .map(|value| value.unwrap_or_default())
+}
+
+fn calculate_trend_score(thread: &CatchUpThreadResponse) -> i64 {
+    thread.reply_count * 3
+        + thread.participant_count * 2
+        + thread.reaction_count * 2
+        + thread.file_count * 4
+}
+
+fn compare_catch_up_items(
+    left: &CatchUpThreadItem,
+    right: &CatchUpThreadItem,
+    sort: CatchUpSort,
+) -> std::cmp::Ordering {
+    match sort {
+        CatchUpSort::Activity => (
+            right.last_activity_seconds,
+            right.response.reply_count,
+            right.response.reaction_count,
+            right.response.file_count,
+            left.response.id.as_str(),
+        )
+            .cmp(&(
+                left.last_activity_seconds,
+                left.response.reply_count,
+                left.response.reaction_count,
+                left.response.file_count,
+                right.response.id.as_str(),
+            )),
+        CatchUpSort::Trending => (
+            right.trend_score,
+            right.last_activity_seconds,
+            right.response.reply_count,
+            right.response.reaction_count,
+            right.response.file_count,
+            left.response.id.as_str(),
+        )
+            .cmp(&(
+                left.trend_score,
+                left.last_activity_seconds,
+                left.response.reply_count,
+                left.response.reaction_count,
+                left.response.file_count,
+                right.response.id.as_str(),
+            )),
+    }
 }
 
 fn parse_ts_seconds(value: &str) -> i64 {
