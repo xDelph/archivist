@@ -31,6 +31,7 @@ async fn test_state() -> AppState {
             client_id: None,
             client_secret: None,
             redirect_uri: None,
+            team_id: None,
             token_url: None,
         },
         web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),

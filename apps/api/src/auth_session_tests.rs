@@ -53,6 +53,7 @@ async fn me_rejects_missing_sessions() {
             client_id: None,
             client_secret: None,
             redirect_uri: None,
+            team_id: None,
             token_url: None,
         },
         web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),

@@ -1,9 +1,17 @@
-use crate::{AppState, auth::SessionClaims, saved_store::SavedItemRecord, slack_text};
+use crate::{
+    AppState,
+    auth::SessionClaims,
+    saved_store::SavedItemRecord,
+    slack_text,
+    thread_text::{build_root_message_text_map, lookup_root_message_text},
+    view_models::UserSummaryResponse,
+};
 use axum::{
     Extension, Json,
     extract::{Path, State},
     http::StatusCode,
 };
+use db::ThreadSummaryRow;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -37,9 +45,14 @@ struct SavedItemResponse {
     thread_id: String,
     channel_id: String,
     channel_name: Option<String>,
+    author: Option<UserSummaryResponse>,
     root_ts: String,
     title: String,
     preview: String,
+    reply_count: i64,
+    participant_count: i64,
+    reaction_count: i64,
+    file_count: i64,
     last_activity_ts: String,
     saved_at: String,
 }
@@ -54,19 +67,45 @@ pub(crate) async fn list_saved_items(
     Extension(claims): Extension<SessionClaims>,
 ) -> Result<Json<SavedItemsResponse>, (StatusCode, Json<ErrorResponse>)> {
     let channels = state.store.channels().await.map_err(store_failed)?;
+    let messages = state.store.messages().await.map_err(store_failed)?;
+    let thread_summaries = state.store.thread_summaries().await.map_err(store_failed)?;
+    let root_texts = build_root_message_text_map(&messages);
     let channel_names = slack_text::build_channel_name_map(&channels);
+    let summary_lookup = build_thread_summary_lookup(thread_summaries);
+    let root_users = build_root_user_lookup(&messages);
     let items = state.saved_store.list_items(&claims.slack_user_id).await;
-    let mentioned_user_ids = slack_text::collect_user_mention_ids(
-        items
-            .iter()
-            .flat_map(|item| [item.title.as_str(), item.preview.as_str()]),
-    )
-    .into_iter()
-    .collect::<Vec<_>>();
-    let users = state.user_store.find_users(&mentioned_user_ids).await;
+    let item_texts = items
+        .iter()
+        .map(|item| lookup_root_message_text(&root_texts, &item.channel_id, &item.root_ts))
+        .collect::<Vec<_>>();
+    let mentioned_user_ids =
+        slack_text::collect_user_mention_ids(item_texts.iter().map(String::as_str))
+            .into_iter()
+            .collect::<Vec<_>>();
+    let mut user_ids = mentioned_user_ids
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    user_ids.extend(items.iter().filter_map(|item| {
+        root_users
+            .get(&(item.channel_id.clone(), item.root_ts.clone()))
+            .and_then(|user_id| user_id.clone())
+    }));
+    let users = state
+        .user_store
+        .find_users(&user_ids.into_iter().collect::<Vec<_>>())
+        .await;
     let items = items
         .into_iter()
-        .map(|item| saved_item_response(item, &channel_names, &users))
+        .map(|item| {
+            saved_item_response(
+                item,
+                &root_texts,
+                &summary_lookup,
+                &root_users,
+                &channel_names,
+                &users,
+            )
+        })
         .collect();
 
     Ok(Json(SavedItemsResponse { items }))
@@ -97,8 +136,12 @@ pub(crate) async fn save_item(
                 error: "thread_not_found",
             }),
         ))?;
+    let messages = state.store.messages().await.map_err(store_failed)?;
+    let root_texts = build_root_message_text_map(&messages);
+    let root_users = build_root_user_lookup(&messages);
     let channels = state.store.channels().await.map_err(store_failed)?;
     let channel_names = slack_text::build_channel_name_map(&channels);
+    let title = lookup_root_message_text(&root_texts, channel_id, root_ts);
     let saved_item = state
         .saved_store
         .upsert_item(SavedItemRecord {
@@ -106,24 +149,38 @@ pub(crate) async fn save_item(
             thread_id: thread_id.to_owned(),
             channel_id: channel_id.to_owned(),
             root_ts: root_ts.to_owned(),
-            title: thread_summary.title,
-            preview: thread_summary.preview,
-            last_activity_ts: thread_summary.last_activity_ts,
+            last_activity_ts: thread_summary.last_activity_ts.clone(),
             saved_at: current_saved_at(),
         })
         .await
         .map_err(saved_store_error)?;
-    let mentioned_user_ids = slack_text::collect_user_mention_ids([
-        saved_item.title.as_str(),
-        saved_item.preview.as_str(),
-    ])
-    .into_iter()
-    .collect::<Vec<_>>();
-    let users = state.user_store.find_users(&mentioned_user_ids).await;
+    let mentioned_user_ids = slack_text::collect_user_mention_ids([title.as_str()])
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut user_ids = mentioned_user_ids
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    if let Some(user_id) = root_users
+        .get(&(channel_id.to_owned(), root_ts.to_owned()))
+        .and_then(|user_id| user_id.clone())
+    {
+        user_ids.insert(user_id);
+    }
+    let users = state
+        .user_store
+        .find_users(&user_ids.into_iter().collect::<Vec<_>>())
+        .await;
 
     Ok(Json(SavedMutationResponse {
         ok: true,
-        item: saved_item_response(saved_item, &channel_names, &users),
+        item: saved_item_response(
+            saved_item,
+            &root_texts,
+            &build_thread_summary_lookup(vec![thread_summary]),
+            &root_users,
+            &channel_names,
+            &users,
+        ),
     }))
 }
 
@@ -160,9 +217,14 @@ pub(crate) async fn delete_saved_item(
 
 fn saved_item_response(
     item: SavedItemRecord,
+    root_texts: &HashMap<(String, String), String>,
+    summary_lookup: &HashMap<(String, String), ThreadSummaryRow>,
+    root_users: &HashMap<(String, String), Option<String>>,
     channel_names: &HashMap<String, Option<String>>,
     users: &HashMap<String, crate::user_store::SyncedUserRecord>,
 ) -> SavedItemResponse {
+    let root_text = lookup_root_message_text(root_texts, &item.channel_id, &item.root_ts);
+    let summary = summary_lookup.get(&(item.channel_id.clone(), item.root_ts.clone()));
     SavedItemResponse {
         id: item.thread_id.clone(),
         thread_id: item.thread_id,
@@ -171,12 +233,56 @@ fn saved_item_response(
             .get(&item.channel_id)
             .cloned()
             .unwrap_or_default(),
+        author: root_users
+            .get(&(item.channel_id.clone(), item.root_ts.clone()))
+            .and_then(|user_id| user_id.as_ref())
+            .and_then(|user_id| users.get(user_id))
+            .cloned()
+            .map(Into::into),
         root_ts: item.root_ts,
-        title: slack_text::render_slack_text(&item.title, users, channel_names),
-        preview: slack_text::render_slack_text(&item.preview, users, channel_names),
+        title: slack_text::render_slack_text(&root_text, users, channel_names),
+        preview: slack_text::render_slack_text(&root_text, users, channel_names),
+        reply_count: summary.map_or(0, |summary| summary.reply_count),
+        participant_count: summary.map_or(0, |summary| summary.participant_count),
+        reaction_count: summary.map_or(0, |summary| summary.reaction_count),
+        file_count: summary.map_or(0, |summary| summary.file_count),
         last_activity_ts: item.last_activity_ts,
         saved_at: item.saved_at,
     }
+}
+
+fn build_thread_summary_lookup(
+    thread_summaries: Vec<ThreadSummaryRow>,
+) -> HashMap<(String, String), ThreadSummaryRow> {
+    thread_summaries
+        .into_iter()
+        .map(|summary| {
+            (
+                (summary.channel_id.clone(), summary.root_ts.clone()),
+                summary,
+            )
+        })
+        .collect()
+}
+
+fn build_root_user_lookup(
+    messages: &[domain::Message],
+) -> HashMap<(String, String), Option<String>> {
+    messages
+        .iter()
+        .filter(|message| {
+            message
+                .thread_ts
+                .as_deref()
+                .is_none_or(|thread_ts| thread_ts == message.ts)
+        })
+        .map(|message| {
+            (
+                (message.channel_id.clone(), message.ts.clone()),
+                message.user_id.clone(),
+            )
+        })
+        .collect()
 }
 
 fn parse_thread_id(thread_id: &str) -> Option<(&str, &str)> {

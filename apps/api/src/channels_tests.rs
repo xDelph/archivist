@@ -18,6 +18,7 @@ async fn channels_route_requires_authenticated_session() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -140,6 +141,7 @@ async fn channels_route_reports_activity_and_channel_metadata() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -233,6 +235,7 @@ async fn channels_route_merges_single_workspace_channel_activity() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir

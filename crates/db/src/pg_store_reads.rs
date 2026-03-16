@@ -168,8 +168,6 @@ impl PgEventStore {
             SELECT
                 channel_id,
                 root_ts,
-                title,
-                preview,
                 reply_count,
                 participant_count,
                 reaction_count,
@@ -194,8 +192,6 @@ impl PgEventStore {
             .map(|row| ThreadSummaryRow {
                 channel_id: row.get("channel_id"),
                 root_ts: row.get("root_ts"),
-                title: row.get("title"),
-                preview: row.get("preview"),
                 reply_count: row.get("reply_count"),
                 participant_count: row.get("participant_count"),
                 reaction_count: row.get("reaction_count"),

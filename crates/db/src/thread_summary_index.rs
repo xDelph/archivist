@@ -13,8 +13,6 @@ pub(crate) type ThreadSummaryMap = HashMap<ThreadSummaryKey, ThreadSummaryRow>;
 struct ThreadSummaryAggregate {
     channel_id: String,
     root_ts: String,
-    title: String,
-    preview: String,
     reply_count: usize,
     participants: HashSet<String>,
     reaction_count: usize,
@@ -41,16 +39,14 @@ pub(crate) fn build_thread_summaries(
 
     for message in messages.values() {
         let root_ts = normalized_root_ts(message);
-        let Some(root) = root_messages.get(&(message.channel_id.clone(), root_ts.clone())) else {
+        if !root_messages.contains_key(&(message.channel_id.clone(), root_ts.clone())) {
             continue;
-        };
+        }
         let entry = aggregates
             .entry((message.channel_id.clone(), root_ts.clone()))
             .or_insert_with(|| ThreadSummaryAggregate {
                 channel_id: message.channel_id.clone(),
                 root_ts: root_ts.clone(),
-                title: summarize_text(&root.text),
-                preview: summarize_text(&root.text),
                 reply_count: 0,
                 participants: HashSet::new(),
                 reaction_count: 0,
@@ -81,8 +77,6 @@ pub(crate) fn build_thread_summaries(
             .or_insert_with(|| ThreadSummaryAggregate {
                 channel_id: message.channel_id.clone(),
                 root_ts: root.ts.clone(),
-                title: summarize_text(&root.text),
-                preview: summarize_text(&root.text),
                 reply_count: 0,
                 participants: HashSet::new(),
                 reaction_count: 0,
@@ -110,8 +104,6 @@ pub(crate) fn build_thread_summaries(
             .or_insert_with(|| ThreadSummaryAggregate {
                 channel_id: message.channel_id.clone(),
                 root_ts: root.ts.clone(),
-                title: summarize_text(&root.text),
-                preview: summarize_text(&root.text),
                 reply_count: 0,
                 participants: HashSet::new(),
                 reaction_count: 0,
@@ -131,8 +123,6 @@ pub(crate) fn build_thread_summaries(
             ThreadSummaryRow {
                 channel_id: aggregate.channel_id,
                 root_ts,
-                title: aggregate.title,
-                preview: aggregate.preview,
                 reply_count: aggregate.reply_count as i64,
                 participant_count: aggregate.participants.len() as i64,
                 reaction_count: aggregate.reaction_count as i64,
@@ -144,14 +134,6 @@ pub(crate) fn build_thread_summaries(
     }
 
     thread_summaries
-}
-
-fn summarize_text(value: &str) -> String {
-    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if normalized.is_empty() {
-        return "(no text)".to_owned();
-    }
-    normalized.chars().take(80).collect()
 }
 
 fn is_root_message(message: &Message) -> bool {

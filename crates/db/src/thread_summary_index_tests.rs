@@ -52,7 +52,6 @@ fn rebuild_thread_summaries_rolls_up_thread_activity() {
     let summary = thread_summaries
         .get(&("C123".to_owned(), "1700000000.000001".to_owned()))
         .expect("summary");
-    assert_eq!(summary.title, "root summary");
     assert_eq!(summary.reply_count, 1);
     assert_eq!(summary.participant_count, 3);
     assert_eq!(summary.reaction_count, 1);

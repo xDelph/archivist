@@ -36,6 +36,7 @@ async fn slack_callback_exchanges_code_and_validates_identity() {
             client_id: Some("client_123".to_owned()),
             client_secret: Some("secret".to_owned()),
             redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+            team_id: None,
             token_url: Some(format!("{}/token", token_server.0)),
         },
         "code_123",

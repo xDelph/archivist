@@ -25,8 +25,6 @@ pub const fn create_thread_summaries_table_query() -> &'static str {
 CREATE TABLE IF NOT EXISTS thread_summaries (
     channel_id TEXT NOT NULL,
     root_ts TEXT NOT NULL,
-    title TEXT NOT NULL,
-    preview TEXT NOT NULL,
     reply_count BIGINT NOT NULL,
     participant_count BIGINT NOT NULL,
     reaction_count BIGINT NOT NULL,

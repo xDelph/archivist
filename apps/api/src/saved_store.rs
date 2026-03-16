@@ -16,8 +16,6 @@ pub(crate) struct SavedItemRecord {
     pub(crate) thread_id: String,
     pub(crate) channel_id: String,
     pub(crate) root_ts: String,
-    pub(crate) title: String,
-    pub(crate) preview: String,
     pub(crate) last_activity_ts: String,
     pub(crate) saved_at: String,
 }
@@ -154,8 +152,6 @@ impl SavedItemStore {
                     saved_items.user_id,
                     saved_items.channel_id,
                     saved_items.root_ts,
-                    thread_summaries.title,
-                    thread_summaries.preview,
                     to_char(
                         EXTRACT(EPOCH FROM thread_summaries.last_activity_at),
                         'FM999999999999999.000000'
@@ -185,8 +181,6 @@ impl SavedItemStore {
                             thread_id: format!("{channel_id}:{root_ts}"),
                             channel_id,
                             root_ts,
-                            title: row.get("title"),
-                            preview: row.get("preview"),
                             last_activity_ts: row.get("last_activity_ts"),
                             saved_at: row.get("saved_at"),
                         }

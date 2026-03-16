@@ -161,6 +161,12 @@ fn build_prompt(summary: &ThreadSummaryRow, messages: &[Message]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
+    let root_text = messages
+        .iter()
+        .find(|message| message.ts == summary.root_ts)
+        .map(|message| compact_text(&message.text, MAX_MESSAGE_CHARS))
+        .unwrap_or_else(|| "(no text)".to_owned());
+
     format!(
         "Summarize the following messages in the main language used by the messages in 2 to 3 sentences maximum.\n\
          \n\
@@ -189,10 +195,10 @@ fn build_prompt(summary: &ThreadSummaryRow, messages: &[Message]) -> String {
          reaction_count={}\n\
          file_count={}\n\
          \n\
-         Messages:\n{}",
+        Messages:\n{}",
         summary.channel_id,
         summary.root_ts,
-        compact_text(&summary.title, MAX_MESSAGE_CHARS),
+        root_text,
         summary.reply_count,
         summary.participant_count,
         summary.reaction_count,

@@ -30,6 +30,7 @@ pub(crate) struct SlackAuthConfig {
     pub(crate) client_id: Option<String>,
     pub(crate) client_secret: Option<String>,
     pub(crate) redirect_uri: Option<String>,
+    pub(crate) team_id: Option<String>,
     pub(crate) token_url: Option<String>,
 }
 
@@ -39,6 +40,7 @@ impl SlackAuthConfig {
             client_id: config.slack_client_id.clone(),
             client_secret: config.slack_client_secret.clone(),
             redirect_uri: config.slack_redirect_uri.clone(),
+            team_id: config.slack_team_id.clone(),
             token_url: config.slack_token_url.clone(),
         }
     }
@@ -278,6 +280,15 @@ pub(crate) fn build_authorize_url(config: &SlackAuthConfig) -> Option<String> {
             urlencoding::encode(redirect_uri).into_owned(),
         ),
     ];
+    let mut query = query;
+    if let Some(team_id) = config
+        .team_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        query.push(("team", urlencoding::encode(team_id).into_owned()));
+    }
 
     Some(format!(
         "{SLACK_AUTHORIZE_URL}?{}",

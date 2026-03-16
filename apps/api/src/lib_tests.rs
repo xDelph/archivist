@@ -34,6 +34,7 @@ async fn health_route_reports_workspace_capabilities() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: None,
         auth_store_path: tempdir
@@ -82,6 +83,7 @@ async fn auth_me_includes_cors_headers_for_the_frontend_origin() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("test-secret".to_owned()),
         auth_store_path: tempdir
@@ -126,6 +128,7 @@ async fn auth_me_includes_cors_headers_for_localhost_frontend_origin() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("test-secret".to_owned()),
         auth_store_path: tempdir

@@ -62,8 +62,6 @@ pub struct SearchDocumentRow {
 pub struct ThreadSummaryRow {
     pub channel_id: String,
     pub root_ts: String,
-    pub title: String,
-    pub preview: String,
     pub reply_count: i64,
     pub participant_count: i64,
     pub reaction_count: i64,

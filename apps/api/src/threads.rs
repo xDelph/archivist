@@ -1,6 +1,6 @@
 use crate::{
     AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
-    view_models::UserSummaryResponse,
+    thread_text::normalize_thread_text, view_models::UserSummaryResponse,
 };
 use axum::{
     Extension, Json,
@@ -180,6 +180,10 @@ async fn build_thread_detail(
     if !thread_messages.iter().any(|message| message.ts == root_ts) {
         return None;
     }
+    let root_message_text = thread_messages
+        .iter()
+        .find(|message| message.ts == root_ts)
+        .map(|message| message.text.clone());
 
     let mut user_ids = thread_messages
         .iter()
@@ -274,20 +278,14 @@ async fn build_thread_detail(
         .iter()
         .map(|message| message.files.len())
         .sum::<usize>();
-    let title = thread_summary.as_ref().and_then(|summary| {
+    let title = root_message_text.as_deref().and_then(|text| {
         normalize_text(&slack_text::render_slack_text(
-            &summary.title,
+            &normalize_thread_text(text),
             &users,
             &channel_names,
         ))
     });
-    let preview = thread_summary.as_ref().and_then(|summary| {
-        normalize_text(&slack_text::render_slack_text(
-            &summary.preview,
-            &users,
-            &channel_names,
-        ))
-    });
+    let preview = title.clone();
     let last_activity_ts = messages
         .last()
         .map(|message| message.ts.clone())

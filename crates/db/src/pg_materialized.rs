@@ -175,8 +175,6 @@ pub(crate) async fn upsert_thread_summary(
         INSERT INTO thread_summaries (
             channel_id,
             root_ts,
-            title,
-            preview,
             reply_count,
             participant_count,
             reaction_count,
@@ -184,11 +182,9 @@ pub(crate) async fn upsert_thread_summary(
             root_message_at,
             last_activity_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9), to_timestamp($10))
+        VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7), to_timestamp($8))
         ON CONFLICT (channel_id, root_ts) DO UPDATE
-        SET title = EXCLUDED.title,
-            preview = EXCLUDED.preview,
-            reply_count = EXCLUDED.reply_count,
+        SET reply_count = EXCLUDED.reply_count,
             participant_count = EXCLUDED.participant_count,
             reaction_count = EXCLUDED.reaction_count,
             file_count = EXCLUDED.file_count,
@@ -199,8 +195,6 @@ pub(crate) async fn upsert_thread_summary(
     )
     .bind(&row.channel_id)
     .bind(&row.root_ts)
-    .bind(&row.title)
-    .bind(&row.preview)
     .bind(row.reply_count)
     .bind(row.participant_count)
     .bind(row.reaction_count)

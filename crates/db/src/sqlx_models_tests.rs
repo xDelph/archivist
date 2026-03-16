@@ -65,8 +65,6 @@ fn sqlx_rows_cover_core_entities() {
     let thread_summary = ThreadSummaryRow {
         channel_id: "C123".to_owned(),
         root_ts: message.ts.clone(),
-        title: "General".to_owned(),
-        preview: "hello".to_owned(),
         reply_count: 1,
         participant_count: 2,
         reaction_count: 1,

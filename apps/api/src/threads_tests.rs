@@ -170,6 +170,7 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -234,6 +235,7 @@ async fn thread_detail_route_requires_authenticated_session() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -285,6 +287,7 @@ async fn thread_detail_route_rejects_invalid_ids() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -356,6 +359,7 @@ async fn thread_detail_route_resolves_single_workspace_threads() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -475,6 +479,7 @@ async fn thread_detail_route_returns_fresh_generated_summary_metadata() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -635,6 +640,7 @@ async fn thread_detail_route_ignores_stale_generated_summary_metadata() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir

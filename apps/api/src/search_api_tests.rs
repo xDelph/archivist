@@ -110,8 +110,6 @@ fn build_search_results_respects_filters_and_sorting() {
             ThreadSummaryRow {
                 channel_id: "C123".to_owned(),
                 root_ts: "1700000200.000001".to_owned(),
-                title: "release notes are ready".to_owned(),
-                preview: "release notes include search improvements".to_owned(),
                 reply_count: 1,
                 participant_count: 2,
                 reaction_count: 3,
@@ -122,8 +120,6 @@ fn build_search_results_respects_filters_and_sorting() {
             ThreadSummaryRow {
                 channel_id: "C999".to_owned(),
                 root_ts: "1700000400.000001".to_owned(),
-                title: "release notes in another channel".to_owned(),
-                preview: "release notes in another channel".to_owned(),
                 reply_count: 0,
                 participant_count: 1,
                 reaction_count: 0,
@@ -202,8 +198,6 @@ fn build_search_results_returns_one_item_per_thread() {
         vec![ThreadSummaryRow {
             channel_id: "C123".to_owned(),
             root_ts: "1700000200.000001".to_owned(),
-            title: "release plan".to_owned(),
-            preview: "release checklist".to_owned(),
             reply_count: 1,
             participant_count: 2,
             reaction_count: 0,
@@ -277,8 +271,6 @@ fn build_search_results_keeps_latest_match_for_newest_sort() {
         vec![ThreadSummaryRow {
             channel_id: "C123".to_owned(),
             root_ts: "1700000200.000001".to_owned(),
-            title: "release plan".to_owned(),
-            preview: "release checklist".to_owned(),
             reply_count: 1,
             participant_count: 2,
             reaction_count: 0,
@@ -379,6 +371,7 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -445,6 +438,7 @@ async fn search_route_requires_authenticated_session() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir
@@ -495,6 +489,7 @@ async fn search_route_rejects_invalid_sort_values() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir

@@ -71,6 +71,23 @@ async fn save_and_list_routes_persist_saved_threads() {
         })
         .await
         .expect("message");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_reply".to_owned(),
+            event_time: 5,
+            received_at: 6,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U456".to_owned()),
+                text: Some("I agree".to_owned()),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: Some(root_ts.to_owned()),
+                files: vec![],
+            },
+        })
+        .await
+        .expect("reply");
     store.refresh_thread_summaries().await;
 
     let session_token = build_session_token(
@@ -110,6 +127,7 @@ async fn save_and_list_routes_persist_saved_threads() {
     assert!(saved.ok);
     assert_eq!(saved.item.channel_name.as_deref(), Some("general"));
     assert_eq!(saved.item.thread_id, format!("C123:{root_ts}"));
+    assert_eq!(saved.item.reply_count, 1);
 
     let list_response = app
         .oneshot(
@@ -130,6 +148,7 @@ async fn save_and_list_routes_persist_saved_threads() {
 
     assert_eq!(listed.items.len(), 1);
     assert_eq!(listed.items[0].title, "Ship the first beta this week");
+    assert_eq!(listed.items[0].reply_count, 1);
 }
 
 #[tokio::test]
@@ -243,6 +262,7 @@ fn config_with_defaults(tempdir: &tempfile::TempDir) -> ApiConfig {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir

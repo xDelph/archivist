@@ -335,7 +335,6 @@ async fn message_jobs_refresh_thread_summaries_for_full_threads() {
 
     let thread_summaries = store.thread_summaries().await;
     assert_eq!(thread_summaries.len(), 1);
-    assert_eq!(thread_summaries[0].title, "root summary");
     assert_eq!(thread_summaries[0].reply_count, 1);
     assert_eq!(thread_summaries[0].participant_count, 3);
     assert_eq!(thread_summaries[0].reaction_count, 1);
@@ -345,7 +344,6 @@ async fn message_jobs_refresh_thread_summaries_for_full_threads() {
     let reopened = JsonlEventStore::open(&path).await.expect("reopened");
     let reopened_summaries = reopened.thread_summaries().await;
     assert_eq!(reopened_summaries.len(), 1);
-    assert_eq!(reopened_summaries[0].title, "root summary");
 }
 
 #[tokio::test]

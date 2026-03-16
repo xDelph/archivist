@@ -75,6 +75,7 @@ async fn link_metadata_route_returns_metadata_for_authenticated_users() {
         slack_client_id: None,
         slack_client_secret: None,
         slack_redirect_uri: None,
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: Some("session_secret".to_owned()),
         auth_store_path: tempdir

@@ -13,8 +13,6 @@ async fn local_saved_item_store_upserts_lists_and_removes_items() {
             thread_id: "C123:1700000000.000001".to_owned(),
             channel_id: "C123".to_owned(),
             root_ts: "1700000000.000001".to_owned(),
-            title: "Launch update".to_owned(),
-            preview: "We should ship it".to_owned(),
             last_activity_ts: "1700000000.000010".to_owned(),
             saved_at: "2026-03-09T10:00:00Z".to_owned(),
         })
@@ -26,8 +24,6 @@ async fn local_saved_item_store_upserts_lists_and_removes_items() {
             thread_id: "C456:1700000000.000002".to_owned(),
             channel_id: "C456".to_owned(),
             root_ts: "1700000000.000002".to_owned(),
-            title: "Design sync".to_owned(),
-            preview: "New comments landed".to_owned(),
             last_activity_ts: "1700000000.000020".to_owned(),
             saved_at: "2026-03-09T11:00:00Z".to_owned(),
         })

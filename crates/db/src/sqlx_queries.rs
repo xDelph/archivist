@@ -86,25 +86,21 @@ pub const fn upsert_thread_summary_query() -> &'static str {
 INSERT INTO thread_summaries (
     channel_id,
     root_ts,
-    title,
-    preview,
     reply_count,
     participant_count,
     reaction_count,
     file_count,
     root_message_at,
-    last_activity_ts
+    last_activity_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (channel_id, root_ts) DO UPDATE
-SET title = EXCLUDED.title,
-    preview = EXCLUDED.preview,
-    reply_count = EXCLUDED.reply_count,
+SET reply_count = EXCLUDED.reply_count,
     participant_count = EXCLUDED.participant_count,
     reaction_count = EXCLUDED.reaction_count,
     file_count = EXCLUDED.file_count,
     root_message_at = EXCLUDED.root_message_at,
-    last_activity_ts = EXCLUDED.last_activity_ts
+    last_activity_at = EXCLUDED.last_activity_at
 "#
 }
 
@@ -131,8 +127,6 @@ pub const fn initial_catch_up_query() -> &'static str {
 SELECT
     thread_summaries.channel_id,
     thread_summaries.root_ts,
-    thread_summaries.title,
-    thread_summaries.preview,
     thread_summaries.reply_count,
     thread_summaries.participant_count,
     thread_summaries.reaction_count,

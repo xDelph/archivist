@@ -208,7 +208,6 @@ async fn in_memory_store_refreshes_thread_summaries_for_threads() {
     let thread_summaries = store.thread_summaries().await;
 
     assert_eq!(thread_summaries.len(), 1);
-    assert_eq!(thread_summaries[0].title, "root summary");
     assert_eq!(thread_summaries[0].reply_count, 1);
     assert_eq!(thread_summaries[0].participant_count, 3);
     assert_eq!(thread_summaries[0].reaction_count, 1);

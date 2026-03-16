@@ -1,0 +1,3 @@
+ALTER TABLE thread_summaries
+DROP COLUMN IF EXISTS title,
+DROP COLUMN IF EXISTS preview;

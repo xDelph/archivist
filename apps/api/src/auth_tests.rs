@@ -28,6 +28,7 @@ fn authorize_url_omits_team_when_workspace_is_not_configured() {
         client_id: Some("client_123".to_owned()),
         client_secret: None,
         redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        team_id: None,
         token_url: None,
     })
     .expect("authorize url");
@@ -43,12 +44,27 @@ fn authorize_url_omits_team_when_workspace_is_not_configured() {
 }
 
 #[test]
+fn authorize_url_includes_team_when_workspace_is_configured() {
+    let url = build_authorize_url(&SlackAuthConfig {
+        client_id: Some("client_123".to_owned()),
+        client_secret: None,
+        redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        team_id: Some("T1234".to_owned()),
+        token_url: None,
+    })
+    .expect("authorize url");
+
+    assert!(url.contains("&team=T1234"));
+}
+
+#[test]
 fn authorize_url_requires_client_id_and_redirect_uri() {
     assert_eq!(
         build_authorize_url(&SlackAuthConfig {
             client_id: None,
             client_secret: None,
             redirect_uri: Some("https://archivist.dev/callback".to_owned()),
+            team_id: None,
             token_url: None,
         }),
         None
@@ -58,6 +74,7 @@ fn authorize_url_requires_client_id_and_redirect_uri() {
             client_id: Some("client_123".to_owned()),
             client_secret: None,
             redirect_uri: Some("   ".to_owned()),
+            team_id: None,
             token_url: None,
         }),
         None
@@ -103,12 +120,40 @@ async fn slack_start_redirects_to_slack_oidc() {
 }
 
 #[tokio::test]
+async fn slack_start_includes_team_when_workspace_is_configured() {
+    let tempdir = tempdir().expect("tempdir");
+    let mut config = config_with_defaults(&tempdir);
+    config.slack_team_id = Some("T1234".to_owned());
+    let response = crate::build_router(config)
+        .await
+        .expect("router")
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/slack/start")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .expect("location header");
+
+    assert!(location.contains("&team=T1234"));
+}
+
+#[tokio::test]
 async fn slack_start_rejects_missing_config() {
     let tempdir = tempdir().expect("tempdir");
     let mut config = config_with_defaults(&tempdir);
     config.slack_client_id = None;
     config.slack_client_secret = None;
     config.slack_redirect_uri = None;
+    config.slack_team_id = None;
     let response = crate::build_router(config)
         .await
         .expect("router")
@@ -132,6 +177,7 @@ fn config_with_defaults(tempdir: &TempDir) -> ApiConfig {
         slack_client_id: Some("client_123".to_owned()),
         slack_client_secret: Some("secret".to_owned()),
         slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        slack_team_id: None,
         slack_token_url: None,
         session_secret: None,
         auth_store_path: tempdir
