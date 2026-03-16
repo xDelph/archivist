@@ -1,6 +1,8 @@
 import { AppShell } from "@/components/app-shell";
 import { isApiErrorWithStatus } from "@/lib/api";
+import { readCachedCurrentUser } from "@/lib/auth-cache";
 import { homeTabSchema } from "@/lib/home-tabs";
+import { canReadPathOffline } from "@/lib/offline-reading";
 import {
 	authQueries,
 	catchUpQueries,
@@ -41,13 +43,21 @@ const signInRoute = createRoute({
 const appRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	id: "app",
-	beforeLoad: async ({ context }) => {
+	beforeLoad: async ({ context, location }) => {
 		try {
 			await context.queryClient.ensureQueryData(authQueries.me());
 		} catch (error) {
 			if (isApiErrorWithStatus(error, 401)) {
 				throw redirect({ to: "/sign-in" });
 			}
+
+			if (
+				canReadPathOffline(location.pathname) &&
+				readCachedCurrentUser() !== null
+			) {
+				return;
+			}
+
 			throw error;
 		}
 	},
@@ -66,7 +76,7 @@ const indexRoute = createRoute({
 	validateSearch: homeSearchSchema,
 	loaderDeps: ({ search }) => ({ channel: search.channel, tab: search.tab }),
 	loader: ({ context }) => {
-		void context.queryClient.ensureQueryData(catchUpQueries.summary("7d"));
+		preloadRouteData(context.queryClient, catchUpQueries.summary("7d"));
 	},
 });
 
@@ -88,7 +98,7 @@ const savedRoute = createRoute({
 	path: "/saved",
 	component: SavedPage,
 	loader: ({ context }) => {
-		void context.queryClient.ensureQueryData(savedQueries.list());
+		preloadRouteData(context.queryClient, savedQueries.list());
 	},
 });
 
@@ -133,4 +143,11 @@ declare module "@tanstack/react-router" {
 
 function RootLayout() {
 	return <Outlet />;
+}
+
+function preloadRouteData(
+	queryClient: QueryClient,
+	query: Parameters<QueryClient["ensureQueryData"]>[0],
+) {
+	void queryClient.ensureQueryData(query).catch(() => undefined);
 }

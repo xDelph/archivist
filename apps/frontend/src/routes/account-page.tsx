@@ -2,6 +2,7 @@ import { IdentityAvatar } from "@/components/identity-avatar";
 import { SectionCard } from "@/components/section-card";
 import { Button } from "@/components/ui/button";
 import { logoutCurrentUser } from "@/lib/api";
+import { clearCachedCurrentUser } from "@/lib/auth-cache";
 import { formatSlackTimestamp } from "@/lib/format";
 import { authQueries } from "@/lib/queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +16,7 @@ export function AccountPage() {
 	const logoutMutation = useMutation({
 		mutationFn: logoutCurrentUser,
 		onSuccess: async () => {
+			clearCachedCurrentUser();
 			queryClient.removeQueries({ queryKey: ["auth"] });
 			await navigate({ to: "/sign-in" });
 		},

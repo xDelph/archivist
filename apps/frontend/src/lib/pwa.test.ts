@@ -1,43 +1,88 @@
 import {
+	collectCurrentShellAssetUrls,
 	registerAppServiceWorker,
 	shouldRegisterServiceWorker,
+	warmOfflineShellAssets,
 } from "@/lib/pwa";
+import { describe, expect, it, vi } from "vitest";
 
 describe("pwa helpers", () => {
 	it("registers only when production and service worker support are available", () => {
 		expect(
 			shouldRegisterServiceWorker({
-				isProduction: true,
 				serviceWorker: {
 					register: async () => ({}) as ServiceWorkerRegistration,
 				},
 			}),
 		).toBe(true);
-		expect(
-			shouldRegisterServiceWorker({
-				isProduction: false,
-				serviceWorker: {
-					register: async () => ({}) as ServiceWorkerRegistration,
-				},
-			}),
-		).toBe(false);
-		expect(
-			shouldRegisterServiceWorker({
-				isProduction: true,
-			}),
-		).toBe(false);
+		expect(shouldRegisterServiceWorker({})).toBe(false);
 	});
 
 	it("returns false when registration fails", async () => {
-		const registered = await registerAppServiceWorker(
-			{
-				register: async () => {
-					throw new Error("offline");
-				},
+		const registered = await registerAppServiceWorker({
+			register: async () => {
+				throw new Error("offline");
 			},
-			true,
-		);
+		});
 
 		expect(registered).toBe(false);
+	});
+
+	it("collects current same-origin shell assets", () => {
+		const documentRef = {
+			querySelectorAll: () =>
+				[
+					{ href: "https://archivist.test/assets/index.css" },
+					{ href: "https://archivist.test/assets/index.js" },
+					{ src: "https://archivist.test/assets/app.js" },
+					{ href: "https://cdn.example.com/avatar.png" },
+				] as Array<Partial<HTMLLinkElement | HTMLScriptElement>>,
+		} as unknown as Document;
+		const locationRef = {
+			origin: "https://archivist.test",
+		} as Location;
+
+		expect(collectCurrentShellAssetUrls(documentRef, locationRef)).toEqual([
+			"/assets/index.css",
+			"/assets/index.js",
+			"/assets/app.js",
+		]);
+	});
+
+	it("warms the shell and current assets after registration", async () => {
+		const shellPut = vi.fn().mockResolvedValue(undefined);
+		const assetPut = vi.fn().mockResolvedValue(undefined);
+		const open = vi
+			.fn()
+			.mockResolvedValueOnce({ put: shellPut })
+			.mockResolvedValueOnce({ put: assetPut });
+		const fetchImpl = vi.fn().mockResolvedValue({
+			ok: true,
+			type: "basic",
+			clone: () => ({ ok: true, type: "basic" }),
+		});
+		const documentRef = {
+			querySelectorAll: () =>
+				[{ href: "https://archivist.test/assets/index.css" }] as Array<
+					Partial<HTMLLinkElement>
+				>,
+		} as unknown as Document;
+		const locationRef = {
+			origin: "https://archivist.test",
+			pathname: "/threads/C123:1",
+		} as Location;
+
+		const warmed = await warmOfflineShellAssets(
+			{ open } as unknown as CacheStorage,
+			documentRef,
+			locationRef,
+			fetchImpl as typeof fetch,
+		);
+
+		expect(warmed).toBe(true);
+		expect(open).toHaveBeenNthCalledWith(1, "archivist-shell-v2");
+		expect(open).toHaveBeenNthCalledWith(2, "archivist-assets-v2");
+		expect(shellPut).toHaveBeenCalled();
+		expect(assetPut).toHaveBeenCalled();
 	});
 });

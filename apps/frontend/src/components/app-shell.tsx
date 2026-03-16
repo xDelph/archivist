@@ -1,10 +1,14 @@
+import { EmptyState } from "@/components/empty-state";
 import { IdentityAvatar } from "@/components/identity-avatar";
 import { InstallBanner } from "@/components/install-banner";
+import { useAppWarmup } from "@/lib/app-warmup";
+import { canReadPathOffline } from "@/lib/offline-reading";
 import { authQueries } from "@/lib/queries";
+import { useNetworkStatus } from "@/lib/use-network-status";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Archive, Bookmark, House, Search } from "lucide-react";
+import { Archive, Bookmark, CloudOff, House, Search } from "lucide-react";
 
 const navItems = [
 	{ to: "/", label: "Catch up", icon: House },
@@ -16,8 +20,14 @@ export function AppShell() {
 	const pathname = useRouterState({
 		select: (state) => state.location.pathname,
 	});
+	const search = useRouterState({
+		select: (state) => state.location.searchStr,
+	});
+	const { isOnline } = useNetworkStatus();
 	const userQuery = useQuery(authQueries.me());
 	const user = userQuery.data?.user;
+	const isOfflineRestricted = !isOnline && !canReadPathOffline(pathname);
+	useAppWarmup({ isOnline, pathname, search });
 
 	return (
 		<div className="min-h-dvh bg-(--color-bg-deep) pb-20 text-white">
@@ -37,18 +47,23 @@ export function AppShell() {
 					<nav className="hidden items-center rounded-xl border border-(--color-border-subtle) bg-white/[0.035] p-1 lg:flex">
 						{navItems.map((item) => {
 							const isActive = isNavItemActive(pathname, item.to);
+							const isDisabled = !isOnline && item.to !== "/saved";
+							const className = cn(
+								"rounded-lg border border-transparent px-3.5 py-2 text-[0.84rem] font-medium transition-[background-color,border-color,color,box-shadow]",
+								isActive
+									? "border-(--color-border-accent) bg-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.24)]"
+									: "text-(--color-text-secondary)",
+								isDisabled
+									? "cursor-not-allowed opacity-45"
+									: "hover-surface-subtle",
+							);
 
-							return (
-								<Link
-									key={item.to}
-									to={item.to}
-									className={cn(
-										"rounded-lg border border-transparent px-3.5 py-2 text-[0.84rem] font-medium text-(--color-text-secondary) transition-[background-color,border-color,color,box-shadow]",
-										isActive
-											? "border-(--color-border-accent) bg-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.24)]"
-											: "hover-surface-subtle",
-									)}
-								>
+							return isDisabled ? (
+								<span key={item.to} aria-disabled="true" className={className}>
+									{item.label}
+								</span>
+							) : (
+								<Link key={item.to} to={item.to} className={className}>
 									{item.label}
 								</Link>
 							);
@@ -78,8 +93,19 @@ export function AppShell() {
 
 			<div className="mx-auto flex w-full max-w-[1680px] flex-col px-3 py-3 sm:px-4 sm:py-4">
 				<InstallBanner />
+				{!isOnline ? (
+					<div className="mb-3 rounded-[1rem] border border-(--color-border-accent) bg-(--color-accent)/10 px-3 py-2.5 text-[0.82rem] text-(--color-text-secondary)">
+						<div className="flex items-start gap-2">
+							<CloudOff className="mt-0.5 size-4 shrink-0 text-(--color-accent-soft)" />
+							<p>
+								Offline reading mode is active. Archivist keeps Saved and
+								downloaded thread detail available until the network comes back.
+							</p>
+						</div>
+					</div>
+				) : null}
 				<main className="flex-1">
-					<Outlet />
+					{isOfflineRestricted ? <OfflineRestrictedState /> : <Outlet />}
 				</main>
 			</div>
 
@@ -88,18 +114,24 @@ export function AppShell() {
 					{navItems.map((item) => {
 						const Icon = item.icon;
 						const isActive = isNavItemActive(pathname, item.to);
+						const isDisabled = !isOnline && item.to !== "/saved";
+						const className = cn(
+							"flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[0.74rem] font-medium transition-[background-color,color] active:translate-y-px",
+							isActive
+								? "bg-(--color-accent)/14 text-(--color-accent-strong)"
+								: "text-(--color-text-muted)",
+							isDisabled
+								? "cursor-not-allowed opacity-45"
+								: "hover:bg-white/6 hover:text-white",
+						);
 
-						return (
-							<Link
-								key={item.to}
-								to={item.to}
-								className={cn(
-									"flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[0.74rem] font-medium transition-[background-color,color] active:translate-y-px",
-									isActive
-										? "bg-(--color-accent)/14 text-(--color-accent-strong)"
-										: "text-(--color-text-muted) hover:bg-white/6 hover:text-white",
-								)}
-							>
+						return isDisabled ? (
+							<span key={item.to} aria-disabled="true" className={className}>
+								<Icon className="size-4.5" />
+								<span>{item.label}</span>
+							</span>
+						) : (
+							<Link key={item.to} to={item.to} className={className}>
 								<Icon className="size-4.5" />
 								<span>{item.label}</span>
 							</Link>
@@ -115,4 +147,14 @@ function isNavItemActive(pathname: string, to: string) {
 	return to === "/"
 		? pathname === to
 		: pathname === to || pathname.startsWith(`${to}/`);
+}
+
+function OfflineRestrictedState() {
+	return (
+		<EmptyState
+			title="Offline reading is limited to saved threads"
+			description="Catch-up and search will come back automatically once the network is available again. Open Saved to continue reading."
+			icon={<CloudOff className="size-5" />}
+		/>
+	);
 }

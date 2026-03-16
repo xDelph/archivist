@@ -4,7 +4,6 @@ import { SectionCard } from "@/components/section-card";
 import { ThreadCard } from "@/components/thread-card";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import type { CatchUpSort, CatchUpWindow } from "@/lib/api";
-import { fetchCatchUp } from "@/lib/api";
 import {
 	CATCH_UP_PAGE_SIZE,
 	flattenCatchUpPages,
@@ -258,18 +257,12 @@ function useCatchUpFeed({
 	enabled: boolean;
 }) {
 	return useInfiniteQuery({
-		queryKey: catchUpQueries.feedKey({ window, channelId, sort }),
-		queryFn: ({ pageParam }) =>
-			fetchCatchUp({
-				window,
-				channelId,
-				sort,
-				cursor: pageParam || undefined,
-				limit: CATCH_UP_PAGE_SIZE,
-			}),
-		initialPageParam: "",
-		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-		staleTime: 30_000,
+		...catchUpQueries.feed({
+			window,
+			channelId,
+			sort,
+			limit: CATCH_UP_PAGE_SIZE,
+		}),
 		enabled,
 	});
 }
@@ -347,7 +340,7 @@ function InfiniteScrollSentinel({
 					onLoadMore();
 				}
 			},
-			{ rootMargin: "280px 0px" },
+			{ rootMargin: "760px 0px" },
 		);
 		observer.observe(ref.current);
 

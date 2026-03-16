@@ -9,8 +9,21 @@ import {
 	fetchSavedItems,
 	fetchSearchResults,
 	fetchThreadDetail,
+	isApiErrorWithStatus,
 } from "@/lib/api";
-import { queryOptions } from "@tanstack/react-query";
+import {
+	clearCachedCurrentUser,
+	readCachedCurrentUser,
+	writeCachedCurrentUser,
+} from "@/lib/auth-cache";
+import { CATCH_UP_PAGE_SIZE } from "@/lib/catch-up";
+import { cacheOfflineImage } from "@/lib/offline-assets";
+import {
+	getOfflineThreadDetail,
+	listOfflineSavedItems,
+	listOfflineThreadDetailIds,
+} from "@/lib/offline-library";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 
 export const searchSearchSchema = z.object({
@@ -27,7 +40,26 @@ export const authQueries = {
 	me: () =>
 		queryOptions({
 			queryKey: ["auth", "me"],
-			queryFn: fetchCurrentUser,
+			queryFn: async () => {
+				try {
+					const response = await fetchCurrentUser();
+					writeCachedCurrentUser(response);
+					void cacheOfflineImage(response.user.avatar_url);
+					return response;
+				} catch (error) {
+					if (isApiErrorWithStatus(error, 401)) {
+						clearCachedCurrentUser();
+						throw error;
+					}
+
+					const cached = readCachedCurrentUser();
+					if (cached) {
+						return cached;
+					}
+
+					throw error;
+				}
+			},
 			staleTime: 60_000,
 			retry: false,
 		}),
@@ -49,6 +81,35 @@ export const catchUpQueries = {
 		channelId?: string;
 		sort?: CatchUpSort;
 	}) => ["catch-up", window, channelId ?? "all", sort] as const,
+	feed: ({
+		window,
+		channelId,
+		sort = "activity",
+		limit = CATCH_UP_PAGE_SIZE,
+	}: {
+		window: CatchUpWindow;
+		channelId?: string;
+		sort?: CatchUpSort;
+		limit?: number;
+	}) =>
+		infiniteQueryOptions({
+			queryKey: catchUpQueries.feedKey({
+				window,
+				channelId,
+				sort,
+			}),
+			queryFn: ({ pageParam }) =>
+				fetchCatchUp({
+					window,
+					channelId,
+					sort,
+					cursor: pageParam || undefined,
+					limit,
+				}),
+			initialPageParam: "",
+			getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+			staleTime: 30_000,
+		}),
 };
 
 export const channelQueries = {
@@ -89,5 +150,26 @@ export const savedQueries = {
 			queryKey: ["saved"],
 			queryFn: fetchSavedItems,
 			staleTime: 30_000,
+		}),
+};
+
+export const offlineQueries = {
+	saved: () =>
+		queryOptions({
+			queryKey: ["offline", "saved"],
+			queryFn: listOfflineSavedItems,
+			staleTime: Number.POSITIVE_INFINITY,
+		}),
+	threadIds: () =>
+		queryOptions({
+			queryKey: ["offline", "thread-ids"],
+			queryFn: listOfflineThreadDetailIds,
+			staleTime: Number.POSITIVE_INFINITY,
+		}),
+	thread: (threadId: string) =>
+		queryOptions({
+			queryKey: ["offline", "thread", threadId],
+			queryFn: () => getOfflineThreadDetail(threadId),
+			staleTime: Number.POSITIVE_INFINITY,
 		}),
 };

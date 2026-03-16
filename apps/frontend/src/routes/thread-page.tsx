@@ -9,25 +9,37 @@ import { ThreadSummaryPanel } from "@/components/thread-summary-panel";
 import { Button } from "@/components/ui/button";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { deleteSavedThread, saveThread } from "@/lib/api";
-import { savedQueries, threadQueries } from "@/lib/queries";
+import {
+	removeOfflineSavedThread,
+	storeOfflineSavedThread,
+	storeOfflineThreadDetail,
+} from "@/lib/offline-library";
+import {
+	findSavedItemForReading,
+	resolveThreadForReading,
+} from "@/lib/offline-reading";
+import { offlineQueries, savedQueries, threadQueries } from "@/lib/queries";
 import { extractLinks } from "@/lib/thread-display";
+import { useNetworkStatus } from "@/lib/use-network-status";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
 	Bookmark,
 	BookmarkCheck,
 	ChevronDown,
+	CloudOff,
 	Link2,
 	MessageSquare,
 	Paperclip,
 	Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const INITIAL_MESSAGE_COUNT = 4;
 
 export function ThreadPage() {
 	const { threadId } = useParams({ from: "/app/threads/$threadId" });
+	const { isOnline } = useNetworkStatus();
 	const queryClient = useQueryClient();
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [selectedFileState, setSelectedFileState] = useState<{
@@ -38,22 +50,71 @@ export function ThreadPage() {
 		"highlights" | "transcript" | "links" | "files"
 	>("highlights");
 
-	const threadQuery = useQuery(threadQueries.detail(threadId));
-	const savedQuery = useQuery(savedQueries.list());
+	const threadQuery = useQuery({
+		...threadQueries.detail(threadId),
+		enabled: isOnline,
+	});
+	const offlineThreadQuery = useQuery(offlineQueries.thread(threadId));
+	const savedQuery = useQuery({
+		...savedQueries.list(),
+		enabled: isOnline,
+	});
+	const offlineSavedQuery = useQuery(offlineQueries.saved());
 
-	const savedItem = savedQuery.data?.items.find(
-		(item) => item.thread_id === threadId,
+	const savedItem = findSavedItemForReading(
+		threadId,
+		savedQuery.data?.items,
+		offlineSavedQuery.data,
 	);
+	const thread = resolveThreadForReading(
+		threadQuery.data,
+		offlineThreadQuery.data,
+	);
+	const isOfflineSnapshot = !threadQuery.data && Boolean(thread);
 
 	const saveMutation = useMutation({
-		mutationFn: () =>
-			savedItem ? deleteSavedThread(threadId) : saveThread(threadId),
-		onSuccess: async () => {
+		mutationFn: async () => {
+			if (savedItem) {
+				await deleteSavedThread(threadId);
+				return { kind: "removed" } as const;
+			}
+
+			return {
+				kind: "saved",
+				result: await saveThread(threadId),
+			} as const;
+		},
+		onSuccess: async (result) => {
+			if (!thread) {
+				return;
+			}
+
+			if (result.kind === "removed") {
+				await removeOfflineSavedThread(threadId);
+			} else {
+				await storeOfflineSavedThread(result.result.item, thread);
+			}
 			await queryClient.invalidateQueries({ queryKey: ["saved"] });
+			await queryClient.invalidateQueries({ queryKey: ["offline"] });
 		},
 	});
 
-	if (threadQuery.isPending) {
+	useEffect(() => {
+		if (!isOnline || !threadQuery.data || !savedItem) {
+			return;
+		}
+
+		void storeOfflineThreadDetail(threadQuery.data).then(async () => {
+			await queryClient.invalidateQueries({
+				queryKey: ["offline", "thread", threadId],
+			});
+		});
+	}, [isOnline, queryClient, savedItem, threadId, threadQuery.data]);
+
+	if (
+		(isOnline && threadQuery.isPending) ||
+		(!isOnline && offlineThreadQuery.isPending)
+	) {
 		return (
 			<div className="mx-auto w-full max-w-3xl pb-8">
 				<CardSkeletonList
@@ -64,16 +125,19 @@ export function ThreadPage() {
 		);
 	}
 
-	if (threadQuery.isError || !threadQuery.data) {
+	if (!thread) {
 		return (
 			<EmptyState
-				title="Thread unavailable"
-				description="The requested thread could not be loaded from the local API."
+				title={isOnline ? "Thread unavailable" : "Thread unavailable offline"}
+				description={
+					isOnline
+						? "The requested thread could not be loaded from the local API."
+						: "This thread has not been downloaded for offline reading yet. Reopen it while connected after saving it."
+				}
 			/>
 		);
 	}
 
-	const thread = threadQuery.data;
 	const { messages } = thread;
 	const visibleMessages =
 		isExpanded || messages.length <= INITIAL_MESSAGE_COUNT
@@ -144,7 +208,8 @@ export function ThreadPage() {
 								: "button-ghost size-9 rounded-full px-0 sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
 						}
 						onClick={() => saveMutation.mutate()}
-						disabled={saveMutation.isPending}
+						disabled={saveMutation.isPending || !isOnline}
+						title={isOnline ? undefined : "Reconnect to manage saved threads"}
 					>
 						{savedItem ? (
 							<BookmarkCheck className="size-4 sm:size-3.5" />
@@ -152,13 +217,17 @@ export function ThreadPage() {
 							<Bookmark className="size-4 sm:size-3.5" />
 						)}
 						<span className="hidden sm:inline">
-							{saveMutation.isPending
+							{!isOnline
 								? savedItem
-									? "Removing"
-									: "Saving"
-								: savedItem
-									? "Saved"
-									: "Save thread"}
+									? "Saved offline"
+									: "Offline"
+								: saveMutation.isPending
+									? savedItem
+										? "Removing"
+										: "Saving"
+									: savedItem
+										? "Saved"
+										: "Save thread"}
 						</span>
 					</Button>
 				}

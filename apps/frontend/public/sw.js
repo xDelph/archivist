@@ -1,5 +1,5 @@
-const SHELL_CACHE = "archivist-shell-v1";
-const ASSET_CACHE = "archivist-assets-v1";
+const SHELL_CACHE = "archivist-shell-v2";
+const ASSET_CACHE = "archivist-assets-v2";
 const DATA_CACHE = "archivist-data-v1";
 const CORE_SHELL_URLS = [
   "/",
@@ -38,6 +38,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   const url = new URL(request.url);
+  if (request.destination === "image") {
+    event.respondWith(staleWhileRevalidate(request, ASSET_CACHE));
+    return;
+  }
+
   if (url.origin !== self.location.origin) {
     return;
   }
@@ -78,7 +83,7 @@ async function networkFirst(request, cacheName) {
     }
     return response;
   } catch {
-    return (await cache.match(request)) || cache.match("/");
+    return (await cache.match(request)) || (await cache.match("/"));
   }
 }
 
@@ -87,7 +92,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request);
   const network = fetch(request)
     .then((response) => {
-      if (response.ok) {
+      if (response.ok || response.type === "opaque") {
         cache.put(request, response.clone());
       }
       return response;
