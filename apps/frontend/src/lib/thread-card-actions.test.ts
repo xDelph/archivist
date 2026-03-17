@@ -1,33 +1,33 @@
 import { buildThreadCardActionKinds } from "@/lib/thread-card-actions";
 
 describe("thread card action helpers", () => {
-	it("builds save and highlight add-actions for online admins", () => {
+	it("builds save and star add-actions for online admins", () => {
 		expect(
 			buildThreadCardActionKinds({
 				isOnline: true,
 				isAdmin: true,
 				isSaved: false,
-				isHighlighted: false,
+				isStarred: false,
 			}),
 		).toEqual({
 			leading: [],
-			trailing: ["save", "highlight"],
-			menu: ["save", "highlight"],
+			trailing: ["save", "star"],
+			menu: ["save", "star"],
 		});
 	});
 
-	it("builds remove-actions when a thread is already saved and highlighted", () => {
+	it("builds remove-actions when a thread is already saved and starred", () => {
 		expect(
 			buildThreadCardActionKinds({
 				isOnline: true,
 				isAdmin: true,
 				isSaved: true,
-				isHighlighted: true,
+				isStarred: true,
 			}),
 		).toEqual({
-			leading: ["unsave", "unhighlight"],
+			leading: ["unsave", "unstar"],
 			trailing: [],
-			menu: ["unsave", "unhighlight"],
+			menu: ["unsave", "unstar"],
 		});
 	});
 
@@ -37,7 +37,7 @@ describe("thread card action helpers", () => {
 				isOnline: false,
 				isAdmin: true,
 				isSaved: true,
-				isHighlighted: true,
+				isStarred: true,
 			}),
 		).toEqual({
 			leading: [],
@@ -49,7 +49,7 @@ describe("thread card action helpers", () => {
 				isOnline: true,
 				isAdmin: false,
 				isSaved: false,
-				isHighlighted: false,
+				isStarred: false,
 			}),
 		).toEqual({
 			leading: [],

@@ -145,8 +145,8 @@ export interface SavedItemsResponse {
 	items: SavedItem[];
 }
 
-export interface HighlightsResponse {
-	items: HighlightedItem[];
+export interface StarredResponse {
+	items: StarredItem[];
 }
 
 export interface SavedItem {
@@ -166,7 +166,7 @@ export interface SavedItem {
 	saved_at: string;
 }
 
-export interface HighlightedItem {
+export interface StarredItem {
 	id: string;
 	thread_id: string;
 	channel_id: string;
@@ -330,19 +330,19 @@ export async function fetchSavedItems() {
 	return apiRequest<SavedItemsResponse>("/api/saved");
 }
 
-export async function fetchHighlightedItems(channelId?: string) {
+export async function fetchStarredItems(channelId?: string) {
 	const params = new URLSearchParams();
 	if (channelId) {
 		params.set("channel_id", channelId);
 	}
 	const search = params.toString();
-	return apiRequest<HighlightsResponse>(
+	return apiRequest<StarredResponse>(
 		search ? `/api/highlights?${search}` : "/api/highlights",
 	);
 }
 
-export async function pinHighlightedThread(threadId: string) {
-	return apiRequest<{ ok: boolean; item: HighlightedItem }>("/api/highlights", {
+export async function starThread(threadId: string) {
+	return apiRequest<{ ok: boolean; item: StarredItem }>("/api/highlights", {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
@@ -351,7 +351,7 @@ export async function pinHighlightedThread(threadId: string) {
 	});
 }
 
-export async function deleteHighlightedThread(threadId: string) {
+export async function unstarThread(threadId: string) {
 	return apiRequest<{ ok: boolean }>(
 		`/api/highlights/${encodeURIComponent(threadId)}`,
 		{

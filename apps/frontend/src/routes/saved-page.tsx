@@ -6,9 +6,9 @@ import {
 	filterSavedItemsWithSnapshots,
 	resolveSavedItemsForReading,
 } from "@/lib/offline-reading";
-import { highlightQueries, offlineQueries, savedQueries } from "@/lib/queries";
+import { offlineQueries, savedQueries, starredQueries } from "@/lib/queries";
 import { threadCardDataFromSavedItem } from "@/lib/thread-card-props";
-import { indexHighlightedItemsByThreadId } from "@/lib/thread-highlight";
+import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { useNetworkStatus } from "@/lib/use-network-status";
 import { useQuery } from "@tanstack/react-query";
 import { Bookmark } from "lucide-react";
@@ -19,14 +19,14 @@ export function SavedPage() {
 		...savedQueries.list(),
 		enabled: isOnline,
 	});
-	const highlightsQuery = useQuery({
-		...highlightQueries.list(),
+	const starredQuery = useQuery({
+		...starredQueries.list(),
 		enabled: isOnline,
 	});
 	const offlineSavedQuery = useQuery(offlineQueries.saved());
 	const offlineThreadIdsQuery = useQuery(offlineQueries.threadIds());
-	const highlightedItemsByThreadId = indexHighlightedItemsByThreadId(
-		highlightsQuery.data?.items,
+	const starredItemsByThreadId = indexStarredItemsByThreadId(
+		starredQuery.data?.items,
 	);
 	const availableItems = resolveSavedItemsForReading(
 		savedQuery.data?.items,
@@ -84,8 +84,8 @@ export function SavedPage() {
 								key={item.id}
 								{...threadCardDataFromSavedItem(item)}
 								savedItem={item}
-								highlightedItem={
-									highlightedItemsByThreadId.get(item.thread_id) ?? null
+								starredItem={
+									starredItemsByThreadId.get(item.thread_id) ?? null
 								}
 								isOnline={isOnline}
 								savedState={isOfflineReading ? "offline" : "saved"}

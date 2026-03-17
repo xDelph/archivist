@@ -7,12 +7,12 @@ import { InputField, SelectField } from "@/components/ui/form-field";
 import { highlightMatches } from "@/lib/highlight";
 import {
 	channelQueries,
-	highlightQueries,
 	savedQueries,
 	searchQueries,
+	starredQueries,
 } from "@/lib/queries";
 import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
-import { indexHighlightedItemsByThreadId } from "@/lib/thread-highlight";
+import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -33,12 +33,12 @@ export function SearchPage() {
 	const deferredQuery = useDeferredValue(query.trim());
 	const channelsQuery = useQuery(channelQueries.list());
 	const savedQuery = useQuery(savedQueries.list());
-	const highlightsQuery = useQuery(highlightQueries.list());
+	const starredQuery = useQuery(starredQueries.list());
 	const savedItemsByThreadId = indexSavedItemsByThreadId(
 		savedQuery.data?.items,
 	);
-	const highlightedItemsByThreadId = indexHighlightedItemsByThreadId(
-		highlightsQuery.data?.items,
+	const starredItemsByThreadId = indexStarredItemsByThreadId(
+		starredQuery.data?.items,
 	);
 
 	const searchQuery = useQuery(
@@ -205,8 +205,8 @@ export function SearchPage() {
 									preview: highlightMatches(item.snippet, deferredQuery),
 								})}
 								savedItem={savedItemsByThreadId.get(item.thread_id)}
-								highlightedItem={
-									highlightedItemsByThreadId.get(item.thread_id) ?? null
+								starredItem={
+									starredItemsByThreadId.get(item.thread_id) ?? null
 								}
 								isOnline={true}
 							/>

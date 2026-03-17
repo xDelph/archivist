@@ -6,9 +6,9 @@ import {
 	fetchCatchUp,
 	fetchChannels,
 	fetchCurrentUser,
-	fetchHighlightedItems,
 	fetchSavedItems,
 	fetchSearchResults,
+	fetchStarredItems,
 	fetchThreadDetail,
 	isApiErrorWithStatus,
 } from "@/lib/api";
@@ -154,11 +154,11 @@ export const savedQueries = {
 		}),
 };
 
-export const highlightQueries = {
+export const starredQueries = {
 	list: ({ channelId }: { channelId?: string } = {}) =>
 		queryOptions({
-			queryKey: ["highlights", channelId ?? "all"],
-			queryFn: () => fetchHighlightedItems(channelId),
+			queryKey: ["starred", channelId ?? "all"],
+			queryFn: () => fetchStarredItems(channelId),
 			staleTime: 30_000,
 		}),
 };

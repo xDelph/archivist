@@ -12,9 +12,9 @@ import {
 } from "@/lib/offline-library";
 import {
 	catchUpQueries,
-	highlightQueries,
 	offlineQueries,
 	savedQueries,
+	starredQueries,
 } from "@/lib/queries";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
@@ -27,13 +27,13 @@ interface CatchUpWarmTarget {
 	channelId?: string;
 }
 
-interface HighlightWarmTarget {
+interface StarredWarmTarget {
 	channelId?: string;
 }
 
 type HomeWarmTarget =
-	| ({ tab: "highlights" } & HighlightWarmTarget)
-	| ({ tab: Exclude<HomeTab, "highlights"> } & CatchUpWarmTarget);
+	| ({ tab: "starred" } & StarredWarmTarget)
+	| ({ tab: Exclude<HomeTab, "starred"> } & CatchUpWarmTarget);
 
 export function buildHomeWarmTargets(pathname: string, search: string) {
 	const params = new URLSearchParams(search);
@@ -41,7 +41,7 @@ export function buildHomeWarmTargets(pathname: string, search: string) {
 	const activeTab =
 		pathname === "/" ? normalizeHomeTab(params.get("tab")) : null;
 	const targets: HomeWarmTarget[] = [
-		{ tab: "highlights", channelId },
+		{ tab: "starred", channelId },
 		{ tab: "fresh", window: "24h", channelId },
 		{ tab: "steady", window: "7d", channelId },
 		{ tab: "trending", window: "7d", sort: "trending", channelId },
@@ -53,8 +53,8 @@ export function buildHomeWarmTargets(pathname: string, search: string) {
 }
 
 export function getHomeWarmTargetKey(target: HomeWarmTarget) {
-	if (target.tab === "highlights") {
-		return `highlights:${target.channelId ?? "all"}`;
+	if (target.tab === "starred") {
+		return `starred:${target.channelId ?? "all"}`;
 	}
 
 	return `${target.window}:${target.sort ?? "activity"}:${target.channelId ?? "all"}`;
@@ -93,9 +93,9 @@ export function useAppWarmup({
 		const timeout = window.setTimeout(() => {
 			for (const target of targets) {
 				warmedCatchUpTargetsRef.current.add(getHomeWarmTargetKey(target));
-				if (target.tab === "highlights") {
+				if (target.tab === "starred") {
 					void queryClient.prefetchQuery(
-						highlightQueries.list({ channelId: target.channelId }),
+						starredQueries.list({ channelId: target.channelId }),
 					);
 					continue;
 				}

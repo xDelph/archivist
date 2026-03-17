@@ -6,8 +6,8 @@ import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import type {
 	CatchUpSort,
 	CatchUpWindow,
-	HighlightedItem,
 	SavedItem,
+	StarredItem,
 } from "@/lib/api";
 import {
 	CATCH_UP_PAGE_SIZE,
@@ -20,13 +20,13 @@ import {
 	normalizeHomeTab,
 	toHomeTabSearch,
 } from "@/lib/home-tabs";
-import { catchUpQueries, highlightQueries, savedQueries } from "@/lib/queries";
+import { catchUpQueries, savedQueries, starredQueries } from "@/lib/queries";
 import {
 	threadCardDataFromCatchUpThread,
-	threadCardDataFromHighlightedItem,
+	threadCardDataFromStarredItem,
 } from "@/lib/thread-card-props";
-import { indexHighlightedItemsByThreadId } from "@/lib/thread-highlight";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
+import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
@@ -36,7 +36,7 @@ import {
 	Clock,
 	Flame,
 	Hash,
-	Sparkles,
+	Star,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 
@@ -48,14 +48,14 @@ export function HomePage() {
 	const activeChannelId = activeFilter === "all" ? undefined : activeFilter;
 	const overviewQuery = useQuery(catchUpQueries.summary("7d"));
 	const savedQuery = useQuery(savedQueries.list());
-	const highlightsQuery = useQuery({
-		...highlightQueries.list({ channelId: activeChannelId }),
+	const starredQuery = useQuery({
+		...starredQueries.list({ channelId: activeChannelId }),
 	});
 	const savedItemsByThreadId = indexSavedItemsByThreadId(
 		savedQuery.data?.items,
 	);
-	const highlightedItemsByThreadId = indexHighlightedItemsByThreadId(
-		highlightsQuery.data?.items,
+	const starredItemsByThreadId = indexStarredItemsByThreadId(
+		starredQuery.data?.items,
 	);
 	const dayFeedQuery = useCatchUpFeed({
 		window: "24h",
@@ -80,10 +80,10 @@ export function HomePage() {
 	);
 	const tabItems = [
 		{
-			key: "highlights",
-			label: "Highlights",
-			shortLabel: "Highlights",
-			icon: <Sparkles className="size-3.5 shrink-0 sm:size-4" />,
+			key: "starred",
+			label: "Starred",
+			shortLabel: "Starred",
+			icon: <Star className="size-3.5 shrink-0 sm:size-4" />,
 		},
 		{
 			key: "fresh",
@@ -167,18 +167,18 @@ export function HomePage() {
 			/>
 
 			<div className="mt-2">
-				{activeTab === "highlights" && (
+				{activeTab === "starred" && (
 					<SectionCard
-						eyebrow="Highlights"
+						eyebrow="Starred"
 						title="Admin picks worth opening"
-						actions={<Sparkles className="text-eyebrow size-5" />}
+						actions={<Star className="text-eyebrow size-5" />}
 					>
-						<HighlightsSection
-							items={highlightsQuery.data?.items ?? []}
-							isPending={highlightsQuery.isPending}
-							isError={highlightsQuery.isError}
+						<StarredSection
+							items={starredQuery.data?.items ?? []}
+							isPending={starredQuery.isPending}
+							isError={starredQuery.isError}
 							savedItemsByThreadId={savedItemsByThreadId}
-							highlightedItemsByThreadId={highlightedItemsByThreadId}
+							starredItemsByThreadId={starredItemsByThreadId}
 						/>
 					</SectionCard>
 				)}
@@ -188,7 +188,7 @@ export function HomePage() {
 						<CatchUpFeedSection
 							query={dayFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
-							highlightedItemsByThreadId={highlightedItemsByThreadId}
+							starredItemsByThreadId={starredItemsByThreadId}
 							emptyTitle="No recent public activity"
 							emptyDescription="Nothing crossed the 24-hour threshold for the selected channels."
 						/>
@@ -200,7 +200,7 @@ export function HomePage() {
 						<CatchUpFeedSection
 							query={weekFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
-							highlightedItemsByThreadId={highlightedItemsByThreadId}
+							starredItemsByThreadId={starredItemsByThreadId}
 							emptyTitle="No weekly catch-up yet"
 							emptyDescription="Once the worker processes more history, longer windows will show up here."
 						/>
@@ -216,7 +216,7 @@ export function HomePage() {
 						<CatchUpFeedSection
 							query={trendingFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
-							highlightedItemsByThreadId={highlightedItemsByThreadId}
+							starredItemsByThreadId={starredItemsByThreadId}
 							cardClassName="bg-(--color-bg-panel)"
 							emptyTitle="Trending needs more history"
 							emptyDescription="This panel fills in automatically as the worker accumulates more public-channel thread summaries."
@@ -230,18 +230,18 @@ export function HomePage() {
 	);
 }
 
-function HighlightsSection({
+function StarredSection({
 	items,
 	isPending,
 	isError,
 	savedItemsByThreadId,
-	highlightedItemsByThreadId,
+	starredItemsByThreadId,
 }: {
-	items: HighlightedItem[];
+	items: StarredItem[];
 	isPending: boolean;
 	isError: boolean;
 	savedItemsByThreadId: Map<string, SavedItem>;
-	highlightedItemsByThreadId: Map<string, HighlightedItem>;
+	starredItemsByThreadId: Map<string, StarredItem>;
 }) {
 	return (
 		<QueryState
@@ -251,13 +251,13 @@ function HighlightsSection({
 			loading={<CardSkeletonList />}
 			error={
 				<EmptyState
-					title="Highlights are unavailable"
+					title="Starred are unavailable"
 					description="The API route is reachable, but the curated thread query failed. Retry once the local API is healthy again."
 				/>
 			}
 			empty={
 				<EmptyState
-					title="No highlights yet"
+					title="No starred yet"
 					description="Admin-picked threads will surface here as soon as they are curated."
 				/>
 			}
@@ -266,10 +266,10 @@ function HighlightsSection({
 				{items.map((item) => (
 					<SavableThreadCard
 						key={item.id}
-						{...threadCardDataFromHighlightedItem(item)}
+						{...threadCardDataFromStarredItem(item)}
 						savedItem={savedItemsByThreadId.get(item.thread_id)}
-						highlightedItem={
-							highlightedItemsByThreadId.get(item.thread_id) ?? null
+						starredItem={
+							starredItemsByThreadId.get(item.thread_id) ?? null
 						}
 						isOnline={true}
 					/>
@@ -374,7 +374,7 @@ function useCatchUpFeed({
 function CatchUpFeedSection({
 	query,
 	savedItemsByThreadId,
-	highlightedItemsByThreadId,
+	starredItemsByThreadId,
 	emptyTitle,
 	emptyDescription,
 	errorTitle = "The catch-up feed is unavailable",
@@ -383,7 +383,7 @@ function CatchUpFeedSection({
 }: {
 	query: ReturnType<typeof useCatchUpFeed>;
 	savedItemsByThreadId: Map<string, SavedItem>;
-	highlightedItemsByThreadId: Map<string, HighlightedItem>;
+	starredItemsByThreadId: Map<string, StarredItem>;
 	emptyTitle: string;
 	emptyDescription: string;
 	errorTitle?: string;
@@ -410,7 +410,7 @@ function CatchUpFeedSection({
 							getCatchUpThreadChannelName(thread),
 						)}
 						savedItem={savedItemsByThreadId.get(thread.id)}
-						highlightedItem={highlightedItemsByThreadId.get(thread.id) ?? null}
+						starredItem={starredItemsByThreadId.get(thread.id) ?? null}
 						isOnline={true}
 						className={cardClassName}
 					/>

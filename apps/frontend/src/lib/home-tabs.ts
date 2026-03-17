@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const homeTabValues = [
-	"highlights",
+	"starred",
 	"fresh",
 	"steady",
 	"trending",
@@ -12,9 +12,9 @@ export const homeTabSchema = z.enum(homeTabValues);
 export type HomeTab = (typeof homeTabValues)[number];
 
 export function normalizeHomeTab(tab?: string): HomeTab {
-	return homeTabSchema.catch("highlights").parse(tab);
+	return homeTabSchema.catch("starred").parse(tab);
 }
 
 export function toHomeTabSearch(tab: HomeTab) {
-	return tab === "highlights" ? undefined : tab;
+	return tab === "starred" ? undefined : tab;
 }

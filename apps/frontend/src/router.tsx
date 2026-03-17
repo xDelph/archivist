@@ -6,9 +6,9 @@ import { canReadPathOffline } from "@/lib/offline-reading";
 import {
 	authQueries,
 	catchUpQueries,
-	highlightQueries,
 	savedQueries,
 	searchSearchSchema,
+	starredQueries,
 } from "@/lib/queries";
 import { AccountPage } from "@/routes/account-page";
 import { HomePage } from "@/routes/home-page";
@@ -165,10 +165,10 @@ function preloadActiveHomeTab(
 	},
 ) {
 	const activeTab = normalizeHomeTab(tab);
-	if (activeTab === "highlights") {
+	if (activeTab === "starred") {
 		preloadRouteData(
 			queryClient,
-			highlightQueries.list({ channelId: channel }),
+			starredQueries.list({ channelId: channel }),
 		);
 		return;
 	}

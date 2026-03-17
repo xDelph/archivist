@@ -1,8 +1,8 @@
 import type {
 	CatchUpThread,
-	HighlightedItem,
 	SavedItem,
 	SearchResult,
+	StarredItem,
 	ThreadAuthor,
 } from "@/lib/api";
 import type { ReactNode } from "react";
@@ -75,8 +75,8 @@ export function threadCardDataFromSavedItem(item: SavedItem): ThreadCardData {
 	};
 }
 
-export function threadCardDataFromHighlightedItem(
-	item: HighlightedItem,
+export function threadCardDataFromStarredItem(
+	item: StarredItem,
 ): ThreadCardData {
 	return {
 		threadId: item.thread_id,

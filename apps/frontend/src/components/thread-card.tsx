@@ -14,7 +14,7 @@ import {
 } from "@/lib/thread-swipe";
 import { cn } from "@/lib/utils";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookmarkCheck, CloudOff, Sparkles } from "lucide-react";
+import { BookmarkCheck, CloudOff, Star } from "lucide-react";
 import {
 	Children,
 	type ReactNode,
@@ -46,7 +46,7 @@ interface ThreadCardProps {
 	action?: ReactNode;
 	isActionActive?: boolean;
 	savedState?: "saved" | "offline";
-	isHighlighted?: boolean;
+	isStarred?: boolean;
 	leadingSwipeActions?: ThreadCardSwipeAction[];
 	trailingSwipeActions?: ThreadCardSwipeAction[];
 }
@@ -77,7 +77,7 @@ export function ThreadCard({
 	action,
 	isActionActive = false,
 	savedState,
-	isHighlighted = false,
+	isStarred = false,
 	leadingSwipeActions = [],
 	trailingSwipeActions = [],
 }: ThreadCardProps) {
@@ -287,7 +287,7 @@ export function ThreadCard({
 									</p>
 									<ChannelBadge name={channelName} />
 									{savedState ? <SavedStateBadge state={savedState} /> : null}
-									{isHighlighted ? <HighlightStateBadge /> : null}
+									{isStarred ? <StarStateBadge /> : null}
 								</div>
 								<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4]">
 									{renderRichNode(displayMessage)}
@@ -355,11 +355,11 @@ function SavedStateBadge({ state }: { state: "saved" | "offline" }) {
 	);
 }
 
-function HighlightStateBadge() {
+function StarStateBadge() {
 	return (
 		<span className="inline-flex items-center gap-1 rounded-full border border-(--color-border-accent) bg-(--color-accent)/12 px-2 py-0.5 text-[0.67rem] font-semibold tracking-[0.02em] text-(--color-accent-soft)">
-			<Sparkles className="size-3" />
-			Highlight
+			<Star className="size-3" />
+			Star
 		</span>
 	);
 }

@@ -1,19 +1,15 @@
-export type ThreadCardActionKind =
-	| "save"
-	| "unsave"
-	| "highlight"
-	| "unhighlight";
+export type ThreadCardActionKind = "save" | "unsave" | "star" | "unstar";
 
 export function buildThreadCardActionKinds({
 	isOnline,
 	isAdmin,
 	isSaved,
-	isHighlighted,
+	isStarred,
 }: {
 	isOnline: boolean;
 	isAdmin: boolean;
 	isSaved: boolean;
-	isHighlighted: boolean;
+	isStarred: boolean;
 }) {
 	const leading: ThreadCardActionKind[] = [];
 	const trailing: ThreadCardActionKind[] = [];
@@ -32,12 +28,12 @@ export function buildThreadCardActionKinds({
 	}
 
 	if (isAdmin) {
-		if (isHighlighted) {
-			leading.push("unhighlight");
-			menu.push("unhighlight");
+		if (isStarred) {
+			leading.push("unstar");
+			menu.push("unstar");
 		} else {
-			trailing.push("highlight");
-			menu.push("highlight");
+			trailing.push("star");
+			menu.push("star");
 		}
 	}
 

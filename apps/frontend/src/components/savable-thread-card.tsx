@@ -1,22 +1,22 @@
 import { ThreadCard } from "@/components/thread-card";
 import { ThreadCardActionMenu } from "@/components/thread-card-action-menu";
 import type {
-	HighlightedItem,
 	SavedItem,
+	StarredItem,
 	ThreadDetailResponse,
 } from "@/lib/api";
-import { authQueries, highlightQueries } from "@/lib/queries";
+import { authQueries, starredQueries } from "@/lib/queries";
 import { buildThreadCardActionKinds } from "@/lib/thread-card-actions";
 import type { ThreadCardData } from "@/lib/thread-card-props";
-import { useThreadHighlightAction } from "@/lib/thread-highlight";
+import { useThreadStarAction } from "@/lib/thread-star";
 import { useThreadSaveAction } from "@/lib/thread-save";
 import { useQuery } from "@tanstack/react-query";
-import { Bookmark, BookmarkX, Pin, PinOff } from "lucide-react";
+import { Bookmark, BookmarkX, Star, StarOff } from "lucide-react";
 import { useState } from "react";
 
 interface SavableThreadCardProps extends ThreadCardData {
 	savedItem?: SavedItem | null;
-	highlightedItem?: HighlightedItem | null;
+	starredItem?: StarredItem | null;
 	isOnline: boolean;
 	threadDetail?: ThreadDetailResponse | null;
 	savedState?: "saved" | "offline";
@@ -25,7 +25,7 @@ interface SavableThreadCardProps extends ThreadCardData {
 
 export function SavableThreadCard({
 	savedItem,
-	highlightedItem,
+	starredItem,
 	isOnline,
 	threadDetail,
 	savedState,
@@ -38,42 +38,42 @@ export function SavableThreadCard({
 		savedItem,
 		threadDetail,
 	});
-	const highlightMutation = useThreadHighlightAction({
+	const starMutation = useThreadStarAction({
 		threadId: card.threadId,
-		highlightedItem,
+		starredItem,
 	});
 	const currentUserQuery = useQuery({
 		...authQueries.me(),
 		enabled: isOnline,
 	});
-	const allHighlightsQuery = useQuery({
-		...highlightQueries.list(),
-		enabled: isOnline && highlightedItem === undefined,
+	const allStarredQuery = useQuery({
+		...starredQueries.list(),
+		enabled: isOnline && starredItem === undefined,
 	});
-	const resolvedHighlightedItem =
-		highlightedItem ??
-		allHighlightsQuery.data?.items.find(
+	const resolvedStarredItem =
+		starredItem ??
+		allStarredQuery.data?.items.find(
 			(item) => item.thread_id === card.threadId,
 		) ??
 		null;
 	const isSaved = Boolean(savedItem);
-	const isHighlighted = Boolean(resolvedHighlightedItem);
+	const isStarred = Boolean(resolvedStarredItem);
 	const isAdmin = currentUserQuery.data?.user.roles.includes("admin") ?? false;
 	const resolvedSavedState = savedState ?? (isSaved ? "saved" : undefined);
 	const actionKinds = buildThreadCardActionKinds({
 		isOnline,
 		isAdmin,
 		isSaved,
-		isHighlighted,
+		isStarred,
 	});
 	const menuActions = actionKinds.menu.map((kind) => {
 		const action = buildCardAction(kind, {
 			isSaved,
-			isHighlighted,
+			isStarred,
 			saveMutationPending: saveMutation.isPending,
-			highlightMutationPending: highlightMutation.isPending,
+			starMutationPending: starMutation.isPending,
 			onSaveToggle: () => saveMutation.mutate(),
-			onHighlightToggle: () => highlightMutation.mutate(),
+			onStarToggle: () => starMutation.mutate(),
 		});
 		return {
 			key: kind,
@@ -91,25 +91,25 @@ export function SavableThreadCard({
 			className={className}
 			isActionActive={isMenuOpen}
 			savedState={resolvedSavedState}
-			isHighlighted={isHighlighted}
+			isStarred={isStarred}
 			leadingSwipeActions={actionKinds.leading.map((kind) =>
 				buildCardAction(kind, {
 					isSaved,
-					isHighlighted,
+					isStarred,
 					saveMutationPending: saveMutation.isPending,
-					highlightMutationPending: highlightMutation.isPending,
+					starMutationPending: starMutation.isPending,
 					onSaveToggle: () => saveMutation.mutate(),
-					onHighlightToggle: () => highlightMutation.mutate(),
+					onStarToggle: () => starMutation.mutate(),
 				}),
 			)}
 			trailingSwipeActions={actionKinds.trailing.map((kind) =>
 				buildCardAction(kind, {
 					isSaved,
-					isHighlighted,
+					isStarred,
 					saveMutationPending: saveMutation.isPending,
-					highlightMutationPending: highlightMutation.isPending,
+					starMutationPending: starMutation.isPending,
 					onSaveToggle: () => saveMutation.mutate(),
-					onHighlightToggle: () => highlightMutation.mutate(),
+					onStarToggle: () => starMutation.mutate(),
 				}),
 			)}
 			action={
@@ -128,18 +128,18 @@ function buildCardAction(
 	kind: ReturnType<typeof buildThreadCardActionKinds>["menu"][number],
 	{
 		isSaved,
-		isHighlighted,
+		isStarred,
 		saveMutationPending,
-		highlightMutationPending,
+		starMutationPending,
 		onSaveToggle,
-		onHighlightToggle,
+		onStarToggle,
 	}: {
 		isSaved: boolean;
-		isHighlighted: boolean;
+		isStarred: boolean;
 		saveMutationPending: boolean;
-		highlightMutationPending: boolean;
+		starMutationPending: boolean;
 		onSaveToggle: () => void;
-		onHighlightToggle: () => void;
+		onStarToggle: () => void;
 	},
 ) {
 	switch (kind) {
@@ -159,26 +159,26 @@ function buildCardAction(
 				disabled: saveMutationPending,
 				tone: "accent" as const,
 			};
-		case "unhighlight":
+		case "unstar":
 			return {
 				label:
-					highlightMutationPending && isHighlighted
+					starMutationPending && isStarred
 						? "Removing"
-						: "Remove highlight",
-				icon: <PinOff className="size-4" />,
-				onAction: onHighlightToggle,
-				disabled: highlightMutationPending,
+						: "Unstar thread",
+				icon: <StarOff className="size-4" />,
+				onAction: onStarToggle,
+				disabled: starMutationPending,
 				tone: "danger" as const,
 			};
-		case "highlight":
+		case "star":
 			return {
 				label:
-					highlightMutationPending && !isHighlighted
-						? "Pinning"
-						: "Pin to highlights",
-				icon: <Pin className="size-4" />,
-				onAction: onHighlightToggle,
-				disabled: highlightMutationPending,
+					starMutationPending && !isStarred
+						? "Starring"
+						: "Star thread",
+				icon: <Star className="size-4" />,
+				onAction: onStarToggle,
+				disabled: starMutationPending,
 				tone: "accent" as const,
 			};
 	}
