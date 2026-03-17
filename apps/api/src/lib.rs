@@ -4,6 +4,8 @@ mod auth;
 mod auth_store;
 mod catch_up;
 mod channels;
+mod highlight_store;
+mod highlights;
 mod link_metadata;
 mod saved;
 mod saved_store;
@@ -12,6 +14,7 @@ mod slack_text;
 mod thread_list;
 mod thread_text;
 mod threads;
+mod user_role_store;
 mod user_store;
 mod view_models;
 
@@ -48,6 +51,8 @@ pub(crate) const LOCALHOST_WEB_ORIGIN: &str = "http://localhost:3001";
 const DEFAULT_WEB_ORIGIN: &str = LOCAL_DEV_WEB_ORIGIN;
 #[cfg(test)]
 const DEFAULT_SAVED_ITEMS_PATH: &str = "logs/saved-items.json";
+#[cfg(test)]
+const DEFAULT_HIGHLIGHTS_PATH: &str = "logs/highlighted-threads.json";
 #[cfg(test)]
 const DEFAULT_ANALYTICS_PATH: &str = "logs/analytics-events.json";
 
@@ -102,6 +107,8 @@ pub(crate) struct AppState {
     pub(crate) session_secret: Option<String>,
     pub(crate) auth_store: auth_store::AuthStore,
     pub(crate) user_store: user_store::UserStore,
+    pub(crate) user_role_store: user_role_store::UserRoleStore,
+    pub(crate) highlight_store: highlight_store::HighlightStore,
     pub(crate) saved_store: saved_store::SavedItemStore,
     pub(crate) analytics_store: analytics_store::AnalyticsStore,
 }
@@ -119,6 +126,8 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let store = open_store(&config).await?;
     let auth_store = open_auth_store(&config, &store).await?;
     let user_store = open_user_store(&config, &store).await?;
+    let user_role_store = open_user_role_store(&config, &store).await?;
+    let highlight_store = open_highlight_store(&config, &store).await?;
     let saved_store = open_saved_store(&config, &store).await?;
     let analytics_store = open_analytics_store(&config, &store).await?;
     let state = AppState {
@@ -128,6 +137,8 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         session_secret: config.session_secret.clone(),
         auth_store,
         user_store,
+        user_role_store,
+        highlight_store,
         saved_store,
         analytics_store,
     };
@@ -140,6 +151,14 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
     let protected_api = Router::new()
         .route("/api/catch-up", get(catch_up::catch_up))
         .route("/api/channels", get(channels::channels))
+        .route(
+            "/api/highlights",
+            get(highlights::list_highlights).post(highlights::pin_highlight),
+        )
+        .route(
+            "/api/highlights/{id}",
+            axum::routing::delete(highlights::delete_highlight),
+        )
         .route(
             "/api/saved",
             get(saved::list_saved_items).post(saved::save_item),
@@ -270,6 +289,50 @@ async fn open_saved_store(
 }
 
 #[cfg(test)]
+async fn open_highlight_store(
+    config: &ApiConfig,
+    _store: &EventStore,
+) -> Result<highlight_store::HighlightStore, StoreError> {
+    highlight_store::LocalHighlightStore::open(highlights_path(config))
+        .await
+        .map(Into::into)
+        .map_err(highlight_store_error_to_store_error)
+}
+
+#[cfg(not(test))]
+async fn open_highlight_store(
+    _config: &ApiConfig,
+    store: &EventStore,
+) -> Result<highlight_store::HighlightStore, StoreError> {
+    let pool = store
+        .postgres_pool()
+        .ok_or(StoreError::MissingDatabaseUrl)?;
+    Ok(highlight_store::PostgresHighlightStore::new(pool).into())
+}
+
+#[cfg(test)]
+async fn open_user_role_store(
+    config: &ApiConfig,
+    _store: &EventStore,
+) -> Result<user_role_store::UserRoleStore, StoreError> {
+    user_role_store::LocalUserRoleStore::open(user_roles_path(config))
+        .await
+        .map(Into::into)
+        .map_err(user_role_store_error_to_store_error)
+}
+
+#[cfg(not(test))]
+async fn open_user_role_store(
+    _config: &ApiConfig,
+    store: &EventStore,
+) -> Result<user_role_store::UserRoleStore, StoreError> {
+    let pool = store
+        .postgres_pool()
+        .ok_or(StoreError::MissingDatabaseUrl)?;
+    Ok(user_role_store::PostgresUserRoleStore::new(pool).into())
+}
+
+#[cfg(test)]
 async fn open_analytics_store(
     config: &ApiConfig,
     _store: &EventStore,
@@ -314,6 +377,17 @@ fn user_store_error_to_store_error(error: user_store::UserStoreError) -> StoreEr
 }
 
 #[cfg(test)]
+fn user_role_store_error_to_store_error(error: user_role_store::UserRoleStoreError) -> StoreError {
+    match error {
+        user_role_store::UserRoleStoreError::Read(error)
+        | user_role_store::UserRoleStoreError::CreateDirectory(error)
+        | user_role_store::UserRoleStoreError::Write(error) => StoreError::Read(error),
+        user_role_store::UserRoleStoreError::Sqlx(error) => StoreError::Sqlx(error),
+        user_role_store::UserRoleStoreError::Parse(error) => StoreError::Parse(error),
+    }
+}
+
+#[cfg(test)]
 fn analytics_store_error_to_store_error(error: analytics_store::AnalyticsStoreError) -> StoreError {
     match error {
         analytics_store::AnalyticsStoreError::Read(error)
@@ -332,6 +406,17 @@ fn saved_store_error_to_store_error(error: saved_store::SavedItemStoreError) -> 
         | saved_store::SavedItemStoreError::Write(error) => StoreError::Read(error),
         saved_store::SavedItemStoreError::Sqlx(error) => StoreError::Sqlx(error),
         saved_store::SavedItemStoreError::Parse(error) => StoreError::Parse(error),
+    }
+}
+
+#[cfg(test)]
+fn highlight_store_error_to_store_error(error: highlight_store::HighlightStoreError) -> StoreError {
+    match error {
+        highlight_store::HighlightStoreError::Read(error)
+        | highlight_store::HighlightStoreError::CreateDirectory(error)
+        | highlight_store::HighlightStoreError::Write(error) => StoreError::Read(error),
+        highlight_store::HighlightStoreError::Sqlx(error) => StoreError::Sqlx(error),
+        highlight_store::HighlightStoreError::Parse(error) => StoreError::Parse(error),
     }
 }
 
@@ -360,6 +445,28 @@ fn saved_items_path(config: &ApiConfig) -> String {
             .display()
             .to_string()
             .if_empty(DEFAULT_SAVED_ITEMS_PATH)
+    })
+}
+
+#[cfg(test)]
+fn highlights_path(config: &ApiConfig) -> String {
+    std::env::var("ARCHIVIST_HIGHLIGHTS_PATH").unwrap_or_else(|_| {
+        Path::new(&config.auth_store_path)
+            .with_file_name("highlighted-threads.json")
+            .display()
+            .to_string()
+            .if_empty(DEFAULT_HIGHLIGHTS_PATH)
+    })
+}
+
+#[cfg(test)]
+fn user_roles_path(config: &ApiConfig) -> String {
+    std::env::var("ARCHIVIST_USER_ROLES_PATH").unwrap_or_else(|_| {
+        Path::new(&config.auth_store_path)
+            .with_file_name("user-roles.json")
+            .display()
+            .to_string()
+            .if_empty("logs/user-roles.json")
     })
 }
 

@@ -83,6 +83,7 @@ struct SessionUserResponse {
     email: Option<String>,
     display_name: Option<String>,
     avatar_url: Option<String>,
+    roles: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -217,6 +218,18 @@ pub(crate) async fn me(
     ))?;
     let claims =
         validate_session_token(session_secret, session_token).map_err(me_error_response)?;
+    let roles = state
+        .user_role_store
+        .list_roles(&claims.slack_user_id)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "user_roles_unavailable",
+                }),
+            )
+        })?;
 
     Ok(Json(MeResponse {
         ok: true,
@@ -225,6 +238,7 @@ pub(crate) async fn me(
             email: claims.email,
             display_name: claims.display_name,
             avatar_url: claims.avatar_url,
+            roles,
         },
     }))
 }

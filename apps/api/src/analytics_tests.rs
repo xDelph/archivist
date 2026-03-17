@@ -20,8 +20,18 @@ async fn test_state() -> AppState {
         .await
         .unwrap();
 
+    let user_role_file = tempfile::NamedTempFile::new().unwrap();
+    let user_role_store = crate::user_role_store::LocalUserRoleStore::open(user_role_file.path())
+        .await
+        .unwrap();
+
     let saved_file = tempfile::NamedTempFile::new().unwrap();
     let saved_store = crate::saved_store::LocalSavedItemStore::open(saved_file.path())
+        .await
+        .unwrap();
+
+    let highlight_file = tempfile::NamedTempFile::new().unwrap();
+    let highlight_store = crate::highlight_store::LocalHighlightStore::open(highlight_file.path())
         .await
         .unwrap();
 
@@ -38,6 +48,8 @@ async fn test_state() -> AppState {
         session_secret: None,
         auth_store: auth_store.into(),
         user_store: user_store.into(),
+        user_role_store: user_role_store.into(),
+        highlight_store: highlight_store.into(),
         saved_store: saved_store.into(),
         analytics_store: analytics_store.into(),
     }

@@ -8,6 +8,7 @@ use axum::{
     extract::State,
     http::{Request, StatusCode},
 };
+use tower::util::ServiceExt;
 
 #[tokio::test]
 async fn me_returns_the_current_user_from_a_valid_session_cookie() {
@@ -42,6 +43,49 @@ async fn me_returns_the_current_user_from_a_valid_session_cookie() {
 }
 
 #[tokio::test]
+async fn me_returns_roles_for_the_current_user() {
+    let tempdir = tempdir().expect("tempdir");
+    let session_token = build_session_token(
+        "session_secret",
+        &SessionClaims {
+            slack_user_id: "U123".to_owned(),
+            email: Some("thomas@example.com".to_owned()),
+            display_name: Some("Thomas".to_owned()),
+            avatar_url: Some("https://images.example.com/avatar.png".to_owned()),
+            exp: current_unix_timestamp() + 60,
+        },
+    );
+    let mut config = config_with_defaults(&tempdir);
+    config.session_secret = Some("session_secret".to_owned());
+    crate::user_role_store::LocalUserRoleStore::open(tempdir.path().join("user-roles.json"))
+        .await
+        .expect("user role store")
+        .grant_role("U123", crate::user_role_store::ADMIN_ROLE)
+        .await
+        .expect("grant role");
+
+    let response = crate::build_router(config)
+        .await
+        .expect("router")
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("cookie", format!("archivist_session={session_token}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body bytes");
+    let payload = serde_json::from_slice::<serde_json::Value>(&body).expect("json payload");
+
+    assert_eq!(payload["user"]["roles"], serde_json::json!(["admin"]));
+}
+
+#[tokio::test]
 async fn me_rejects_missing_sessions() {
     let tempdir = tempdir().expect("tempdir");
     let state = AppState {
@@ -69,6 +113,18 @@ async fn me_rejects_missing_sessions() {
         )
         .await
         .expect("user store")
+        .into(),
+        user_role_store: crate::user_role_store::LocalUserRoleStore::open(
+            tempdir.path().join("user-roles.json"),
+        )
+        .await
+        .expect("user role store")
+        .into(),
+        highlight_store: crate::highlight_store::LocalHighlightStore::open(
+            tempdir.path().join("highlighted-threads.json"),
+        )
+        .await
+        .expect("highlight store")
         .into(),
         saved_store: crate::saved_store::LocalSavedItemStore::open(
             tempdir.path().join("saved-items.json"),
