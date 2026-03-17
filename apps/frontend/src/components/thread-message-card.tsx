@@ -42,7 +42,7 @@ export function ThreadMessageCard({
 				/>
 				<div className="min-w-0 flex-1">
 					<div className="text-copy-soft flex flex-wrap items-center gap-1.5 text-[0.78rem]">
-						<span className="text-[0.9rem] font-medium text-white">
+						<span className="text-[0.9rem] font-medium text-(--color-text-primary)">
 							{displayAuthorName(message.author, message.user_id)}
 						</span>
 						<span className="separator-faint">&middot;</span>
@@ -73,7 +73,7 @@ export function ThreadMessageCard({
 					<button
 						key={file.id}
 						type="button"
-						className="subtle-chip inline-flex min-h-9 items-center gap-1 rounded-full px-2.5 py-1 text-[0.78rem] hover:border-(--color-border-accent) hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
+						className="subtle-chip inline-flex min-h-9 items-center gap-1 rounded-full px-2.5 py-1 text-[0.78rem] hover:border-(--color-border-accent) hover:text-(--color-text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
 						onClick={() => onOpenFile(index)}
 					>
 						<Paperclip className="size-3.5" />

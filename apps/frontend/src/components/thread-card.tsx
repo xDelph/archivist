@@ -282,7 +282,7 @@ export function ThreadCard({
 						<div className="flex items-start justify-between gap-2.5">
 							<div className="min-w-0">
 								<div className="flex flex-wrap items-center gap-1.5">
-									<p className="truncate text-[0.88rem] font-medium text-white">
+									<p className="truncate text-[0.88rem] font-medium text-(--color-text-primary)">
 										{displayAuthorName(author, authorFallback || channelName)}
 									</p>
 									<ChannelBadge name={channelName} />
@@ -387,7 +387,7 @@ function SwipeActionSurface({
 					className={cn(
 						"flex w-[92px] flex-col items-center justify-center gap-1 rounded-[1.35rem] px-2 text-[0.72rem] font-semibold tracking-[0.01em] transition-[background-color,color,transform] duration-200 active:scale-[0.98] disabled:opacity-55",
 						action.tone === "danger"
-							? "bg-[color-mix(in_srgb,var(--color-destructive)_72%,var(--color-bg-surface))] text-white"
+							? "bg-[color-mix(in_srgb,var(--color-destructive)_72%,var(--color-bg-surface))] text-(--color-on-destructive)"
 							: "bg-[color-mix(in_srgb,var(--color-accent)_26%,var(--color-bg-surface))] text-(--color-accent-soft)",
 					)}
 					disabled={action.disabled}

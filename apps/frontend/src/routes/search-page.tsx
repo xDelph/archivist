@@ -69,7 +69,7 @@ export function SearchPage() {
 				<p className="text-eyebrow text-[0.72rem] font-medium uppercase tracking-[0.18em]">
 					Search
 				</p>
-				<h2 className="mt-2 text-[clamp(1.4rem,3vw,2rem)] font-semibold tracking-tight text-white">
+				<h2 className="mt-2 text-[clamp(1.4rem,3vw,2rem)] font-semibold tracking-tight text-(--color-text-primary)">
 					Search public-thread history, then open the full conversation when a
 					snippet looks promising.
 				</h2>
@@ -138,7 +138,7 @@ export function SearchPage() {
 							size="sm"
 							className={
 								sort === option
-									? "bg-(--color-accent) text-black hover:bg-(--color-accent-strong)"
+									? "bg-(--color-accent) text-(--color-on-accent) hover:bg-(--color-accent-strong)"
 									: "button-ghost"
 							}
 							onClick={() =>

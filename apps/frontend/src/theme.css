@@ -1,0 +1,273 @@
+:root {
+	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+	--transition-fast: 180ms var(--ease-out-expo);
+	--transition-medium: 240ms var(--ease-out-quart);
+	--radius-card: 1.25rem;
+	--radius-panel: 0.82rem;
+	--radius-subpanel: 0.9rem;
+	--radius-input: 0.8rem;
+	--radius-empty: 1.3rem;
+	--radius-section: 1.75rem;
+	--radius-pill: 9999px;
+	--radius-button: 0.75rem;
+	--accent-hue: 150;
+	--neutral-hue: 152;
+	--signal-hue: 72;
+	--info-hue: 240;
+}
+
+html[data-accent="green"] {
+	--accent-hue: 150;
+	--neutral-hue: 152;
+	--signal-hue: 72;
+	--info-hue: 240;
+}
+
+html[data-accent="red"] {
+	--accent-hue: 24;
+	--neutral-hue: 28;
+	--signal-hue: 56;
+	--info-hue: 254;
+}
+
+html[data-accent="blue"] {
+	--accent-hue: 258;
+	--neutral-hue: 248;
+	--signal-hue: 198;
+	--info-hue: 286;
+}
+
+html[data-appearance="dark"] {
+	--bg-top: oklch(0.15 0.018 var(--neutral-hue));
+	--bg-bottom: oklch(0.125 0.013 var(--neutral-hue));
+	--color-bg-deep: oklch(0.14 0.014 var(--neutral-hue));
+	--color-bg-base: oklch(0.17 0.016 var(--neutral-hue));
+	--color-bg-panel: oklch(0.2 0.017 var(--neutral-hue));
+	--color-bg-subpanel: oklch(0.225 0.018 var(--neutral-hue));
+	--color-bg-surface: oklch(0.25 0.018 var(--neutral-hue));
+	--color-bg-elevated: oklch(0.285 0.02 var(--neutral-hue));
+	--color-bg-input: oklch(0.235 0.017 var(--neutral-hue));
+	--color-accent: oklch(0.77 0.17 var(--accent-hue));
+	--color-accent-soft: oklch(0.72 0.15 var(--accent-hue));
+	--color-accent-strong: oklch(0.82 0.19 var(--accent-hue));
+	--color-signal: oklch(0.75 0.13 var(--signal-hue));
+	--color-signal-soft: oklch(0.69 0.11 var(--signal-hue));
+	--color-signal-strong: oklch(0.81 0.15 var(--signal-hue));
+	--color-info: oklch(0.72 0.1 var(--info-hue));
+	--color-info-soft: oklch(0.66 0.08 var(--info-hue));
+	--color-text-primary: oklch(0.97 0.01 var(--neutral-hue));
+	--color-text-bright: oklch(0.94 0.01 var(--neutral-hue));
+	--color-text-secondary: oklch(0.76 0.015 var(--neutral-hue));
+	--color-text-tertiary: oklch(0.7 0.015 var(--neutral-hue));
+	--color-text-soft: oklch(0.66 0.014 var(--neutral-hue));
+	--color-text-quiet: oklch(0.56 0.012 var(--neutral-hue));
+	--color-text-muted: oklch(0.6 0.013 var(--neutral-hue));
+	--color-link: oklch(0.73 0.1 240);
+	--color-link-hover: oklch(0.79 0.12 240);
+	--color-link-decoration: oklch(0.51 0.08 240);
+	--color-border-default: color-mix(in srgb, white 14%, transparent);
+	--color-border-strong: color-mix(in srgb, white 11%, transparent);
+	--color-border-subtle: color-mix(in srgb, white 8%, transparent);
+	--color-border-accent: color-mix(
+		in srgb,
+		var(--color-accent) 28%,
+		transparent
+	);
+	--color-border-signal: color-mix(
+		in srgb,
+		var(--color-signal) 26%,
+		transparent
+	);
+	--color-success: oklch(0.77 0.17 150);
+	--color-warning: oklch(0.78 0.14 72);
+	--color-destructive: oklch(0.67 0.2 25);
+	--color-on-accent: oklch(0.15 0.013 var(--neutral-hue));
+	--color-on-destructive: oklch(0.96 0.01 25);
+	--color-header-bg: color-mix(in srgb, var(--color-bg-deep) 94%, transparent);
+	--color-mobile-nav-bg: color-mix(in srgb, var(--color-bg-deep) 88%, black 12%);
+	--color-overlay: color-mix(in srgb, var(--color-bg-deep) 76%, black 24%);
+	--surface-panel-bg: color-mix(in srgb, var(--color-bg-panel) 94%, white 6%);
+	--surface-subpanel-bg: color-mix(
+		in srgb,
+		var(--color-bg-subpanel) 94%,
+		white 6%
+	);
+	--surface-frost-bg: color-mix(in srgb, white 3%, transparent);
+	--surface-ghost-bg: color-mix(in srgb, white 3%, transparent);
+	--surface-ghost-hover-bg: color-mix(in srgb, var(--color-accent) 7%, white 3%);
+	--surface-ghost-strong-bg: color-mix(in srgb, white 5%, transparent);
+	--surface-hover-soft: color-mix(in srgb, var(--color-accent) 7%, white 3%);
+	--surface-hover-subtle: color-mix(in srgb, var(--color-accent) 5%, white 2%);
+	--color-focus-ring: color-mix(in srgb, var(--color-accent) 24%, transparent);
+	--color-separator-faint: rgba(255, 255, 255, 0.15);
+	--shadow-panel: 0 18px 42px rgba(0, 0, 0, 0.24);
+	--shadow-panel-soft: 0 8px 24px rgba(0, 0, 0, 0.16);
+	--shadow-float: 0 18px 40px rgba(0, 0, 0, 0.32);
+	--shadow-accent: 0 10px 22px
+		color-mix(in srgb, var(--color-accent) 22%, transparent);
+	--hero-grid-line: rgba(255, 255, 255, 0.03);
+	--hero-grid-line-soft: rgba(255, 255, 255, 0.02);
+}
+
+html[data-appearance="light"] {
+	--bg-top: oklch(0.97 0.014 var(--neutral-hue));
+	--bg-bottom: oklch(0.93 0.015 var(--neutral-hue));
+	--color-bg-deep: oklch(0.965 0.012 var(--neutral-hue));
+	--color-bg-base: oklch(0.942 0.013 var(--neutral-hue));
+	--color-bg-panel: oklch(0.985 0.008 var(--neutral-hue));
+	--color-bg-subpanel: oklch(0.956 0.012 var(--neutral-hue));
+	--color-bg-surface: oklch(0.93 0.013 var(--neutral-hue));
+	--color-bg-elevated: oklch(0.905 0.016 var(--neutral-hue));
+	--color-bg-input: oklch(0.975 0.008 var(--neutral-hue));
+	--color-accent: oklch(0.62 0.18 var(--accent-hue));
+	--color-accent-soft: oklch(0.57 0.17 var(--accent-hue));
+	--color-accent-strong: oklch(0.67 0.2 var(--accent-hue));
+	--color-signal: oklch(0.67 0.14 var(--signal-hue));
+	--color-signal-soft: oklch(0.61 0.12 var(--signal-hue));
+	--color-signal-strong: oklch(0.55 0.16 var(--signal-hue));
+	--color-info: oklch(0.63 0.13 var(--info-hue));
+	--color-info-soft: oklch(0.57 0.11 var(--info-hue));
+	--color-text-primary: oklch(0.23 0.018 var(--neutral-hue));
+	--color-text-bright: oklch(0.18 0.018 var(--neutral-hue));
+	--color-text-secondary: oklch(0.38 0.017 var(--neutral-hue));
+	--color-text-tertiary: oklch(0.46 0.016 var(--neutral-hue));
+	--color-text-soft: oklch(0.53 0.014 var(--neutral-hue));
+	--color-text-quiet: oklch(0.62 0.012 var(--neutral-hue));
+	--color-text-muted: oklch(0.58 0.013 var(--neutral-hue));
+	--color-link: oklch(0.55 0.13 248);
+	--color-link-hover: oklch(0.5 0.15 248);
+	--color-link-decoration: oklch(0.75 0.08 248);
+	--color-border-default: color-mix(
+		in srgb,
+		var(--color-text-primary) 16%,
+		transparent
+	);
+	--color-border-strong: color-mix(
+		in srgb,
+		var(--color-text-primary) 12%,
+		transparent
+	);
+	--color-border-subtle: color-mix(
+		in srgb,
+		var(--color-text-primary) 8%,
+		transparent
+	);
+	--color-border-accent: color-mix(
+		in srgb,
+		var(--color-accent) 34%,
+		transparent
+	);
+	--color-border-signal: color-mix(
+		in srgb,
+		var(--color-signal) 28%,
+		transparent
+	);
+	--color-success: oklch(0.62 0.17 150);
+	--color-warning: oklch(0.7 0.14 72);
+	--color-destructive: oklch(0.6 0.22 25);
+	--color-on-accent: oklch(0.98 0.004 var(--neutral-hue));
+	--color-on-destructive: oklch(0.98 0.004 25);
+	--color-header-bg: color-mix(in srgb, white 82%, var(--color-bg-panel));
+	--color-mobile-nav-bg: color-mix(in srgb, white 88%, var(--color-bg-panel));
+	--color-overlay: color-mix(in srgb, var(--color-bg-base) 72%, white 28%);
+	--surface-panel-bg: color-mix(in srgb, white 82%, var(--color-bg-base));
+	--surface-subpanel-bg: color-mix(in srgb, white 70%, var(--color-bg-base));
+	--surface-frost-bg: color-mix(in srgb, white 70%, transparent);
+	--surface-ghost-bg: color-mix(in srgb, white 44%, var(--color-bg-panel));
+	--surface-ghost-hover-bg: color-mix(
+		in srgb,
+		var(--color-accent) 10%,
+		white 72%
+	);
+	--surface-ghost-strong-bg: color-mix(
+		in srgb,
+		var(--color-accent) 8%,
+		white 68%
+	);
+	--surface-hover-soft: color-mix(in srgb, var(--color-accent) 12%, white 72%);
+	--surface-hover-subtle: color-mix(in srgb, var(--color-accent) 8%, white 76%);
+	--color-focus-ring: color-mix(in srgb, var(--color-accent) 22%, white 24%);
+	--color-separator-faint: color-mix(
+		in srgb,
+		var(--color-text-primary) 16%,
+		transparent
+	);
+	--shadow-panel: 0 18px 42px rgba(24, 34, 49, 0.08);
+	--shadow-panel-soft: 0 10px 28px rgba(24, 34, 49, 0.06);
+	--shadow-float: 0 18px 40px rgba(24, 34, 49, 0.12);
+	--shadow-accent: 0 12px 28px
+		color-mix(in srgb, var(--color-accent) 20%, transparent);
+	--hero-grid-line: color-mix(
+		in srgb,
+		var(--color-text-primary) 4%,
+		transparent
+	);
+	--hero-grid-line-soft: color-mix(
+		in srgb,
+		var(--color-text-primary) 3%,
+		transparent
+	);
+}
+
+@layer base {
+	* {
+		box-sizing: border-box;
+	}
+
+	html {
+		scroll-behavior: smooth;
+		-webkit-tap-highlight-color: transparent;
+		background: var(--color-bg-deep);
+		color-scheme: dark;
+	}
+
+	body {
+		min-height: 100dvh;
+		margin: 0;
+		font-family: "Space Grotesk", sans-serif;
+		font-feature-settings: "ss01", "ss02";
+		color: var(--color-text-primary);
+		background: radial-gradient(
+				circle at top center,
+				color-mix(in srgb, var(--color-accent) 11%, transparent),
+				transparent 36%
+			),
+			radial-gradient(
+				circle at 82% 14%,
+				color-mix(in srgb, var(--color-signal) 8%, transparent),
+				transparent 24%
+			), linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+		background-attachment: fixed;
+		transition: background var(--transition-medium), color
+			var(--transition-fast);
+	}
+
+	#root {
+		min-height: 100dvh;
+		background: transparent;
+	}
+
+	a {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	button,
+	a,
+	input,
+	select {
+		-webkit-tap-highlight-color: transparent;
+	}
+}
+
+@layer components {
+	.brand-mark {
+		background: var(--color-accent);
+		color: var(--color-on-accent);
+		box-shadow: var(--shadow-accent);
+		transition: background-color var(--transition-fast), color
+			var(--transition-fast), box-shadow var(--transition-medium), transform
+			var(--transition-fast);
+	}
+}

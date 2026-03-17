@@ -8,13 +8,13 @@ export const buttonVariants = cva(
 		variants: {
 			variant: {
 				default:
-					"border-transparent bg-(--color-accent-strong) px-5 py-2.5 font-semibold text-(--color-bg-deep) shadow-[0_12px_28px_oklch(0.82_0.18_160/0.18)] hover:bg-(--color-accent) hover:shadow-[0_14px_30px_oklch(0.82_0.18_160/0.22)]",
+					"border-transparent bg-(--color-accent-strong) px-5 py-2.5 font-semibold text-(--color-on-accent) shadow-[0_12px_28px_color-mix(in_srgb,var(--color-accent)_20%,transparent)] hover:bg-(--color-accent) hover:shadow-[0_14px_30px_color-mix(in_srgb,var(--color-accent)_24%,transparent)]",
 				secondary:
-					"border-(--color-border-default) bg-(--color-bg-surface) px-5 py-2.5 text-(--color-text-primary) hover:border-(--color-border-accent) hover:bg-(--color-bg-elevated) hover:text-white",
+					"border-(--color-border-default) bg-(--color-bg-surface) px-5 py-2.5 text-(--color-text-primary) hover:border-(--color-border-accent) hover:bg-(--color-bg-elevated) hover:text-(--color-text-primary)",
 				ghost:
 					"border-transparent px-4 py-2 text-(--color-text-secondary) hover:bg-(--color-bg-surface) hover:text-(--color-text-primary)",
 				destructive:
-					"border-transparent bg-(--color-destructive) px-5 py-2.5 text-white hover:bg-(--color-destructive)/90",
+					"border-transparent bg-(--color-destructive) px-5 py-2.5 text-(--color-on-destructive) hover:bg-(--color-destructive)/90",
 			},
 			size: {
 				default: "h-11",

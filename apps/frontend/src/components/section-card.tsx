@@ -37,7 +37,7 @@ export function SectionCard({
 					) : null}
 					<h2
 						className={cn(
-							"mt-1.5 max-w-[26ch] text-[clamp(1.1rem,2vw,1.35rem)] font-semibold leading-tight tracking-tight text-white",
+							"mt-1.5 max-w-[26ch] text-[clamp(1.1rem,2vw,1.35rem)] font-semibold leading-tight tracking-tight text-(--color-text-primary)",
 							titleClassName,
 						)}
 					>

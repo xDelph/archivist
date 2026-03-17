@@ -26,7 +26,7 @@ export function InstallBanner() {
 			<button
 				type="button"
 				onClick={() => setDismissed(true)}
-				className="flex size-11 items-center justify-center rounded-(--radius-button) p-1 text-(--color-text-muted) transition-colors hover:bg-white/6 hover:text-(--color-text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40 sm:size-10"
+				className="flex size-11 items-center justify-center rounded-(--radius-button) p-1 text-(--color-text-muted) transition-colors hover:bg-(--surface-ghost-hover-bg) hover:text-(--color-text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40 sm:size-10"
 				aria-label="Dismiss install prompt"
 			>
 				<X className="size-4" />

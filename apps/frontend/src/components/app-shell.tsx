@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/empty-state";
 import { IdentityAvatar } from "@/components/identity-avatar";
 import { InstallBanner } from "@/components/install-banner";
+import { ThemeControls } from "@/components/theme-controls";
 import { useAppWarmup } from "@/lib/app-warmup";
 import { canReadPathOffline } from "@/lib/offline-reading";
 import { authQueries } from "@/lib/queries";
@@ -30,28 +31,28 @@ export function AppShell() {
 	useAppWarmup({ isOnline, pathname, search });
 
 	return (
-		<div className="min-h-dvh bg-(--color-bg-deep) pb-20 text-white">
-			<header className="sticky top-0 z-30 border-b border-white/6 bg-(--color-bg-deep)/94 backdrop-blur-xl">
+		<div className="min-h-dvh bg-(--color-bg-deep) pb-20 text-(--color-text-primary)">
+			<header className="sticky top-0 z-30 border-b border-(--color-border-subtle) bg-(--color-header-bg) backdrop-blur-xl">
 				<div className="mx-auto flex max-w-[1680px] items-center gap-3 px-3 py-2 sm:px-4">
 					<Link to="/" className="flex items-center gap-2">
-						<span className="flex size-10 items-center justify-center rounded-xl bg-(--color-accent) text-black shadow-[0_10px_22px_rgba(24,204,119,0.18)]">
+						<span className="brand-mark flex size-10 items-center justify-center rounded-xl">
 							<Archive className="size-3.5" />
 						</span>
 						<div>
-							<p className="text-[1.15rem] font-semibold leading-none tracking-tight text-white sm:text-[1.28rem]">
+							<p className="text-[1.15rem] font-semibold leading-none tracking-tight text-(--color-text-bright) sm:text-[1.28rem]">
 								Archivist
 							</p>
 						</div>
 					</Link>
 
-					<nav className="hidden items-center rounded-xl border border-(--color-border-subtle) bg-white/[0.035] p-1 lg:flex">
+					<nav className="hidden items-center rounded-xl border border-(--color-border-subtle) bg-(--surface-ghost-bg) p-1 lg:flex">
 						{navItems.map((item) => {
 							const isActive = isNavItemActive(pathname, item.to);
 							const isDisabled = !isOnline && item.to !== "/saved";
 							const className = cn(
 								"rounded-lg border border-transparent px-3.5 py-2 text-[0.84rem] font-medium transition-[background-color,border-color,color,box-shadow]",
 								isActive
-									? "border-(--color-border-accent) bg-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.24)]"
+									? "border-(--color-border-accent) bg-(--color-bg-surface) text-(--color-text-primary) shadow-[var(--shadow-panel-soft)]"
 									: "text-(--color-text-secondary)",
 								isDisabled
 									? "cursor-not-allowed opacity-45"
@@ -70,24 +71,27 @@ export function AppShell() {
 						})}
 					</nav>
 
-					<Link
-						to="/account"
-						className="button-ghost ml-auto flex size-11 items-center justify-center rounded-full bg-white/[0.035] p-1 transition-colors hover:border-white/16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40 sm:size-10"
-					>
-						<IdentityAvatar
-							author={
-								user
-									? {
-											slack_user_id: user.slack_user_id,
-											display_name: user.display_name,
-											avatar_url: user.avatar_url,
-										}
-									: null
-							}
-							fallback={user?.email || "Archivist"}
-							size="sm"
-						/>
-					</Link>
+					<div className="ml-auto flex items-center gap-2 sm:gap-2.5">
+						<ThemeControls />
+						<Link
+							to="/account"
+							className="button-ghost flex size-11 items-center justify-center rounded-full p-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40 sm:size-10"
+						>
+							<IdentityAvatar
+								author={
+									user
+										? {
+												slack_user_id: user.slack_user_id,
+												display_name: user.display_name,
+												avatar_url: user.avatar_url,
+											}
+										: null
+								}
+								fallback={user?.email || "Archivist"}
+								size="sm"
+							/>
+						</Link>
+					</div>
 				</div>
 			</header>
 
@@ -109,7 +113,7 @@ export function AppShell() {
 				</main>
 			</div>
 
-			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-(--color-border-subtle) bg-black/92 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-(--color-border-subtle) bg-(--color-mobile-nav-bg) px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
 				<div className="mx-auto grid max-w-md grid-cols-3 gap-1 py-1.5">
 					{navItems.map((item) => {
 						const Icon = item.icon;
@@ -122,7 +126,7 @@ export function AppShell() {
 								: "text-(--color-text-muted)",
 							isDisabled
 								? "cursor-not-allowed opacity-45"
-								: "hover:bg-white/6 hover:text-white",
+								: "hover:bg-(--surface-ghost-hover-bg) hover:text-(--color-text-primary)",
 						);
 
 						return isDisabled ? (

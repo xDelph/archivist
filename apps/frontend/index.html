@@ -7,6 +7,45 @@
       name="description"
       content="Archivist helps community members catch up on public Slack conversations, threads, and highlights."
     />
+    <script>
+      (() => {
+        const themeStorageKey = "archivist.theme";
+        const defaultTheme = { appearance: "dark", accent: "green" };
+        const themeColors = {
+          dark: { green: "#122019", red: "#201516", blue: "#101828" },
+          light: { green: "#f4fbf7", red: "#fdf4f4", blue: "#f4f7fe" },
+        };
+
+        try {
+          const rawTheme = window.localStorage.getItem(themeStorageKey);
+          if (rawTheme) {
+            const storedTheme = JSON.parse(rawTheme);
+
+            if (storedTheme?.appearance === "light" || storedTheme?.appearance === "dark") {
+              defaultTheme.appearance = storedTheme.appearance;
+            }
+
+            if (
+              storedTheme?.accent === "green" ||
+              storedTheme?.accent === "red" ||
+              storedTheme?.accent === "blue"
+            ) {
+              defaultTheme.accent = storedTheme.accent;
+            }
+          }
+        } catch {}
+
+        document.documentElement.dataset.appearance = defaultTheme.appearance;
+        document.documentElement.dataset.accent = defaultTheme.accent;
+        document.documentElement.style.colorScheme = defaultTheme.appearance;
+
+        const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+        themeColorMeta?.setAttribute(
+          "content",
+          themeColors[defaultTheme.appearance][defaultTheme.accent],
+        );
+      })();
+    </script>
     <meta name="theme-color" content="#0f172a" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/app-icon.svg" type="image/svg+xml" />

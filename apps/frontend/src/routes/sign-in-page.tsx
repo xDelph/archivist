@@ -1,3 +1,4 @@
+import { ThemeControls } from "@/components/theme-controls";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { slackAuthStartUrl } from "@/lib/api";
 import { authQueries } from "@/lib/queries";
@@ -12,12 +13,15 @@ export function SignInPage() {
 
 	return (
 		<main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-(--color-bg-deep) px-6">
-			<div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,color-mix(in_srgb,var(--color-accent)_14%,transparent),transparent_28%),radial-gradient(circle_at_78%_18%,color-mix(in_srgb,var(--color-signal)_10%,transparent),transparent_18%),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:auto,auto,100%_96px,96px_100%]" />
+			<div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,color-mix(in_srgb,var(--color-accent)_14%,transparent),transparent_28%),radial-gradient(circle_at_78%_18%,color-mix(in_srgb,var(--color-signal)_10%,transparent),transparent_18%),linear-gradient(to_bottom,var(--hero-grid-line)_1px,transparent_1px),linear-gradient(to_right,var(--hero-grid-line-soft)_1px,transparent_1px)] [background-size:auto,auto,100%_96px,96px_100%]" />
+			<div className="absolute top-4 right-4 z-10 sm:top-5 sm:right-5">
+				<ThemeControls />
+			</div>
 			<div className="relative max-w-xl text-center">
 				<p className="text-[0.82rem] font-medium uppercase tracking-[0.26em] text-(--color-accent)">
 					Archivist
 				</p>
-				<h1 className="mt-5 text-[clamp(2.75rem,8vw,4.8rem)] font-semibold tracking-tight text-white">
+				<h1 className="mt-5 text-[clamp(2.75rem,8vw,4.8rem)] font-semibold tracking-tight text-(--color-text-primary)">
 					Find the decisions buried in Slack.
 				</h1>
 				<p className="mt-4 text-[1.05rem] leading-7 text-(--color-text-secondary) sm:text-[1.2rem]">
@@ -36,7 +40,7 @@ export function SignInPage() {
 							to="/"
 							className={cn(
 								buttonVariants({ variant: "secondary", size: "lg" }),
-								"border-(--color-border-default) bg-white/6 text-white hover:border-(--color-border-accent) hover:bg-white/10",
+								"border-(--color-border-default) bg-(--surface-ghost-bg) text-(--color-text-primary) hover:border-(--color-border-accent) hover:bg-(--surface-ghost-hover-bg)",
 							)}
 						>
 							Open archive
@@ -50,7 +54,7 @@ export function SignInPage() {
 								href={slackAuthStartUrl()}
 								className={cn(
 									buttonVariants({ variant: "default", size: "lg" }),
-									"bg-(--color-accent) text-black hover:bg-(--color-accent-strong)",
+									"bg-(--color-accent) text-(--color-on-accent) hover:bg-(--color-accent-strong)",
 								)}
 							>
 								<LockKeyhole className="size-4" />
@@ -70,7 +74,7 @@ export function SignInPage() {
 							type="button"
 							variant="ghost"
 							onClick={() => void userQuery.refetch()}
-							className="text-(--color-text-secondary) hover:bg-white/6 hover:text-white"
+							className="text-(--color-text-secondary) hover:bg-(--surface-ghost-hover-bg) hover:text-(--color-text-primary)"
 						>
 							Retry session check
 						</Button>

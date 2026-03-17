@@ -75,7 +75,7 @@ function LinkPreviewCard({
 					<p className="text-copy-quiet text-[0.72rem] font-medium uppercase tracking-[0.14em]">
 						{siteName}
 					</p>
-					<p className="mt-1.5 text-[1rem] font-medium text-white group-hover:text-(--color-text-bright)">
+					<p className="mt-1.5 text-[1rem] font-medium text-(--color-text-primary) group-hover:text-(--color-text-bright)">
 						{title}
 					</p>
 					{description ? (

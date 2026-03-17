@@ -7,6 +7,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registerAppServiceWorker } from "./lib/pwa";
+import { ThemeProvider } from "./lib/theme";
 import { router } from "./router";
 
 const queryClient = new QueryClient({
@@ -28,8 +29,10 @@ void registerAppServiceWorker();
 
 createRoot(rootElement).render(
 	<StrictMode>
-		<QueryClientProvider client={queryClient}>
-			<RouterProvider router={router} context={{ queryClient }} />
-		</QueryClientProvider>
+		<ThemeProvider>
+			<QueryClientProvider client={queryClient}>
+				<RouterProvider router={router} context={{ queryClient }} />
+			</QueryClientProvider>
+		</ThemeProvider>
 	</StrictMode>,
 );

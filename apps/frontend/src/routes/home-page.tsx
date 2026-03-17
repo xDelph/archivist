@@ -114,7 +114,7 @@ export function HomePage() {
 						<p className="text-eyebrow text-[0.68rem] font-medium uppercase tracking-[0.16em] sm:text-[0.74rem]">
 							Public-channel catch-up
 						</p>
-						<h1 className="mt-2 text-[clamp(1.95rem,8vw,2.3rem)] font-semibold leading-[1.08] tracking-tight text-white">
+						<h1 className="mt-2 text-[clamp(1.95rem,8vw,2.3rem)] font-semibold leading-[1.08] tracking-tight text-(--color-text-primary)">
 							Catch up on the go.
 						</h1>
 					</div>
@@ -314,7 +314,7 @@ function MobileChannelFilter({
 					<p className="text-copy-quiet text-[0.62rem] font-medium uppercase tracking-[0.18em]">
 						Channel
 					</p>
-					<p className="truncate text-[0.94rem] font-medium text-white">
+					<p className="truncate text-[0.94rem] font-medium text-(--color-text-primary)">
 						{selectedLabel}
 					</p>
 				</div>

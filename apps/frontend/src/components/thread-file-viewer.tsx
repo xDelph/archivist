@@ -61,7 +61,7 @@ export function ThreadFileViewer({
 
 	return (
 		<div
-			className="fixed inset-0 z-50 bg-black/92 backdrop-blur-md"
+			className="fixed inset-0 z-50 bg-(--color-overlay) backdrop-blur-md"
 			onPointerUp={(event) => {
 				if (event.target !== event.currentTarget) {
 					return;
@@ -72,12 +72,12 @@ export function ThreadFileViewer({
 			}}
 		>
 			<div className="flex h-full flex-col">
-				<div className="flex items-start justify-between gap-3 border-b border-white/8 px-4 py-3 sm:px-5">
+				<div className="flex items-start justify-between gap-3 border-b border-(--color-border-subtle) px-4 py-3 sm:px-5">
 					<div className="min-w-0">
 						<p className="text-eyebrow text-[0.62rem] font-medium uppercase tracking-[0.22em]">
 							File preview
 						</p>
-						<h3 className="mt-1 truncate text-[0.95rem] font-medium text-white">
+						<h3 className="mt-1 truncate text-[0.95rem] font-medium text-(--color-text-primary)">
 							{currentFile.name}
 						</h3>
 						<p className="text-copy-soft mt-1 text-[0.72rem]">
@@ -123,7 +123,9 @@ export function ThreadFileViewer({
 						) : (
 							<div className="viewer-empty flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
 								<Paperclip className="size-8" />
-								<p className="text-sm text-white">{currentFile.name}</p>
+								<p className="text-sm text-(--color-text-primary)">
+									{currentFile.name}
+								</p>
 								<p className="text-[0.78rem]">
 									Preview unavailable for this file in the current view.
 								</p>

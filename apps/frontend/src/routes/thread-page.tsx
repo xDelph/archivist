@@ -178,7 +178,7 @@ export function ThreadPage() {
 						size="sm"
 						className={
 							savedItem
-								? "size-9 rounded-full bg-(--color-accent) px-0 text-black hover:bg-(--color-accent-strong) sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
+								? "size-9 rounded-full bg-(--color-accent) px-0 text-(--color-on-accent) hover:bg-(--color-accent-strong) sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
 								: "button-ghost size-9 rounded-full px-0 sm:h-8 sm:w-auto sm:rounded-lg sm:px-3 sm:text-[0.74rem]"
 						}
 						onClick={() => saveMutation.mutate()}

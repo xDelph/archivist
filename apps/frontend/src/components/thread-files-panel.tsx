@@ -28,7 +28,7 @@ export function ThreadFilesPanel({ files, onOpenFile }: ThreadFilesPanelProps) {
 					>
 						<FileThumbnail file={file} />
 						<div className="min-w-0 flex-1">
-							<p className="truncate text-[0.82rem] font-medium text-white">
+							<p className="truncate text-[0.82rem] font-medium text-(--color-text-primary)">
 								{file.name}
 							</p>
 							<p className="text-copy-soft mt-1 text-[0.72rem]">

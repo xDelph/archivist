@@ -95,7 +95,7 @@ export function InputField({
 					value={value}
 					onChange={(event) => onValueChange(event.target.value)}
 					className={cn(
-						"w-full bg-transparent text-[0.95rem] text-white outline-none placeholder:text-(--color-text-quiet)",
+						"w-full bg-transparent text-[0.95rem] text-(--color-text-primary) outline-none placeholder:text-(--color-text-quiet)",
 						inputClassName,
 					)}
 				/>
@@ -149,7 +149,7 @@ export function SelectField({
 					value={value}
 					onChange={(event) => onValueChange(event.target.value)}
 					className={cn(
-						"w-full bg-transparent text-[0.95rem] text-white outline-none disabled:cursor-not-allowed disabled:text-(--color-text-quiet)",
+						"w-full bg-transparent text-[0.95rem] text-(--color-text-primary) outline-none disabled:cursor-not-allowed disabled:text-(--color-text-quiet)",
 						selectClassName,
 					)}
 				>
@@ -157,7 +157,7 @@ export function SelectField({
 						<option
 							key={option.key ?? (option.value || `option-${index + 1}`)}
 							value={option.value}
-							className="bg-(--color-bg-input) text-white"
+							className="bg-(--color-bg-input) text-(--color-text-primary)"
 						>
 							{option.label}
 						</option>
