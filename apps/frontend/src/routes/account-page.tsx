@@ -63,6 +63,10 @@ export function AccountPage() {
 					/>
 					<AccountRow label="Email" value={user?.email || "Not available"} />
 					<AccountRow
+						label="Roles"
+						value={user?.roles?.length ? user.roles.join(", ") : "Member"}
+					/>
+					<AccountRow
 						label="Last checked"
 						value={formatSlackTimestamp(`${Date.now() / 1_000}`)}
 					/>

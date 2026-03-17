@@ -11,6 +11,7 @@ export interface CurrentUser {
 	email: string | null;
 	display_name: string | null;
 	avatar_url: string | null;
+	roles: string[];
 }
 
 export interface ThreadAuthor {
@@ -144,6 +145,10 @@ export interface SavedItemsResponse {
 	items: SavedItem[];
 }
 
+export interface HighlightsResponse {
+	items: HighlightedItem[];
+}
+
 export interface SavedItem {
 	id: string;
 	thread_id: string;
@@ -159,6 +164,23 @@ export interface SavedItem {
 	file_count: number;
 	last_activity_ts: string;
 	saved_at: string;
+}
+
+export interface HighlightedItem {
+	id: string;
+	thread_id: string;
+	channel_id: string;
+	channel_name: string | null;
+	author: ThreadAuthor | null;
+	root_ts: string;
+	title: string;
+	preview: string;
+	reply_count: number;
+	participant_count: number;
+	reaction_count: number;
+	file_count: number;
+	last_activity_ts: string;
+	pinned_at: string;
 }
 
 export type CatchUpWindow = "24h" | "7d";
@@ -306,6 +328,36 @@ export async function fetchThreadDetail(threadId: string) {
 
 export async function fetchSavedItems() {
 	return apiRequest<SavedItemsResponse>("/api/saved");
+}
+
+export async function fetchHighlightedItems(channelId?: string) {
+	const params = new URLSearchParams();
+	if (channelId) {
+		params.set("channel_id", channelId);
+	}
+	const search = params.toString();
+	return apiRequest<HighlightsResponse>(
+		search ? `/api/highlights?${search}` : "/api/highlights",
+	);
+}
+
+export async function pinHighlightedThread(threadId: string) {
+	return apiRequest<{ ok: boolean; item: HighlightedItem }>("/api/highlights", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ thread_id: threadId }),
+	});
+}
+
+export async function deleteHighlightedThread(threadId: string) {
+	return apiRequest<{ ok: boolean }>(
+		`/api/highlights/${encodeURIComponent(threadId)}`,
+		{
+			method: "DELETE",
+		},
+	);
 }
 
 export async function saveThread(threadId: string) {

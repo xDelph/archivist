@@ -8,21 +8,25 @@ import {
 	renderSlackTextWithoutLinks,
 } from "@/lib/thread-display";
 import {
-	THREAD_SWIPE_ACTION_WIDTH,
 	clampSwipeOffset,
+	getThreadSwipeRailWidth,
 	resolveSwipeOffset,
 } from "@/lib/thread-swipe";
 import { cn } from "@/lib/utils";
-import { Link } from "@tanstack/react-router";
-import { BookmarkCheck, CloudOff } from "lucide-react";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { BookmarkCheck, CloudOff, Sparkles } from "lucide-react";
 import {
 	Children,
 	type ReactNode,
 	type TouchEvent,
 	isValidElement,
+	useEffect,
+	useId,
 	useRef,
 	useState,
 } from "react";
+
+const OPEN_THREAD_SWIPE_EVENT = "archivist:open-thread-swipe";
 
 interface ThreadCardProps {
 	threadId: string;
@@ -40,9 +44,11 @@ interface ThreadCardProps {
 	rank?: number;
 	className?: string;
 	action?: ReactNode;
+	isActionActive?: boolean;
 	savedState?: "saved" | "offline";
-	leadingSwipeAction?: ThreadCardSwipeAction;
-	trailingSwipeAction?: ThreadCardSwipeAction;
+	isHighlighted?: boolean;
+	leadingSwipeActions?: ThreadCardSwipeAction[];
+	trailingSwipeActions?: ThreadCardSwipeAction[];
 }
 
 interface ThreadCardSwipeAction {
@@ -69,14 +75,21 @@ export function ThreadCard({
 	rank,
 	className,
 	action,
+	isActionActive = false,
 	savedState,
-	leadingSwipeAction,
-	trailingSwipeAction,
+	isHighlighted = false,
+	leadingSwipeActions = [],
+	trailingSwipeActions = [],
 }: ThreadCardProps) {
 	const previewIsDuplicate = !shouldRenderThreadPreview(title, preview);
 	const displayMessage = previewIsDuplicate ? title : preview;
-	const leadingWidth = leadingSwipeAction ? THREAD_SWIPE_ACTION_WIDTH : 0;
-	const trailingWidth = trailingSwipeAction ? THREAD_SWIPE_ACTION_WIDTH : 0;
+	const leadingWidth = getThreadSwipeRailWidth(leadingSwipeActions.length);
+	const trailingWidth = getThreadSwipeRailWidth(trailingSwipeActions.length);
+	const instanceId = useId();
+	const locationKey = useRouterState({
+		select: (state) => `${state.location.pathname}${state.location.searchStr}`,
+	});
+	const previousLocationKeyRef = useRef(locationKey);
 	const [swipeOffset, setSwipeOffset] = useState(0);
 	const [isDragging, setIsDragging] = useState(false);
 	const touchStateRef = useRef<{
@@ -92,10 +105,11 @@ export function ThreadCard({
 	}
 
 	function handleTouchStart(event: TouchEvent<HTMLElement>) {
-		if (!leadingSwipeAction && !trailingSwipeAction) {
+		if (!leadingSwipeActions.length && !trailingSwipeActions.length) {
 			return;
 		}
 
+		announceOpenThreadSwipe(instanceId);
 		const touch = event.touches[0];
 		touchStateRef.current = {
 			startX: touch.clientX,
@@ -152,19 +166,67 @@ export function ThreadCard({
 		setIsDragging(false);
 	}
 
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+
+		function handleOpen(event: Event) {
+			const nextId = (event as CustomEvent<{ instanceId: string }>).detail
+				?.instanceId;
+			if (nextId && nextId !== instanceId) {
+				setSwipeOffset(0);
+				setIsDragging(false);
+			}
+		}
+
+		window.addEventListener(OPEN_THREAD_SWIPE_EVENT, handleOpen);
+		return () =>
+			window.removeEventListener(OPEN_THREAD_SWIPE_EVENT, handleOpen);
+	}, [instanceId]);
+
+	useEffect(() => {
+		if (swipeOffset === 0) {
+			return;
+		}
+
+		function closeSwipeOnScroll() {
+			setSwipeOffset(0);
+			setIsDragging(false);
+		}
+
+		window.addEventListener("scroll", closeSwipeOnScroll, { passive: true });
+		return () => window.removeEventListener("scroll", closeSwipeOnScroll);
+	}, [swipeOffset]);
+
+	useEffect(() => {
+		if (previousLocationKeyRef.current === locationKey) {
+			return;
+		}
+
+		previousLocationKeyRef.current = locationKey;
+		setSwipeOffset(0);
+		setIsDragging(false);
+	}, [locationKey]);
+
 	return (
-		<div className="relative overflow-hidden">
-			{leadingSwipeAction ? (
+		<div
+			className={cn(
+				"relative overflow-visible isolate",
+				(swipeOffset !== 0 || isDragging || isActionActive) && "z-40 sm:z-20",
+			)}
+		>
+			{leadingSwipeActions.length ? (
 				<SwipeActionSurface
 					side="leading"
-					action={leadingSwipeAction}
+					actions={leadingSwipeActions}
 					onAction={closeSwipeActions}
 				/>
 			) : null}
-			{trailingSwipeAction ? (
+			{trailingSwipeActions.length ? (
 				<SwipeActionSurface
 					side="trailing"
-					action={trailingSwipeAction}
+					actions={trailingSwipeActions}
 					onAction={closeSwipeActions}
 				/>
 			) : null}
@@ -181,7 +243,9 @@ export function ThreadCard({
 							? undefined
 							: `translate3d(${swipeOffset}px, 0, 0)`,
 					touchAction:
-						leadingSwipeAction || trailingSwipeAction ? "pan-y" : undefined,
+						leadingSwipeActions.length || trailingSwipeActions.length
+							? "pan-y"
+							: undefined,
 				}}
 				onTouchStart={handleTouchStart}
 				onTouchMove={handleTouchMove}
@@ -223,6 +287,7 @@ export function ThreadCard({
 									</p>
 									<ChannelBadge name={channelName} />
 									{savedState ? <SavedStateBadge state={savedState} /> : null}
+									{isHighlighted ? <HighlightStateBadge /> : null}
 								</div>
 								<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4]">
 									{renderRichNode(displayMessage)}
@@ -290,39 +355,51 @@ function SavedStateBadge({ state }: { state: "saved" | "offline" }) {
 	);
 }
 
+function HighlightStateBadge() {
+	return (
+		<span className="inline-flex items-center gap-1 rounded-full border border-(--color-border-accent) bg-(--color-accent)/12 px-2 py-0.5 text-[0.67rem] font-semibold tracking-[0.02em] text-(--color-accent-soft)">
+			<Sparkles className="size-3" />
+			Highlight
+		</span>
+	);
+}
+
 function SwipeActionSurface({
 	side,
-	action,
+	actions,
 	onAction,
 }: {
 	side: "leading" | "trailing";
-	action: ThreadCardSwipeAction;
+	actions: ThreadCardSwipeAction[];
 	onAction: () => void;
 }) {
 	return (
 		<div
 			className={cn(
-				"absolute inset-y-0 z-0 flex w-[92px] items-stretch p-1.5 sm:hidden",
+				"absolute inset-y-0 z-0 flex items-stretch gap-1.5 p-1.5 sm:hidden",
 				side === "leading" ? "left-0 justify-start" : "right-0 justify-end",
 			)}
 		>
-			<button
-				type="button"
-				className={cn(
-					"flex w-full flex-col items-center justify-center gap-1 rounded-[1.35rem] px-2 text-[0.72rem] font-semibold tracking-[0.01em] transition-[background-color,color,transform] duration-200 active:scale-[0.98] disabled:opacity-55",
-					action.tone === "danger"
-						? "bg-[color-mix(in_srgb,var(--color-destructive)_72%,var(--color-bg-surface))] text-white"
-						: "bg-[color-mix(in_srgb,var(--color-accent)_26%,var(--color-bg-surface))] text-(--color-accent-soft)",
-				)}
-				disabled={action.disabled}
-				onClick={() => {
-					onAction();
-					action.onAction();
-				}}
-			>
-				{action.icon}
-				<span>{action.label}</span>
-			</button>
+			{actions.map((action, index) => (
+				<button
+					key={`${action.label}-${index}`}
+					type="button"
+					className={cn(
+						"flex w-[92px] flex-col items-center justify-center gap-1 rounded-[1.35rem] px-2 text-[0.72rem] font-semibold tracking-[0.01em] transition-[background-color,color,transform] duration-200 active:scale-[0.98] disabled:opacity-55",
+						action.tone === "danger"
+							? "bg-[color-mix(in_srgb,var(--color-destructive)_72%,var(--color-bg-surface))] text-white"
+							: "bg-[color-mix(in_srgb,var(--color-accent)_26%,var(--color-bg-surface))] text-(--color-accent-soft)",
+					)}
+					disabled={action.disabled}
+					onClick={() => {
+						onAction();
+						action.onAction();
+					}}
+				>
+					{action.icon}
+					<span>{action.label}</span>
+				</button>
+			))}
 		</div>
 	);
 }
@@ -331,6 +408,18 @@ function renderRichNode(content: ReactNode) {
 	return typeof content === "string"
 		? renderSlackTextWithoutLinks(content)
 		: content;
+}
+
+function announceOpenThreadSwipe(instanceId: string) {
+	if (typeof window === "undefined") {
+		return;
+	}
+
+	window.dispatchEvent(
+		new CustomEvent(OPEN_THREAD_SWIPE_EVENT, {
+			detail: { instanceId },
+		}),
+	);
 }
 
 export function shouldRenderThreadPreview(

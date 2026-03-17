@@ -1,10 +1,25 @@
 import {
+	THREAD_SWIPE_ACTION_GAP,
+	THREAD_SWIPE_ACTION_PADDING,
 	THREAD_SWIPE_ACTION_WIDTH,
 	clampSwipeOffset,
+	getThreadSwipeRailWidth,
 	resolveSwipeOffset,
 } from "@/lib/thread-swipe";
 
 describe("thread swipe helpers", () => {
+	it("includes rail padding and gaps in the total width", () => {
+		expect(getThreadSwipeRailWidth(0)).toBe(0);
+		expect(getThreadSwipeRailWidth(1)).toBe(
+			THREAD_SWIPE_ACTION_WIDTH + THREAD_SWIPE_ACTION_PADDING * 2,
+		);
+		expect(getThreadSwipeRailWidth(2)).toBe(
+			THREAD_SWIPE_ACTION_WIDTH * 2 +
+				THREAD_SWIPE_ACTION_GAP +
+				THREAD_SWIPE_ACTION_PADDING * 2,
+		);
+	});
+
 	it("clamps offsets to the configured action widths", () => {
 		expect(clampSwipeOffset(160, THREAD_SWIPE_ACTION_WIDTH, 0)).toBe(
 			THREAD_SWIPE_ACTION_WIDTH,

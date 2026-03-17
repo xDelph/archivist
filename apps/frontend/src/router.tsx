@@ -1,11 +1,12 @@
 import { AppShell } from "@/components/app-shell";
 import { isApiErrorWithStatus } from "@/lib/api";
 import { readCachedCurrentUser } from "@/lib/auth-cache";
-import { homeTabSchema } from "@/lib/home-tabs";
+import { homeTabSchema, normalizeHomeTab } from "@/lib/home-tabs";
 import { canReadPathOffline } from "@/lib/offline-reading";
 import {
 	authQueries,
 	catchUpQueries,
+	highlightQueries,
 	savedQueries,
 	searchSearchSchema,
 } from "@/lib/queries";
@@ -75,8 +76,9 @@ const indexRoute = createRoute({
 	component: HomePage,
 	validateSearch: homeSearchSchema,
 	loaderDeps: ({ search }) => ({ channel: search.channel, tab: search.tab }),
-	loader: ({ context }) => {
+	loader: ({ context, deps }) => {
 		preloadRouteData(context.queryClient, catchUpQueries.summary("7d"));
+		preloadActiveHomeTab(context.queryClient, deps);
 	},
 });
 
@@ -150,4 +152,36 @@ function preloadRouteData(
 	query: Parameters<QueryClient["ensureQueryData"]>[0],
 ) {
 	void queryClient.ensureQueryData(query).catch(() => undefined);
+}
+
+function preloadActiveHomeTab(
+	queryClient: QueryClient,
+	{
+		channel,
+		tab,
+	}: {
+		channel?: string;
+		tab?: string;
+	},
+) {
+	const activeTab = normalizeHomeTab(tab);
+	if (activeTab === "highlights") {
+		preloadRouteData(
+			queryClient,
+			highlightQueries.list({ channelId: channel }),
+		);
+		return;
+	}
+
+	const options =
+		activeTab === "fresh"
+			? catchUpQueries.feed({ window: "24h", channelId: channel })
+			: activeTab === "steady"
+				? catchUpQueries.feed({ window: "7d", channelId: channel })
+				: catchUpQueries.feed({
+						window: "7d",
+						channelId: channel,
+						sort: "trending",
+					});
+	void queryClient.prefetchInfiniteQuery(options).catch(() => undefined);
 }

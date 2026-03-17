@@ -1,5 +1,6 @@
 import type {
 	CatchUpThread,
+	HighlightedItem,
 	SavedItem,
 	SearchResult,
 	ThreadAuthor,
@@ -60,6 +61,23 @@ export function threadCardDataFromSearchResult(
 }
 
 export function threadCardDataFromSavedItem(item: SavedItem): ThreadCardData {
+	return {
+		threadId: item.thread_id,
+		channelName: item.channel_name || item.channel_id,
+		author: item.author,
+		title: item.title,
+		preview: item.preview,
+		lastActivityTs: item.last_activity_ts,
+		replyCount: item.reply_count,
+		participantCount: item.participant_count,
+		reactionCount: item.reaction_count,
+		fileCount: item.file_count,
+	};
+}
+
+export function threadCardDataFromHighlightedItem(
+	item: HighlightedItem,
+): ThreadCardData {
 	return {
 		threadId: item.thread_id,
 		channelName: item.channel_name || item.channel_id,

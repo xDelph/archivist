@@ -6,6 +6,7 @@ import {
 	fetchCatchUp,
 	fetchChannels,
 	fetchCurrentUser,
+	fetchHighlightedItems,
 	fetchSavedItems,
 	fetchSearchResults,
 	fetchThreadDetail,
@@ -149,6 +150,15 @@ export const savedQueries = {
 		queryOptions({
 			queryKey: ["saved"],
 			queryFn: fetchSavedItems,
+			staleTime: 30_000,
+		}),
+};
+
+export const highlightQueries = {
+	list: ({ channelId }: { channelId?: string } = {}) =>
+		queryOptions({
+			queryKey: ["highlights", channelId ?? "all"],
+			queryFn: () => fetchHighlightedItems(channelId),
 			staleTime: 30_000,
 		}),
 };

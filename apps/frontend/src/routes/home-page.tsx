@@ -3,7 +3,12 @@ import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
-import type { CatchUpSort, CatchUpWindow, SavedItem } from "@/lib/api";
+import type {
+	CatchUpSort,
+	CatchUpWindow,
+	HighlightedItem,
+	SavedItem,
+} from "@/lib/api";
 import {
 	CATCH_UP_PAGE_SIZE,
 	flattenCatchUpPages,
@@ -15,13 +20,24 @@ import {
 	normalizeHomeTab,
 	toHomeTabSearch,
 } from "@/lib/home-tabs";
-import { catchUpQueries, savedQueries } from "@/lib/queries";
-import { threadCardDataFromCatchUpThread } from "@/lib/thread-card-props";
+import { catchUpQueries, highlightQueries, savedQueries } from "@/lib/queries";
+import {
+	threadCardDataFromCatchUpThread,
+	threadCardDataFromHighlightedItem,
+} from "@/lib/thread-card-props";
+import { indexHighlightedItemsByThreadId } from "@/lib/thread-highlight";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Calendar, ChevronDown, Clock, Flame, Hash } from "lucide-react";
+import {
+	Calendar,
+	ChevronDown,
+	Clock,
+	Flame,
+	Hash,
+	Sparkles,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export function HomePage() {
@@ -32,8 +48,14 @@ export function HomePage() {
 	const activeChannelId = activeFilter === "all" ? undefined : activeFilter;
 	const overviewQuery = useQuery(catchUpQueries.summary("7d"));
 	const savedQuery = useQuery(savedQueries.list());
+	const highlightsQuery = useQuery({
+		...highlightQueries.list({ channelId: activeChannelId }),
+	});
 	const savedItemsByThreadId = indexSavedItemsByThreadId(
 		savedQuery.data?.items,
+	);
+	const highlightedItemsByThreadId = indexHighlightedItemsByThreadId(
+		highlightsQuery.data?.items,
 	);
 	const dayFeedQuery = useCatchUpFeed({
 		window: "24h",
@@ -57,6 +79,12 @@ export function HomePage() {
 			getCatchUpChannelLabel(left).localeCompare(getCatchUpChannelLabel(right)),
 	);
 	const tabItems = [
+		{
+			key: "highlights",
+			label: "Highlights",
+			shortLabel: "Highlights",
+			icon: <Sparkles className="size-3.5 shrink-0 sm:size-4" />,
+		},
 		{
 			key: "fresh",
 			label: "Fresh (24h)",
@@ -139,11 +167,28 @@ export function HomePage() {
 			/>
 
 			<div className="mt-2">
+				{activeTab === "highlights" && (
+					<SectionCard
+						eyebrow="Highlights"
+						title="Admin picks worth opening"
+						actions={<Sparkles className="text-eyebrow size-5" />}
+					>
+						<HighlightsSection
+							items={highlightsQuery.data?.items ?? []}
+							isPending={highlightsQuery.isPending}
+							isError={highlightsQuery.isError}
+							savedItemsByThreadId={savedItemsByThreadId}
+							highlightedItemsByThreadId={highlightedItemsByThreadId}
+						/>
+					</SectionCard>
+				)}
+
 				{activeTab === "fresh" && (
 					<SectionCard eyebrow="Last 24 hours" title="Fresh threads">
 						<CatchUpFeedSection
 							query={dayFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
+							highlightedItemsByThreadId={highlightedItemsByThreadId}
 							emptyTitle="No recent public activity"
 							emptyDescription="Nothing crossed the 24-hour threshold for the selected channels."
 						/>
@@ -155,6 +200,7 @@ export function HomePage() {
 						<CatchUpFeedSection
 							query={weekFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
+							highlightedItemsByThreadId={highlightedItemsByThreadId}
 							emptyTitle="No weekly catch-up yet"
 							emptyDescription="Once the worker processes more history, longer windows will show up here."
 						/>
@@ -170,6 +216,7 @@ export function HomePage() {
 						<CatchUpFeedSection
 							query={trendingFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
+							highlightedItemsByThreadId={highlightedItemsByThreadId}
 							cardClassName="bg-(--color-bg-panel)"
 							emptyTitle="Trending needs more history"
 							emptyDescription="This panel fills in automatically as the worker accumulates more public-channel thread summaries."
@@ -180,6 +227,55 @@ export function HomePage() {
 				)}
 			</div>
 		</div>
+	);
+}
+
+function HighlightsSection({
+	items,
+	isPending,
+	isError,
+	savedItemsByThreadId,
+	highlightedItemsByThreadId,
+}: {
+	items: HighlightedItem[];
+	isPending: boolean;
+	isError: boolean;
+	savedItemsByThreadId: Map<string, SavedItem>;
+	highlightedItemsByThreadId: Map<string, HighlightedItem>;
+}) {
+	return (
+		<QueryState
+			isPending={isPending}
+			isError={isError}
+			isEmpty={items.length === 0}
+			loading={<CardSkeletonList />}
+			error={
+				<EmptyState
+					title="Highlights are unavailable"
+					description="The API route is reachable, but the curated thread query failed. Retry once the local API is healthy again."
+				/>
+			}
+			empty={
+				<EmptyState
+					title="No highlights yet"
+					description="Admin-picked threads will surface here as soon as they are curated."
+				/>
+			}
+		>
+			<div className="space-y-2.5">
+				{items.map((item) => (
+					<SavableThreadCard
+						key={item.id}
+						{...threadCardDataFromHighlightedItem(item)}
+						savedItem={savedItemsByThreadId.get(item.thread_id)}
+						highlightedItem={
+							highlightedItemsByThreadId.get(item.thread_id) ?? null
+						}
+						isOnline={true}
+					/>
+				))}
+			</div>
+		</QueryState>
 	);
 }
 
@@ -278,6 +374,7 @@ function useCatchUpFeed({
 function CatchUpFeedSection({
 	query,
 	savedItemsByThreadId,
+	highlightedItemsByThreadId,
 	emptyTitle,
 	emptyDescription,
 	errorTitle = "The catch-up feed is unavailable",
@@ -286,6 +383,7 @@ function CatchUpFeedSection({
 }: {
 	query: ReturnType<typeof useCatchUpFeed>;
 	savedItemsByThreadId: Map<string, SavedItem>;
+	highlightedItemsByThreadId: Map<string, HighlightedItem>;
 	emptyTitle: string;
 	emptyDescription: string;
 	errorTitle?: string;
@@ -312,6 +410,7 @@ function CatchUpFeedSection({
 							getCatchUpThreadChannelName(thread),
 						)}
 						savedItem={savedItemsByThreadId.get(thread.id)}
+						highlightedItem={highlightedItemsByThreadId.get(thread.id) ?? null}
 						isOnline={true}
 						className={cardClassName}
 					/>

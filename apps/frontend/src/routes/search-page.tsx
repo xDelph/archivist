@@ -5,8 +5,14 @@ import { SectionCard } from "@/components/section-card";
 import { Button } from "@/components/ui/button";
 import { InputField, SelectField } from "@/components/ui/form-field";
 import { highlightMatches } from "@/lib/highlight";
-import { channelQueries, savedQueries, searchQueries } from "@/lib/queries";
+import {
+	channelQueries,
+	highlightQueries,
+	savedQueries,
+	searchQueries,
+} from "@/lib/queries";
 import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
+import { indexHighlightedItemsByThreadId } from "@/lib/thread-highlight";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -27,8 +33,12 @@ export function SearchPage() {
 	const deferredQuery = useDeferredValue(query.trim());
 	const channelsQuery = useQuery(channelQueries.list());
 	const savedQuery = useQuery(savedQueries.list());
+	const highlightsQuery = useQuery(highlightQueries.list());
 	const savedItemsByThreadId = indexSavedItemsByThreadId(
 		savedQuery.data?.items,
+	);
+	const highlightedItemsByThreadId = indexHighlightedItemsByThreadId(
+		highlightsQuery.data?.items,
 	);
 
 	const searchQuery = useQuery(
@@ -195,6 +205,9 @@ export function SearchPage() {
 									preview: highlightMatches(item.snippet, deferredQuery),
 								})}
 								savedItem={savedItemsByThreadId.get(item.thread_id)}
+								highlightedItem={
+									highlightedItemsByThreadId.get(item.thread_id) ?? null
+								}
 								isOnline={true}
 							/>
 						))}

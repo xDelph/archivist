@@ -5,12 +5,17 @@ import {
 	fetchThreadDetail,
 } from "@/lib/api";
 import { CATCH_UP_PAGE_SIZE } from "@/lib/catch-up";
-import { normalizeHomeTab } from "@/lib/home-tabs";
+import { type HomeTab, normalizeHomeTab } from "@/lib/home-tabs";
 import {
 	replaceOfflineSavedItems,
 	storeOfflineSavedThread,
 } from "@/lib/offline-library";
-import { catchUpQueries, offlineQueries, savedQueries } from "@/lib/queries";
+import {
+	catchUpQueries,
+	highlightQueries,
+	offlineQueries,
+	savedQueries,
+} from "@/lib/queries";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
@@ -22,30 +27,37 @@ interface CatchUpWarmTarget {
 	channelId?: string;
 }
 
-export function buildCatchUpWarmTargets(pathname: string, search: string) {
+interface HighlightWarmTarget {
+	channelId?: string;
+}
+
+type HomeWarmTarget =
+	| ({ tab: "highlights" } & HighlightWarmTarget)
+	| ({ tab: Exclude<HomeTab, "highlights"> } & CatchUpWarmTarget);
+
+export function buildHomeWarmTargets(pathname: string, search: string) {
 	const params = new URLSearchParams(search);
 	const channelId = params.get("channel") || undefined;
 	const activeTab =
 		pathname === "/" ? normalizeHomeTab(params.get("tab")) : null;
-	const targets: Array<
-		CatchUpWarmTarget & { tab: "fresh" | "steady" | "trending" }
-	> = [
+	const targets: HomeWarmTarget[] = [
+		{ tab: "highlights", channelId },
 		{ tab: "fresh", window: "24h", channelId },
 		{ tab: "steady", window: "7d", channelId },
 		{ tab: "trending", window: "7d", sort: "trending", channelId },
 	];
 
-	return targets
-		.filter((target) => pathname !== "/" || target.tab !== activeTab)
-		.map(({ tab: _tab, ...target }) => target);
+	return targets.filter(
+		(target) => pathname !== "/" || target.tab !== activeTab,
+	);
 }
 
-export function getCatchUpWarmTargetKey({
-	window,
-	sort = "activity",
-	channelId,
-}: CatchUpWarmTarget) {
-	return `${window}:${sort}:${channelId ?? "all"}`;
+export function getHomeWarmTargetKey(target: HomeWarmTarget) {
+	if (target.tab === "highlights") {
+		return `highlights:${target.channelId ?? "all"}`;
+	}
+
+	return `${target.window}:${target.sort ?? "activity"}:${target.channelId ?? "all"}`;
 }
 
 export function useAppWarmup({
@@ -70,9 +82,9 @@ export function useAppWarmup({
 			return;
 		}
 
-		const targets = buildCatchUpWarmTargets(pathname, search).filter(
+		const targets = buildHomeWarmTargets(pathname, search).filter(
 			(target) =>
-				!warmedCatchUpTargetsRef.current.has(getCatchUpWarmTargetKey(target)),
+				!warmedCatchUpTargetsRef.current.has(getHomeWarmTargetKey(target)),
 		);
 		if (!targets.length) {
 			return;
@@ -80,7 +92,14 @@ export function useAppWarmup({
 
 		const timeout = window.setTimeout(() => {
 			for (const target of targets) {
-				warmedCatchUpTargetsRef.current.add(getCatchUpWarmTargetKey(target));
+				warmedCatchUpTargetsRef.current.add(getHomeWarmTargetKey(target));
+				if (target.tab === "highlights") {
+					void queryClient.prefetchQuery(
+						highlightQueries.list({ channelId: target.channelId }),
+					);
+					continue;
+				}
+
 				void queryClient.prefetchInfiniteQuery(
 					catchUpQueries.feed({
 						window: target.window,
