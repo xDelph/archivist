@@ -50,9 +50,11 @@ async fn slack_event_flows_from_ingest_to_worker() {
     let ingest_router = build_ingest_router(IngestConfig {
         host: "127.0.0.1".to_owned(),
         port: 4001,
+        api_base_url: "http://127.0.0.1:4000".to_owned(),
         worker_base_url: worker_base_url.clone(),
         qstash_base_url: None,
         qstash_token: None,
+        slack_command_token: None,
         signing_secret: None,
     })
     .expect("ingest router");
@@ -142,9 +144,11 @@ async fn channel_rename_flows_from_ingest_to_worker() {
     let ingest_router = build_ingest_router(IngestConfig {
         host: "127.0.0.1".to_owned(),
         port: 4001,
+        api_base_url: "http://127.0.0.1:4000".to_owned(),
         worker_base_url: worker_base_url.clone(),
         qstash_base_url: None,
         qstash_token: None,
+        slack_command_token: None,
         signing_secret: None,
     })
     .expect("ingest router");
@@ -235,9 +239,11 @@ async fn slack_event_flows_from_ingest_to_worker_through_qstash_mock() {
     let ingest_router = build_ingest_router(IngestConfig {
         host: "127.0.0.1".to_owned(),
         port: 4001,
+        api_base_url: "http://127.0.0.1:4000".to_owned(),
         worker_base_url: worker_base_url.clone(),
         qstash_base_url: Some(qstash_base_url),
         qstash_token: Some(QSTASH_TOKEN.to_owned()),
+        slack_command_token: None,
         signing_secret: None,
     })
     .expect("ingest router");
@@ -286,7 +292,7 @@ async fn slack_event_flows_from_ingest_to_worker_through_qstash_mock() {
     assert_eq!(response_payload["ok"], true);
     assert_eq!(response_payload["enqueued"], true);
     assert_eq!(qstash_state.publish_count(), 1);
-    assert_eq!(health_payload["queue_signature_verification"], true);
+    assert_eq!(health_payload["queue_signature_verification"], false);
     assert_eq!(health_payload["tracked_events"], 1);
     assert_eq!(health_payload["tracked_messages"], 1);
     assert_eq!(messages.len(), 1);

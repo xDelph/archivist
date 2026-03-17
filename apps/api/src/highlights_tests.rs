@@ -1,14 +1,24 @@
 use super::HighlightsResponse;
 use crate::{
-    ApiConfig,
+    ApiConfig, AppState,
+    analytics_store::LocalAnalyticsStore,
     auth::{SessionClaims, build_session_token, current_unix_timestamp},
+    auth_store::LocalAuthStore,
     build_router,
     highlight_store::{HighlightedThreadRecord, LocalHighlightStore},
+    saved_store::LocalSavedItemStore,
+    slack_highlights::{
+        list_highlights_from_slack_command, pin_highlight_from_slack_command,
+        unpin_highlight_from_slack_command,
+    },
     user_role_store::ADMIN_ROLE,
+    user_store::LocalUserStore,
 };
 use axum::{
+    Router,
     body::{Body, to_bytes},
     http::{Request, StatusCode},
+    routing::post,
 };
 use db::JsonlEventStore;
 use domain::{ChannelKind, EventPayload, ProcessEventJob};
@@ -302,6 +312,306 @@ async fn admin_can_pin_and_unpin_highlights() {
     assert_eq!(delete_response.status(), StatusCode::OK);
 }
 
+#[tokio::test]
+async fn admin_can_pin_highlights_without_thread_summary_refresh() {
+    let tempdir = tempdir().expect("tempdir");
+    let path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&path).await.expect("store");
+    let root_ts = "1700000000.000001";
+
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_message".to_owned(),
+            event_time: 1,
+            received_at: 2,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U999".to_owned()),
+                text: Some("Thread to highlight".to_owned()),
+                ts: root_ts.to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("message");
+
+    let user_role_store =
+        crate::user_role_store::LocalUserRoleStore::open(tempdir.path().join("user-roles.json"))
+            .await
+            .expect("user role store");
+    user_role_store
+        .grant_role("U123", ADMIN_ROLE)
+        .await
+        .expect("grant admin role");
+
+    let app = build_router(config_with_defaults(&tempdir))
+        .await
+        .expect("router");
+    let session_token = valid_session_token();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/highlights")
+                .header("content-type", "application/json")
+                .header("cookie", format!("archivist_session={session_token}"))
+                .body(Body::from(format!(r#"{{"thread_id":"C123:{root_ts}"}}"#)))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn internal_slack_highlight_route_requires_valid_token_and_admin_role() {
+    let tempdir = tempdir().expect("tempdir");
+    let root_ts = "1700000000.000001";
+    let store = JsonlEventStore::open(tempdir.path().join("events.jsonl"))
+        .await
+        .expect("store");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_message".to_owned(),
+            event_time: 1,
+            received_at: 2,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U999".to_owned()),
+                text: Some("Thread to highlight".to_owned()),
+                ts: root_ts.to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("message");
+    let user_role_store =
+        crate::user_role_store::LocalUserRoleStore::open(tempdir.path().join("user-roles.json"))
+            .await
+            .expect("user role store");
+    let app = Router::new()
+        .route(
+            "/api/internal/slack/highlights",
+            post(pin_highlight_from_slack_command),
+        )
+        .with_state(
+            test_state(
+                &tempdir,
+                store,
+                user_role_store.clone(),
+                Some("internal-secret".to_owned()),
+            )
+            .await,
+        );
+
+    let unauthorized = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/internal/slack/highlights")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"slack_user_id":"U123","thread_id":"C123:{root_ts}"}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    let forbidden = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/internal/slack/highlights")
+                .header("authorization", "Bearer internal-secret")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"slack_user_id":"U123","thread_id":"C123:{root_ts}"}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+    user_role_store
+        .grant_role("U123", ADMIN_ROLE)
+        .await
+        .expect("grant admin role");
+    let success = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/internal/slack/highlights")
+                .header("authorization", "Bearer internal-secret")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"slack_user_id":"U123","thread_id":"C123:{root_ts}"}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(success.status(), StatusCode::OK);
+    let payload = serde_json::from_slice::<serde_json::Value>(
+        &to_bytes(success.into_body(), usize::MAX)
+            .await
+            .expect("body"),
+    )
+    .expect("json");
+
+    assert_eq!(payload["item"]["thread_id"], format!("C123:{root_ts}"));
+}
+
+#[tokio::test]
+async fn internal_slack_highlight_routes_can_list_and_unpin() {
+    let tempdir = tempdir().expect("tempdir");
+    let first_root_ts = "1700000000.000001";
+    let second_root_ts = "1700000000.000002";
+    let store = JsonlEventStore::open(tempdir.path().join("events.jsonl"))
+        .await
+        .expect("store");
+    for (event_id, channel_id, channel_name, root_ts, text) in [
+        (
+            "evt_message_one",
+            "C123",
+            "general",
+            first_root_ts,
+            "First thread to highlight",
+        ),
+        (
+            "evt_message_two",
+            "C234",
+            "showcase",
+            second_root_ts,
+            "Second thread to highlight",
+        ),
+    ] {
+        store
+            .record_process_event(&ProcessEventJob {
+                event_id: format!("{event_id}_channel"),
+                event_time: 1,
+                received_at: 2,
+                channel_id: channel_id.to_owned(),
+                channel_kind: ChannelKind::Public,
+                payload: EventPayload::ChannelUpdated {
+                    name: Some(channel_name.to_owned()),
+                    is_archived: Some(false),
+                },
+            })
+            .await
+            .expect("channel");
+        store
+            .record_process_event(&ProcessEventJob {
+                event_id: event_id.to_owned(),
+                event_time: 3,
+                received_at: 4,
+                channel_id: channel_id.to_owned(),
+                channel_kind: ChannelKind::Public,
+                payload: EventPayload::Message {
+                    user_id: Some("U999".to_owned()),
+                    text: Some(text.to_owned()),
+                    ts: root_ts.to_owned(),
+                    thread_ts: None,
+                    files: vec![],
+                },
+            })
+            .await
+            .expect("message");
+    }
+    let user_role_store =
+        crate::user_role_store::LocalUserRoleStore::open(tempdir.path().join("user-roles.json"))
+            .await
+            .expect("user role store");
+    user_role_store
+        .grant_role("U123", ADMIN_ROLE)
+        .await
+        .expect("grant admin role");
+    let highlights = LocalHighlightStore::open(tempdir.path().join("highlighted-threads.json"))
+        .await
+        .expect("highlight store");
+    highlights
+        .pin_thread(highlighted_thread("C123", first_root_ts, "U123", "10"))
+        .await
+        .expect("pin first");
+    highlights
+        .pin_thread(highlighted_thread("C234", second_root_ts, "U123", "20"))
+        .await
+        .expect("pin second");
+    let app = Router::new()
+        .route(
+            "/api/internal/slack/highlights/list",
+            post(list_highlights_from_slack_command),
+        )
+        .route(
+            "/api/internal/slack/highlights/unpin",
+            post(unpin_highlight_from_slack_command),
+        )
+        .with_state(
+            test_state(
+                &tempdir,
+                store,
+                user_role_store.clone(),
+                Some("internal-secret".to_owned()),
+            )
+            .await,
+        );
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/internal/slack/highlights/list")
+                .header("authorization", "Bearer internal-secret")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"slack_user_id":"U123"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_payload = serde_json::from_slice::<serde_json::Value>(
+        &to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .expect("body"),
+    )
+    .expect("json");
+    assert_eq!(list_payload["items"].as_array().expect("items").len(), 2);
+
+    let unpin_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/internal/slack/highlights/unpin")
+                .header("authorization", "Bearer internal-secret")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"slack_user_id":"U123","thread_id":"C123:{first_root_ts}"}}"#
+                )))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(unpin_response.status(), StatusCode::OK);
+    let remaining = LocalHighlightStore::open(tempdir.path().join("highlighted-threads.json"))
+        .await
+        .expect("highlight store")
+        .list_threads()
+        .await;
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].thread_id, format!("C234:{second_root_ts}"));
+}
+
 fn highlighted_thread(
     channel_id: &str,
     root_ts: &str,
@@ -339,6 +649,48 @@ fn config_with_defaults(tempdir: &tempfile::TempDir) -> ApiConfig {
             .display()
             .to_string(),
         web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
+    }
+}
+
+async fn test_state(
+    tempdir: &tempfile::TempDir,
+    store: JsonlEventStore,
+    user_role_store: crate::user_role_store::LocalUserRoleStore,
+    slack_command_token: Option<String>,
+) -> AppState {
+    AppState {
+        store: store.into(),
+        slack_auth: crate::auth::SlackAuthConfig {
+            client_id: None,
+            client_secret: None,
+            redirect_uri: None,
+            team_id: None,
+            token_url: None,
+        },
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
+        session_secret: Some("session_secret".to_owned()),
+        slack_command_token,
+        auth_store: LocalAuthStore::open(tempdir.path().join("auth-identities.json"))
+            .await
+            .expect("auth store")
+            .into(),
+        user_store: LocalUserStore::open(tempdir.path().join("synced-users.json"))
+            .await
+            .expect("user store")
+            .into(),
+        user_role_store: user_role_store.into(),
+        highlight_store: LocalHighlightStore::open(tempdir.path().join("highlighted-threads.json"))
+            .await
+            .expect("highlight store")
+            .into(),
+        saved_store: LocalSavedItemStore::open(tempdir.path().join("saved-items.json"))
+            .await
+            .expect("saved store")
+            .into(),
+        analytics_store: LocalAnalyticsStore::open(tempdir.path().join("analytics-events.json"))
+            .await
+            .expect("analytics store")
+            .into(),
     }
 }
 

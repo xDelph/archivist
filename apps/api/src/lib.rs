@@ -10,6 +10,7 @@ mod link_metadata;
 mod saved;
 mod saved_store;
 mod search_api;
+mod slack_highlights;
 mod slack_text;
 mod thread_list;
 mod thread_text;
@@ -105,6 +106,7 @@ pub(crate) struct AppState {
     pub(crate) slack_auth: auth::SlackAuthConfig,
     pub(crate) web_origin: String,
     pub(crate) session_secret: Option<String>,
+    pub(crate) slack_command_token: Option<String>,
     pub(crate) auth_store: auth_store::AuthStore,
     pub(crate) user_store: user_store::UserStore,
     pub(crate) user_role_store: user_role_store::UserRoleStore,
@@ -135,6 +137,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         slack_auth: auth::SlackAuthConfig::from_config(&config),
         web_origin: config.web_origin.clone(),
         session_secret: config.session_secret.clone(),
+        slack_command_token: std::env::var("ARCHIVIST_SLACK_COMMAND_TOKEN").ok(),
         auth_store,
         user_store,
         user_role_store,
@@ -187,6 +190,18 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         .route("/api/auth/slack/callback", get(auth::slack_callback))
         .route("/api/auth/me", get(auth::me))
         .route("/api/auth/logout", axum::routing::post(auth::logout))
+        .route(
+            "/api/internal/slack/highlights",
+            axum::routing::post(slack_highlights::pin_highlight_from_slack_command),
+        )
+        .route(
+            "/api/internal/slack/highlights/list",
+            axum::routing::post(slack_highlights::list_highlights_from_slack_command),
+        )
+        .route(
+            "/api/internal/slack/highlights/unpin",
+            axum::routing::post(slack_highlights::unpin_highlight_from_slack_command),
+        )
         .merge(protected_api)
         .with_state(state)
         .layer(cors)

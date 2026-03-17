@@ -1,3 +1,5 @@
+mod slack_commands;
+
 use axum::{
     Json, Router,
     body::Bytes,
@@ -14,15 +16,18 @@ use tower_http::trace::TraceLayer;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 4001;
+const DEFAULT_API_BASE_URL: &str = "http://127.0.0.1:4000";
 const DEFAULT_WORKER_BASE_URL: &str = "http://127.0.0.1:4002";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IngestConfig {
     pub host: String,
     pub port: u16,
+    pub api_base_url: String,
     pub worker_base_url: String,
     pub qstash_base_url: Option<String>,
     pub qstash_token: Option<String>,
+    pub slack_command_token: Option<String>,
     pub signing_secret: Option<String>,
 }
 
@@ -32,10 +37,13 @@ impl IngestConfig {
             host: std::env::var("ARCHIVIST_INGEST_HOST")
                 .unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
             port: read_port("ARCHIVIST_INGEST_PORT", DEFAULT_PORT),
+            api_base_url: std::env::var("ARCHIVIST_API_BASE_URL")
+                .unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_owned()),
             worker_base_url: std::env::var("ARCHIVIST_WORKER_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_WORKER_BASE_URL.to_owned()),
             qstash_base_url: std::env::var("UPSTASH_QSTASH_URL").ok(),
             qstash_token: std::env::var("UPSTASH_QSTASH_TOKEN").ok(),
+            slack_command_token: std::env::var("ARCHIVIST_SLACK_COMMAND_TOKEN").ok(),
             signing_secret: std::env::var("SLACK_SIGNING_SECRET").ok(),
         }
     }
@@ -48,6 +56,8 @@ impl IngestConfig {
 #[derive(Clone)]
 struct AppState {
     queue: ProcessEventQueue,
+    api_base_url: String,
+    slack_command_token: Option<String>,
     signing_secret: Option<String>,
 }
 
@@ -101,6 +111,8 @@ pub fn build_router(config: IngestConfig) -> Result<Router, QueueError> {
         .route("/api/slack/commands/{command}", post(slack_command))
         .with_state(AppState {
             queue,
+            api_base_url: config.api_base_url,
+            slack_command_token: config.slack_command_token,
             signing_secret: config.signing_secret,
         })
         .layer(TraceLayer::new_for_http()))
@@ -212,12 +224,23 @@ async fn slack_command(
         "received slack slash command"
     );
 
-    Ok(Json(SlashCommandResponse {
-        ok: true,
-        command: command_name,
-        response_type: "ephemeral",
-        text: slash_command_text(command_name, &payload),
-    }))
+    let response = match command_name {
+        "/list-highlights" => {
+            slack_commands::list_highlights_command_response(&state, &payload).await
+        }
+        "/pin-highlight" => slack_commands::pin_highlight_command_response(&state, &payload).await,
+        "/unpin-highlight" => {
+            slack_commands::unpin_highlight_command_response(&state, &payload).await
+        }
+        _ => SlashCommandResponse {
+            ok: true,
+            command: command_name,
+            response_type: "ephemeral",
+            text: slash_command_text(command_name, &payload),
+        },
+    };
+
+    Ok(Json(response))
 }
 
 fn validate_signature(
@@ -306,8 +329,11 @@ fn current_unix_timestamp() -> i64 {
 fn slash_command_name(command: &str) -> Option<&'static str> {
     match command {
         "ask-archivist" => Some("/ask-archivist"),
+        "list-highlights" => Some("/list-highlights"),
+        "pin-highlight" => Some("/pin-highlight"),
         "recap" => Some("/recap"),
         "save-thread" => Some("/save-thread"),
+        "unpin-highlight" => Some("/unpin-highlight"),
         _ => None,
     }
 }

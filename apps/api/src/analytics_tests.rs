@@ -46,6 +46,7 @@ async fn test_state() -> AppState {
         },
         web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
         session_secret: None,
+        slack_command_token: None,
         auth_store: auth_store.into(),
         user_store: user_store.into(),
         user_role_store: user_role_store.into(),

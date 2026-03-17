@@ -102,6 +102,7 @@ async fn me_rejects_missing_sessions() {
         },
         web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
         session_secret: Some("session_secret".to_owned()),
+        slack_command_token: None,
         auth_store: crate::auth_store::LocalAuthStore::open(
             tempdir.path().join("auth-identities.json"),
         )

@@ -21,7 +21,7 @@ use std::{
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ListHighlightsQuery {
-    channel_id: Option<String>,
+    pub(crate) channel_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,7 +65,7 @@ pub(crate) struct HighlightItemResponse {
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct ErrorResponse {
-    error: &'static str,
+    pub(crate) error: &'static str,
 }
 
 pub(crate) async fn list_highlights(
@@ -73,6 +73,13 @@ pub(crate) async fn list_highlights(
     Query(query): Query<ListHighlightsQuery>,
     Extension(_claims): Extension<SessionClaims>,
 ) -> Result<Json<HighlightsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    Ok(Json(list_highlights_response(&state, &query).await?))
+}
+
+pub(crate) async fn list_highlights_response(
+    state: &AppState,
+    query: &ListHighlightsQuery,
+) -> Result<HighlightsResponse, (StatusCode, Json<ErrorResponse>)> {
     let channels = state.store.channels().await.map_err(store_failed)?;
     let messages = state.store.messages().await.map_err(store_failed)?;
     let thread_summaries = state.store.thread_summaries().await.map_err(store_failed)?;
@@ -126,7 +133,7 @@ pub(crate) async fn list_highlights(
         })
         .collect();
 
-    Ok(Json(HighlightsResponse { items }))
+    Ok(HighlightsResponse { items })
 }
 
 pub(crate) async fn pin_highlight(
@@ -134,73 +141,8 @@ pub(crate) async fn pin_highlight(
     Extension(claims): Extension<SessionClaims>,
     Json(payload): Json<HighlightThreadRequest>,
 ) -> Result<Json<HighlightMutationResponse>, (StatusCode, Json<ErrorResponse>)> {
-    require_admin(&state, &claims).await?;
-
-    let thread_id = payload.thread_id.trim();
-    let (channel_id, root_ts) = parse_thread_id(thread_id).ok_or((
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: "invalid_thread_id",
-        }),
-    ))?;
-    let thread_summary = state
-        .store
-        .thread_summaries()
-        .await
-        .map_err(store_failed)?
-        .into_iter()
-        .find(|summary| summary.channel_id == channel_id && summary.root_ts == root_ts)
-        .ok_or((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "thread_not_found",
-            }),
-        ))?;
-    let highlighted_thread = state
-        .highlight_store
-        .pin_thread(HighlightedThreadRecord {
-            thread_id: thread_id.to_owned(),
-            channel_id: channel_id.to_owned(),
-            root_ts: root_ts.to_owned(),
-            pinned_by_user_id: claims.slack_user_id.clone(),
-            pinned_at: current_pinned_at(),
-        })
-        .await
-        .map_err(highlight_store_failed)?;
-    let messages = state.store.messages().await.map_err(store_failed)?;
-    let root_texts = build_root_message_text_map(&messages);
-    let root_users = build_root_user_lookup(&messages);
-    let channels = state.store.channels().await.map_err(store_failed)?;
-    let channel_names = slack_text::build_channel_name_map(&channels);
-    let title = lookup_root_message_text(&root_texts, channel_id, root_ts);
-    let mentioned_user_ids = slack_text::collect_user_mention_ids([title.as_str()])
-        .into_iter()
-        .collect::<Vec<_>>();
-    let mut user_ids = mentioned_user_ids
-        .into_iter()
-        .collect::<std::collections::HashSet<_>>();
-    if let Some(user_id) = root_users
-        .get(&(channel_id.to_owned(), root_ts.to_owned()))
-        .and_then(|user_id| user_id.clone())
-    {
-        user_ids.insert(user_id);
-    }
-    let users = state
-        .user_store
-        .find_users(&user_ids.into_iter().collect::<Vec<_>>())
-        .await;
-
-    Ok(Json(HighlightMutationResponse {
-        ok: true,
-        item: highlight_item_response(
-            highlighted_thread,
-            &root_texts,
-            &build_thread_summary_lookup(vec![thread_summary]),
-            &root_users,
-            &channel_names,
-            &users,
-        ),
-    }))
+    require_admin_user_id(&state, &claims.slack_user_id).await?;
+    pin_highlight_for_user(&state, &claims.slack_user_id, &payload.thread_id).await
 }
 
 pub(crate) async fn delete_highlight(
@@ -209,8 +151,14 @@ pub(crate) async fn delete_highlight(
     Path(id): Path<String>,
 ) -> Result<Json<DeleteHighlightResponse>, (StatusCode, Json<ErrorResponse>)> {
     require_admin(&state, &claims).await?;
+    delete_highlight_by_id(&state, &id).await
+}
 
-    if parse_thread_id(&id).is_none() {
+pub(crate) async fn delete_highlight_by_id(
+    state: &AppState,
+    id: &str,
+) -> Result<Json<DeleteHighlightResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if parse_thread_id(id).is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -221,7 +169,7 @@ pub(crate) async fn delete_highlight(
 
     let removed = state
         .highlight_store
-        .unpin_thread(&id)
+        .unpin_thread(id)
         .await
         .map_err(highlight_store_failed)?;
     if !removed {
@@ -312,9 +260,16 @@ async fn require_admin(
     state: &AppState,
     claims: &SessionClaims,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    require_admin_user_id(state, &claims.slack_user_id).await
+}
+
+pub(crate) async fn require_admin_user_id(
+    state: &AppState,
+    slack_user_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let is_admin = state
         .user_role_store
-        .has_role(&claims.slack_user_id, ADMIN_ROLE)
+        .has_role(slack_user_id, ADMIN_ROLE)
         .await
         .map_err(|_| {
             (
@@ -335,7 +290,7 @@ async fn require_admin(
     Ok(())
 }
 
-fn parse_thread_id(thread_id: &str) -> Option<(&str, &str)> {
+pub(crate) fn parse_thread_id(thread_id: &str) -> Option<(&str, &str)> {
     let (channel_id, root_ts) = thread_id.split_once(':')?;
     if channel_id.is_empty() || root_ts.is_empty() {
         return None;
@@ -348,6 +303,85 @@ fn current_pinned_at() -> String {
         .duration_since(UNIX_EPOCH)
         .expect("current time should be after unix epoch");
     format!("{}", duration.as_secs())
+}
+
+pub(crate) async fn pin_highlight_for_user(
+    state: &AppState,
+    pinned_by_user_id: &str,
+    thread_id: &str,
+) -> Result<Json<HighlightMutationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let thread_id = thread_id.trim();
+    let (channel_id, root_ts) = parse_thread_id(thread_id).ok_or((
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error: "invalid_thread_id",
+        }),
+    ))?;
+    let messages = state.store.messages().await.map_err(store_failed)?;
+    if !messages.iter().any(|message| {
+        message.channel_id == channel_id
+            && message.ts == root_ts
+            && message
+                .thread_ts
+                .as_deref()
+                .is_none_or(|thread_ts| thread_ts == message.ts)
+    }) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "thread_not_found",
+            }),
+        ));
+    }
+    let highlighted_thread = state
+        .highlight_store
+        .pin_thread(HighlightedThreadRecord {
+            thread_id: thread_id.to_owned(),
+            channel_id: channel_id.to_owned(),
+            root_ts: root_ts.to_owned(),
+            pinned_by_user_id: pinned_by_user_id.to_owned(),
+            pinned_at: current_pinned_at(),
+        })
+        .await
+        .map_err(highlight_store_failed)?;
+    let root_texts = build_root_message_text_map(&messages);
+    let root_users = build_root_user_lookup(&messages);
+    let channels = state.store.channels().await.map_err(store_failed)?;
+    let channel_names = slack_text::build_channel_name_map(&channels);
+    let thread_summaries = state.store.thread_summaries().await.map_err(store_failed)?;
+    let thread_summary = thread_summaries
+        .into_iter()
+        .find(|summary| summary.channel_id == channel_id && summary.root_ts == root_ts);
+    let title = lookup_root_message_text(&root_texts, channel_id, root_ts);
+    let mentioned_user_ids = slack_text::collect_user_mention_ids([title.as_str()])
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut user_ids = mentioned_user_ids
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    if let Some(user_id) = root_users
+        .get(&(channel_id.to_owned(), root_ts.to_owned()))
+        .and_then(|user_id| user_id.clone())
+    {
+        user_ids.insert(user_id);
+    }
+    let users = state
+        .user_store
+        .find_users(&user_ids.into_iter().collect::<Vec<_>>())
+        .await;
+    let summary_lookup = build_thread_summary_lookup(thread_summary.into_iter().collect());
+
+    Ok(Json(HighlightMutationResponse {
+        ok: true,
+        item: highlight_item_response(
+            highlighted_thread,
+            &root_texts,
+            &summary_lookup,
+            &root_users,
+            &channel_names,
+            &users,
+        ),
+    }))
 }
 
 fn highlight_store_failed(
