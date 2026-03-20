@@ -3,6 +3,7 @@ import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
+import { TabPanelTransition } from "@/components/ui/tab-panel-transition";
 import type {
 	CatchUpSort,
 	CatchUpWindow,
@@ -159,7 +160,7 @@ export function HomePage() {
 				}}
 			/>
 
-			<div className="mt-2">
+			<TabPanelTransition className="mt-2" value={activeTab}>
 				{activeTab === "starred" && (
 					<SectionCard
 						eyebrow="Starred"
@@ -218,7 +219,7 @@ export function HomePage() {
 						/>
 					</SectionCard>
 				)}
-			</div>
+			</TabPanelTransition>
 		</div>
 	);
 }
