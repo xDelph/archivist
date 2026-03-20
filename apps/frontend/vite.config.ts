@@ -10,11 +10,11 @@ export default defineConfig({
 			"/api": "http://127.0.0.1:4000",
 			"/health": "http://127.0.0.1:4000",
 		},
-		allowedHosts: ["recallflow-dev.delalonde.dev"],
+		allowedHosts: ["devwithai.arkivist.dev"],
 	},
 	resolve: {
 		alias: {
-			"@": path.resolve(__dirname, "./src"),
+			"@": path.resolve(import.meta.dirname, "./src"),
 		},
 	},
 	test: {

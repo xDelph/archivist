@@ -76,7 +76,7 @@ export function displayAuthorName(
 }
 
 export function authorAvatarTone(key: string | null | undefined) {
-	return AVATAR_TONES[hashValue(key || "archivist") % AVATAR_TONES.length];
+	return AVATAR_TONES[hashValue(key || "arkivist") % AVATAR_TONES.length];
 }
 
 export function channelTone(name: string | null | undefined) {

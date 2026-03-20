@@ -50,7 +50,7 @@ pub(crate) async fn link_metadata(
 
 async fn fetch_link_metadata(url: reqwest::Url) -> LinkMetadataResponse {
     let client = reqwest::Client::builder()
-        .user_agent("Archivist Link Preview")
+        .user_agent("Arkivist Link Preview")
         .build();
     let Ok(client) = client else {
         return empty_metadata(url);

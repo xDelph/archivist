@@ -26,7 +26,7 @@ import {
 	useState,
 } from "react";
 
-const OPEN_THREAD_SWIPE_EVENT = "archivist:open-thread-swipe";
+const OPEN_THREAD_SWIPE_EVENT = "arkivist:open-thread-swipe";
 
 interface ThreadCardProps {
 	threadId: string;

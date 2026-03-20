@@ -42,7 +42,7 @@ export function AccountPage() {
 									}
 								: null
 						}
-						fallback={user?.display_name ?? user?.email ?? "Archivist"}
+						fallback={user?.display_name ?? user?.email ?? "Arkivist"}
 						size="lg"
 						className="size-14 text-lg"
 					/>

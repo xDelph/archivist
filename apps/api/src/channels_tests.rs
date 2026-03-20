@@ -161,7 +161,7 @@ async fn channels_route_reports_activity_and_channel_metadata() {
     .oneshot(
         Request::builder()
             .uri("/api/channels")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -255,7 +255,7 @@ async fn channels_route_merges_single_workspace_channel_activity() {
     .oneshot(
         Request::builder()
             .uri("/api/channels")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )

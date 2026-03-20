@@ -5,7 +5,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-pub(crate) const SESSION_COOKIE_NAME: &str = "archivist_session";
+pub(crate) const SESSION_COOKIE_NAME: &str = "arkivist_session";
 const SESSION_TTL_SECONDS: i64 = 60 * 60 * 24 * 7;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

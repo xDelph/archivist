@@ -76,12 +76,9 @@ function upsertStarredItemInCaches(
 			continue;
 		}
 
-		queryClient.setQueryData<StarredItemsResponseShape | undefined>(
-			queryKey,
-			{
-				items: upsertStarredItem(current?.items, item),
-			},
-		);
+		queryClient.setQueryData<StarredItemsResponseShape | undefined>(queryKey, {
+			items: upsertStarredItem(current?.items, item),
+		});
 	}
 }
 
@@ -94,12 +91,9 @@ function removeStarredItemFromCaches(
 	>({
 		queryKey: ["starred"],
 	})) {
-		queryClient.setQueryData<StarredItemsResponseShape | undefined>(
-			queryKey,
-			{
-				items: removeStarredItemByThreadId(current?.items, threadId),
-			},
-		);
+		queryClient.setQueryData<StarredItemsResponseShape | undefined>(queryKey, {
+			items: removeStarredItemByThreadId(current?.items, threadId),
+		});
 	}
 }
 

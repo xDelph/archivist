@@ -35,7 +35,7 @@ async fn slack_callback_exchanges_code_and_validates_identity() {
         &SlackAuthConfig {
             client_id: Some("client_123".to_owned()),
             client_secret: Some("secret".to_owned()),
-            redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+            redirect_uri: Some("https://arkivist.dev/api/auth/slack/callback".to_owned()),
             team_id: None,
             token_url: Some(format!("{}/token", token_server.0)),
         },
@@ -85,7 +85,7 @@ async fn slack_callback_persists_identity_to_the_local_store() {
         .get("set-cookie")
         .and_then(|value| value.to_str().ok())
         .expect("set-cookie");
-    assert!(set_cookie.contains("archivist_session="));
+    assert!(set_cookie.contains("arkivist_session="));
     assert!(set_cookie.contains("HttpOnly"));
     assert!(set_cookie.contains("SameSite=Lax"));
 
@@ -141,7 +141,7 @@ async fn slack_callback_redirects_html_clients_back_to_the_app() {
         .get("set-cookie")
         .and_then(|value| value.to_str().ok())
         .expect("set-cookie");
-    assert!(set_cookie.contains("archivist_session="));
+    assert!(set_cookie.contains("arkivist_session="));
 }
 
 #[tokio::test]

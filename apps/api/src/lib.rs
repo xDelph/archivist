@@ -76,21 +76,21 @@ pub struct ApiConfig {
 impl ApiConfig {
     pub fn from_env() -> Self {
         Self {
-            host: std::env::var("ARCHIVIST_API_HOST").unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
-            port: read_port("ARCHIVIST_API_PORT", DEFAULT_PORT),
-            event_log_path: std::env::var("ARCHIVIST_EVENT_LOG_PATH")
+            host: std::env::var("ARKIVIST_API_HOST").unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
+            port: read_port("ARKIVIST_API_PORT", DEFAULT_PORT),
+            event_log_path: std::env::var("ARKIVIST_EVENT_LOG_PATH")
                 .unwrap_or_else(|_| DEFAULT_EVENT_LOG_PATH.to_owned()),
             slack_client_id: std::env::var("SLACK_CLIENT_ID").ok(),
             slack_client_secret: std::env::var("SLACK_CLIENT_SECRET").ok(),
             slack_redirect_uri: std::env::var("SLACK_REDIRECT_URI").ok(),
             slack_team_id: std::env::var("SLACK_TEAM_ID").ok(),
             slack_token_url: std::env::var("SLACK_OIDC_TOKEN_URL").ok(),
-            session_secret: std::env::var("ARCHIVIST_SESSION_SECRET").ok(),
-            auth_store_path: std::env::var("ARCHIVIST_AUTH_STORE_PATH")
+            session_secret: std::env::var("ARKIVIST_SESSION_SECRET").ok(),
+            auth_store_path: std::env::var("ARKIVIST_AUTH_STORE_PATH")
                 .unwrap_or_else(|_| DEFAULT_AUTH_STORE_PATH.to_owned()),
-            synced_users_path: std::env::var("ARCHIVIST_SYNCED_USERS_PATH")
+            synced_users_path: std::env::var("ARKIVIST_SYNCED_USERS_PATH")
                 .unwrap_or_else(|_| DEFAULT_SYNCED_USERS_PATH.to_owned()),
-            web_origin: std::env::var("ARCHIVIST_WEB_ORIGIN")
+            web_origin: std::env::var("ARKIVIST_WEB_ORIGIN")
                 .unwrap_or_else(|_| DEFAULT_WEB_ORIGIN.to_owned()),
         }
     }
@@ -137,7 +137,7 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         slack_auth: auth::SlackAuthConfig::from_config(&config),
         web_origin: config.web_origin.clone(),
         session_secret: config.session_secret.clone(),
-        slack_command_token: std::env::var("ARCHIVIST_SLACK_COMMAND_TOKEN").ok(),
+        slack_command_token: std::env::var("ARKIVIST_SLACK_COMMAND_TOKEN").ok(),
         auth_store,
         user_store,
         user_role_store,
@@ -220,7 +220,7 @@ fn allowlisted_web_origins(web_origin: &str) -> Result<Vec<HeaderValue>, StoreEr
         .into_iter()
         .map(|origin| {
             HeaderValue::from_str(&origin)
-                .map_err(|_| StoreError::InvalidRuntimeConfig("ARCHIVIST_WEB_ORIGIN"))
+                .map_err(|_| StoreError::InvalidRuntimeConfig("ARKIVIST_WEB_ORIGIN"))
         })
         .collect()
 }
@@ -454,7 +454,7 @@ fn read_port(key: &str, fallback: u16) -> u16 {
 
 #[cfg(test)]
 fn saved_items_path(config: &ApiConfig) -> String {
-    std::env::var("ARCHIVIST_SAVED_ITEMS_PATH").unwrap_or_else(|_| {
+    std::env::var("ARKIVIST_SAVED_ITEMS_PATH").unwrap_or_else(|_| {
         Path::new(&config.auth_store_path)
             .with_file_name("saved-items.json")
             .display()
@@ -465,7 +465,7 @@ fn saved_items_path(config: &ApiConfig) -> String {
 
 #[cfg(test)]
 fn highlights_path(config: &ApiConfig) -> String {
-    std::env::var("ARCHIVIST_HIGHLIGHTS_PATH").unwrap_or_else(|_| {
+    std::env::var("ARKIVIST_HIGHLIGHTS_PATH").unwrap_or_else(|_| {
         Path::new(&config.auth_store_path)
             .with_file_name("highlighted-threads.json")
             .display()
@@ -476,7 +476,7 @@ fn highlights_path(config: &ApiConfig) -> String {
 
 #[cfg(test)]
 fn user_roles_path(config: &ApiConfig) -> String {
-    std::env::var("ARCHIVIST_USER_ROLES_PATH").unwrap_or_else(|_| {
+    std::env::var("ARKIVIST_USER_ROLES_PATH").unwrap_or_else(|_| {
         Path::new(&config.auth_store_path)
             .with_file_name("user-roles.json")
             .display()
@@ -487,7 +487,7 @@ fn user_roles_path(config: &ApiConfig) -> String {
 
 #[cfg(test)]
 fn analytics_path(config: &ApiConfig) -> String {
-    std::env::var("ARCHIVIST_ANALYTICS_PATH").unwrap_or_else(|_| {
+    std::env::var("ARKIVIST_ANALYTICS_PATH").unwrap_or_else(|_| {
         Path::new(&config.auth_store_path)
             .with_file_name("analytics-events.json")
             .display()

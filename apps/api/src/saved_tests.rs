@@ -112,7 +112,7 @@ async fn save_and_list_routes_persist_saved_threads() {
                 .method("POST")
                 .uri("/api/saved")
                 .header("content-type", "application/json")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::from(format!(r#"{{"thread_id":"C123:{root_ts}"}}"#)))
                 .expect("request"),
         )
@@ -133,7 +133,7 @@ async fn save_and_list_routes_persist_saved_threads() {
         .oneshot(
             Request::builder()
                 .uri("/api/saved")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -163,7 +163,7 @@ async fn save_route_rejects_unknown_threads() {
                 .method("POST")
                 .uri("/api/saved")
                 .header("content-type", "application/json")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::from(r#"{"thread_id":"C123:1700000000.000001"}"#))
                 .expect("request"),
         )
@@ -209,7 +209,7 @@ async fn delete_route_removes_saved_items() {
                 .method("POST")
                 .uri("/api/saved")
                 .header("content-type", "application/json")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::from(format!(r#"{{"thread_id":"C123:{root_ts}"}}"#)))
                 .expect("request"),
         )
@@ -222,7 +222,7 @@ async fn delete_route_removes_saved_items() {
             Request::builder()
                 .method("DELETE")
                 .uri(format!("/api/saved/C123:{root_ts}"))
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -240,7 +240,7 @@ async fn delete_route_removes_saved_items() {
         .oneshot(
             Request::builder()
                 .uri("/api/saved")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )

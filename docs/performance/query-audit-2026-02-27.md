@@ -1,4 +1,4 @@
-# Archivist Query Audit (2026-02-27)
+# Arkivist Query Audit (2026-02-27)
 
 Scope:
 - `/api/record/threads` (top/week/month)

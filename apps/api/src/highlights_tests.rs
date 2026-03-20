@@ -137,7 +137,7 @@ async fn highlights_route_lists_admin_curated_threads() {
         .oneshot(
             Request::builder()
                 .uri("/api/highlights")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -159,7 +159,7 @@ async fn highlights_route_lists_admin_curated_threads() {
         .oneshot(
             Request::builder()
                 .uri("/api/highlights?channel_id=C123")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -212,7 +212,7 @@ async fn highlight_mutations_require_admin_role() {
                 .method("POST")
                 .uri("/api/highlights")
                 .header("content-type", "application/json")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::from(format!(r#"{{"thread_id":"C123:{root_ts}"}}"#)))
                 .expect("request"),
         )
@@ -283,7 +283,7 @@ async fn admin_can_pin_and_unpin_highlights() {
                 .method("POST")
                 .uri("/api/highlights")
                 .header("content-type", "application/json")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::from(format!(r#"{{"thread_id":"C123:{root_ts}"}}"#)))
                 .expect("request"),
         )
@@ -302,7 +302,7 @@ async fn admin_can_pin_and_unpin_highlights() {
             Request::builder()
                 .method("DELETE")
                 .uri(format!("/api/highlights/C123:{root_ts}"))
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -357,7 +357,7 @@ async fn admin_can_pin_highlights_without_thread_summary_refresh() {
                 .method("POST")
                 .uri("/api/highlights")
                 .header("content-type", "application/json")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::from(format!(r#"{{"thread_id":"C123:{root_ts}"}}"#)))
                 .expect("request"),
         )

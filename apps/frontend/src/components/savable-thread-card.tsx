@@ -1,15 +1,11 @@
 import { ThreadCard } from "@/components/thread-card";
 import { ThreadCardActionMenu } from "@/components/thread-card-action-menu";
-import type {
-	SavedItem,
-	StarredItem,
-	ThreadDetailResponse,
-} from "@/lib/api";
+import type { SavedItem, StarredItem, ThreadDetailResponse } from "@/lib/api";
 import { authQueries, starredQueries } from "@/lib/queries";
 import { buildThreadCardActionKinds } from "@/lib/thread-card-actions";
 import type { ThreadCardData } from "@/lib/thread-card-props";
-import { useThreadStarAction } from "@/lib/thread-star";
 import { useThreadSaveAction } from "@/lib/thread-save";
+import { useThreadStarAction } from "@/lib/thread-star";
 import { useQuery } from "@tanstack/react-query";
 import { Bookmark, BookmarkX, Star, StarOff } from "lucide-react";
 import { useState } from "react";
@@ -81,7 +77,8 @@ export function SavableThreadCard({
 			icon: action.icon,
 			onSelect: action.onAction,
 			disabled: action.disabled,
-			tone: action.tone === "danger" ? "danger" : "default",
+			tone:
+				action.tone === "danger" ? ("danger" as const) : ("default" as const),
 		};
 	});
 
@@ -161,10 +158,7 @@ function buildCardAction(
 			};
 		case "unstar":
 			return {
-				label:
-					starMutationPending && isStarred
-						? "Removing"
-						: "Unstar thread",
+				label: starMutationPending && isStarred ? "Removing" : "Unstar thread",
 				icon: <StarOff className="size-4" />,
 				onAction: onStarToggle,
 				disabled: starMutationPending,
@@ -172,10 +166,7 @@ function buildCardAction(
 			};
 		case "star":
 			return {
-				label:
-					starMutationPending && !isStarred
-						? "Starring"
-						: "Star thread",
+				label: starMutationPending && !isStarred ? "Starring" : "Star thread",
 				icon: <Star className="size-4" />,
 				onAction: onStarToggle,
 				disabled: starMutationPending,

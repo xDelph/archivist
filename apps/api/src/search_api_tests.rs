@@ -393,7 +393,7 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
         .oneshot(
             Request::builder()
                 .uri("/api/search?q=release%20notes&channel_id=C123&sort=relevance&limit=2")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -509,7 +509,7 @@ async fn search_route_rejects_invalid_sort_values() {
     .oneshot(
         Request::builder()
             .uri("/api/search?q=release&sort=invalid")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )

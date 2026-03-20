@@ -40,7 +40,7 @@ export function AppShell() {
 						</span>
 						<div>
 							<p className="text-[1.15rem] font-semibold leading-none tracking-tight text-(--color-text-bright) sm:text-[1.28rem]">
-								Archivist
+								Arkivist
 							</p>
 						</div>
 					</Link>
@@ -87,7 +87,7 @@ export function AppShell() {
 											}
 										: null
 								}
-								fallback={user?.email || "Archivist"}
+								fallback={user?.email || "Arkivist"}
 								size="sm"
 							/>
 						</Link>
@@ -102,7 +102,7 @@ export function AppShell() {
 						<div className="flex items-start gap-2">
 							<CloudOff className="mt-0.5 size-4 shrink-0 text-(--color-accent-soft)" />
 							<p>
-								Offline reading mode is active. Archivist keeps Saved and
+								Offline reading mode is active. Arkivist keeps Saved and
 								downloaded thread detail available until the network comes back.
 							</p>
 						</div>

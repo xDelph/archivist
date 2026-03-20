@@ -74,7 +74,7 @@ async fn health_reports_qstash_queue_mode_when_token_is_configured() {
         host: "127.0.0.1".to_owned(),
         port: 4001,
         api_base_url: "http://127.0.0.1:4000".to_owned(),
-        worker_base_url: "https://worker.archivist.dev".to_owned(),
+        worker_base_url: "https://worker.arkivist.dev".to_owned(),
         qstash_base_url: Some("qstash.upstash.io".to_owned()),
         qstash_token: Some("secret".to_owned()),
         slack_command_token: None,
@@ -99,7 +99,7 @@ async fn health_reports_qstash_queue_mode_when_token_is_configured() {
     assert_eq!(payload["queue_mode"], "qstash");
     assert_eq!(
         payload["queue_endpoint"],
-        "https://worker.archivist.dev/jobs/process_event"
+        "https://worker.arkivist.dev/jobs/process_event"
     );
 }
 
@@ -111,10 +111,10 @@ async fn slash_command_stubs_supported_commands() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/slack/commands/ask-archivist")
+                .uri("/api/slack/commands/ask-arkivist")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(
-                    "command=%2Fask-archivist&text=release+status&channel_id=C123&user_id=U123",
+                    "command=%2Fask-arkivist&text=release+status&channel_id=C123&user_id=U123",
                 ))
                 .expect("request"),
         )
@@ -130,7 +130,7 @@ async fn slash_command_stubs_supported_commands() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(payload["ok"], true);
-    assert_eq!(payload["command"], "/ask-archivist");
+    assert_eq!(payload["command"], "/ask-arkivist");
     assert_eq!(payload["response_type"], "ephemeral");
     assert!(
         payload["text"]
@@ -177,7 +177,7 @@ async fn slash_command_rejects_mismatched_payloads() {
                 .method("POST")
                 .uri("/api/slack/commands/recap")
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from("command=%2Fask-archivist"))
+                .body(Body::from("command=%2Fask-arkivist"))
                 .expect("request"),
         )
         .await

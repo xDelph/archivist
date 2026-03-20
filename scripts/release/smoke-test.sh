@@ -56,6 +56,6 @@ assert_body_contains '"overviewStats"' "backend record threads"
 assert_body_contains '"messagesChange"' "backend record threads"
 
 check_status "$FRONTEND_URL/" "200" "frontend home"
-assert_body_contains "Archivist" "frontend home"
+assert_body_contains "Arkivist" "frontend home"
 
 echo "Smoke test passed."

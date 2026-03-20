@@ -60,7 +60,7 @@ describe("thread display emoji helpers", () => {
 		expect(markup).not.toContain("<a");
 	});
 
-	it("maps slack thread permalinks to Archivist thread routes", () => {
+	it("maps slack thread permalinks to Arkivist thread routes", () => {
 		const permalink =
 			"https://devwithai.slack.com/archives/C08KYNHH3D0/p1769500777510479?thread_ts=1769429252.836289&cid=C08KYNHH3D0";
 		const markup = renderToStaticMarkup(renderSlackText(`See ${permalink}`));

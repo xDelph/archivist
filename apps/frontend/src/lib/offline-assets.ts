@@ -1,6 +1,6 @@
 import type { SavedItem, ThreadDetailResponse } from "@/lib/api";
 
-const OFFLINE_ASSET_CACHE = "archivist-assets-v2";
+const OFFLINE_ASSET_CACHE = "arkivist-assets-v2";
 
 export function collectOfflineAvatarUrls(
 	item: SavedItem,

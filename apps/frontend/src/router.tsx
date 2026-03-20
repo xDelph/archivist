@@ -17,7 +17,10 @@ import { SearchPage } from "@/routes/search-page";
 import { SignInPage } from "@/routes/sign-in-page";
 import { ThreadPage } from "@/routes/thread-page";
 import { TopicsPage } from "@/routes/topics-page";
-import type { QueryClient } from "@tanstack/react-query";
+import type {
+	EnsureQueryDataOptions,
+	QueryClient,
+} from "@tanstack/react-query";
 import {
 	Outlet,
 	createRootRouteWithContext,
@@ -147,9 +150,14 @@ function RootLayout() {
 	return <Outlet />;
 }
 
-function preloadRouteData(
+function preloadRouteData<
+	TQueryFnData = unknown,
+	TError = unknown,
+	TData = TQueryFnData,
+	TQueryKey extends readonly unknown[] = readonly unknown[],
+>(
 	queryClient: QueryClient,
-	query: Parameters<QueryClient["ensureQueryData"]>[0],
+	query: EnsureQueryDataOptions<TQueryFnData, TError, TData, TQueryKey>,
 ) {
 	void queryClient.ensureQueryData(query).catch(() => undefined);
 }
@@ -166,10 +174,7 @@ function preloadActiveHomeTab(
 ) {
 	const activeTab = normalizeHomeTab(tab);
 	if (activeTab === "starred") {
-		preloadRouteData(
-			queryClient,
-			starredQueries.list({ channelId: channel }),
-		);
+		preloadRouteData(queryClient, starredQueries.list({ channelId: channel }));
 		return;
 	}
 

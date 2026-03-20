@@ -169,7 +169,7 @@ async fn thread_list_route_returns_paginated_filtered_threads() {
         .oneshot(
             Request::builder()
                 .uri("/api/threads?channel_id=C123&sort=newest&limit=1")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -186,7 +186,7 @@ async fn thread_list_route_returns_paginated_filtered_threads() {
         .oneshot(
             Request::builder()
                 .uri("/api/threads?channel_id=C123&sort=newest&limit=1&cursor=1")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -244,7 +244,7 @@ async fn thread_list_route_rejects_invalid_sort_values() {
     .oneshot(
         Request::builder()
             .uri("/api/threads?sort=invalid")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -322,7 +322,7 @@ async fn thread_list_route_uses_single_workspace_thread_keys() {
     .oneshot(
         Request::builder()
             .uri("/api/threads")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )

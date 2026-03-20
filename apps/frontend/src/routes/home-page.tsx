@@ -30,14 +30,7 @@ import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import {
-	Calendar,
-	ChevronDown,
-	Clock,
-	Flame,
-	Hash,
-	Star,
-} from "lucide-react";
+import { Calendar, ChevronDown, Clock, Flame, Hash, Star } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export function HomePage() {
@@ -268,9 +261,7 @@ function StarredSection({
 						key={item.id}
 						{...threadCardDataFromStarredItem(item)}
 						savedItem={savedItemsByThreadId.get(item.thread_id)}
-						starredItem={
-							starredItemsByThreadId.get(item.thread_id) ?? null
-						}
+						starredItem={starredItemsByThreadId.get(item.thread_id) ?? null}
 						isOnline={true}
 					/>
 				))}

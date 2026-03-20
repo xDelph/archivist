@@ -257,7 +257,7 @@ async fn catch_up_route_groups_threads_by_channel_and_sorts_by_activity() {
     .oneshot(
         Request::builder()
             .uri("/api/catch-up?window=24h")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -329,7 +329,7 @@ async fn catch_up_route_rejects_invalid_windows() {
     .oneshot(
         Request::builder()
             .uri("/api/catch-up?window=30d")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -407,7 +407,7 @@ async fn catch_up_route_returns_all_single_workspace_threads() {
     .oneshot(
         Request::builder()
             .uri("/api/catch-up")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -495,7 +495,7 @@ async fn catch_up_route_paginates_and_filters_threads() {
     .oneshot(
         Request::builder()
             .uri("/api/catch-up?window=24h&channel_id=C123&limit=1")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -626,7 +626,7 @@ async fn catch_up_route_supports_trending_sort() {
     .oneshot(
         Request::builder()
             .uri("/api/catch-up?window=7d&sort=trending")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -687,7 +687,7 @@ async fn catch_up_route_rejects_invalid_sort_and_cursor() {
         .oneshot(
             Request::builder()
                 .uri("/api/catch-up?sort=unknown")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -699,7 +699,7 @@ async fn catch_up_route_rejects_invalid_sort_and_cursor() {
         .oneshot(
             Request::builder()
                 .uri("/api/catch-up?cursor=bad")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )

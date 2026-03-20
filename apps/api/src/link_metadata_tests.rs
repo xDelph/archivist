@@ -98,7 +98,7 @@ async fn link_metadata_route_returns_metadata_for_authenticated_users() {
                 "/api/link-metadata?url={}",
                 urlencoding::encode(&mock_url)
             ))
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )

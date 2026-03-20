@@ -20,12 +20,12 @@ Prepared assets in repo:
 Create two projects in Vercel:
 
 1. Backend project
-- Name: `archivist-backend` (or your preferred stable name)
+- Name: `arkivist-backend` (or your preferred stable name)
 - Root Directory: `apps/backend`
 - Framework preset: `Other`
 
 2. Frontend project
-- Name: `archivist-frontend`
+- Name: `arkivist-frontend`
 - Root Directory: `apps/frontend`
 - Framework preset: `Next.js`
 
@@ -102,7 +102,7 @@ After backend production is validated:
 2. Update Request URL to:
 - `https://<backend-domain>/api/slack/events`
 3. Save and confirm challenge handshake succeeds
-4. Send a test Slack message and confirm ingestion in Archivist
+4. Send a test Slack message and confirm ingestion in Arkivist
 
 Important behavior:
 - Changing only the Request URL does **not** invalidate the app install.
@@ -111,7 +111,7 @@ Important behavior:
 ## 7. Frontend Cutover + Rollback
 
 Cutover:
-1. Point production frontend domain to new `archivist-frontend` deployment
+1. Point production frontend domain to new `arkivist-frontend` deployment
 2. Validate:
 - dashboard loads
 - tabs and filters work

@@ -322,7 +322,7 @@ fn map_highlight_command_error(status: u16, error: &str, fallback: &str) -> Stri
     match (status, error) {
         (403, "admin_required") => "Only admin users can manage highlighted threads.".to_owned(),
         (404, "thread_not_found") => {
-            "The thread could not be found in Archivist yet. Try again once it has been ingested."
+            "The thread could not be found in Arkivist yet. Try again once it has been ingested."
                 .to_owned()
         }
         (404, "highlight_not_found") => "That thread is not currently highlighted.".to_owned(),

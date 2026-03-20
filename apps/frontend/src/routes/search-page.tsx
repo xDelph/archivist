@@ -12,8 +12,8 @@ import {
 	starredQueries,
 } from "@/lib/queries";
 import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
-import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
+import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CalendarRange, Search, SlidersHorizontal } from "lucide-react";
@@ -205,9 +205,7 @@ export function SearchPage() {
 									preview: highlightMatches(item.snippet, deferredQuery),
 								})}
 								savedItem={savedItemsByThreadId.get(item.thread_id)}
-								starredItem={
-									starredItemsByThreadId.get(item.thread_id) ?? null
-								}
+								starredItem={starredItemsByThreadId.get(item.thread_id) ?? null}
 								isOnline={true}
 							/>
 						))}

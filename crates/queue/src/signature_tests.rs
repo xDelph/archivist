@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 const CURRENT_SIGNING_KEY: &str = "current_signing_key";
 const NEXT_SIGNING_KEY: &str = "next_signing_key";
-const URL: &str = "https://archivist.example.com/jobs/process_event";
+const URL: &str = "https://arkivist.example.com/jobs/process_event";
 
 #[test]
 fn current_signing_key_is_accepted() {
@@ -74,7 +74,7 @@ fn wrong_subject_is_rejected() {
     let signature = sign_qstash_request(
         CURRENT_SIGNING_KEY,
         body,
-        "https://archivist.example.com/jobs/heartbeat",
+        "https://arkivist.example.com/jobs/heartbeat",
         false,
         false,
     );

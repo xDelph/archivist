@@ -34,16 +34,16 @@ pub struct IngestConfig {
 impl IngestConfig {
     pub fn from_env() -> Self {
         Self {
-            host: std::env::var("ARCHIVIST_INGEST_HOST")
+            host: std::env::var("ARKIVIST_INGEST_HOST")
                 .unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
-            port: read_port("ARCHIVIST_INGEST_PORT", DEFAULT_PORT),
-            api_base_url: std::env::var("ARCHIVIST_API_BASE_URL")
+            port: read_port("ARKIVIST_INGEST_PORT", DEFAULT_PORT),
+            api_base_url: std::env::var("ARKIVIST_API_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_owned()),
-            worker_base_url: std::env::var("ARCHIVIST_WORKER_BASE_URL")
+            worker_base_url: std::env::var("ARKIVIST_WORKER_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_WORKER_BASE_URL.to_owned()),
             qstash_base_url: std::env::var("UPSTASH_QSTASH_URL").ok(),
             qstash_token: std::env::var("UPSTASH_QSTASH_TOKEN").ok(),
-            slack_command_token: std::env::var("ARCHIVIST_SLACK_COMMAND_TOKEN").ok(),
+            slack_command_token: std::env::var("ARKIVIST_SLACK_COMMAND_TOKEN").ok(),
             signing_secret: std::env::var("SLACK_SIGNING_SECRET").ok(),
         }
     }
@@ -328,7 +328,7 @@ fn current_unix_timestamp() -> i64 {
 
 fn slash_command_name(command: &str) -> Option<&'static str> {
     match command {
-        "ask-archivist" => Some("/ask-archivist"),
+        "ask-arkivist" => Some("/ask-arkivist"),
         "list-highlights" => Some("/list-highlights"),
         "pin-highlight" => Some("/pin-highlight"),
         "recap" => Some("/recap"),
@@ -349,7 +349,7 @@ fn slash_command_text(command_name: &'static str, payload: &SlashCommandPayload)
     let user_id = payload.user_id.as_deref().unwrap_or("unknown user");
 
     match command_name {
-        "/ask-archivist" => format!(
+        "/ask-arkivist" => format!(
             "Stubbed {command_name} request from {user_id} in {channel_id}. Search-backed answers for {subject} are not wired yet."
         ),
         "/recap" => format!(

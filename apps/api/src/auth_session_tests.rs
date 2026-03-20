@@ -32,7 +32,7 @@ async fn me_returns_the_current_user_from_a_valid_session_cookie() {
         .oneshot(
             Request::builder()
                 .uri("/api/auth/me")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -70,7 +70,7 @@ async fn me_returns_roles_for_the_current_user() {
         .oneshot(
             Request::builder()
                 .uri("/api/auth/me")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -168,7 +168,7 @@ async fn me_rejects_expired_sessions() {
         .oneshot(
             Request::builder()
                 .uri("/api/auth/me")
-                .header("cookie", format!("archivist_session={session_token}"))
+                .header("cookie", format!("arkivist_session={session_token}"))
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -203,7 +203,7 @@ async fn logout_clears_the_session_cookie() {
         .get("set-cookie")
         .and_then(|value| value.to_str().ok())
         .expect("set-cookie");
-    assert!(set_cookie.contains("archivist_session="));
+    assert!(set_cookie.contains("arkivist_session="));
     assert!(set_cookie.contains("Max-Age=0"));
     assert!(set_cookie.contains("HttpOnly"));
 }

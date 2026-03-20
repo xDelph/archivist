@@ -4,7 +4,7 @@ import {
 	cacheOfflineThreadAvatars,
 } from "@/lib/offline-assets";
 
-const OFFLINE_DB_NAME = "archivist-offline";
+const OFFLINE_DB_NAME = "arkivist-offline";
 const OFFLINE_DB_VERSION = 1;
 const SAVED_ITEMS_STORE = "saved-items";
 const THREAD_DETAILS_STORE = "thread-details";
@@ -188,8 +188,8 @@ async function readAllRecords<T>(database: IDBDatabase, storeName: string) {
 
 async function readAllKeys(database: IDBDatabase, storeName: string) {
 	const transaction = database.transaction(storeName, "readonly");
-	const keys = await requestToPromise<string[]>(
-		transaction.objectStore(storeName).getAllKeys(),
+	const keys = await requestToPromise(
+		transaction.objectStore(storeName).getAllKeys() as IDBRequest<string[]>,
 	);
 	await transactionDone(transaction);
 	return keys;

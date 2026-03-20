@@ -39,7 +39,7 @@ export function buildHomeWarmTargets(pathname: string, search: string) {
 	const params = new URLSearchParams(search);
 	const channelId = params.get("channel") || undefined;
 	const activeTab =
-		pathname === "/" ? normalizeHomeTab(params.get("tab")) : null;
+		pathname === "/" ? normalizeHomeTab(params.get("tab") ?? undefined) : null;
 	const targets: HomeWarmTarget[] = [
 		{ tab: "starred", channelId },
 		{ tab: "fresh", window: "24h", channelId },

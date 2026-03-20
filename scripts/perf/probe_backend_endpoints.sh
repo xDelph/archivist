@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${1:-https://archivist-backend.vercel.app}"
+BASE_URL="${1:-https://arkivist-backend.vercel.app}"
 RUNS="${2:-5}"
 
 echo "Probing backend: ${BASE_URL}"

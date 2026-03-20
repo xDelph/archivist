@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       backend_url:
-        description: "Backend base URL (example: https://archivist-backend.vercel.app)"
+        description: "Backend base URL (example: https://arkivist-backend.vercel.app)"
         required: true
         type: string
       frontend_url:
-        description: "Frontend base URL (example: https://archivist-frontend.vercel.app)"
+        description: "Frontend base URL (example: https://arkivist-frontend.vercel.app)"
         required: true
         type: string
 

@@ -1,10 +1,10 @@
 Commercial License Requirement
 Copyright (c) 2026 Thomas Delalonde
 
-This file defines commercial licensing requirements for Archivist.
+This file defines commercial licensing requirements for Arkivist.
 
 1. Open-source option
-- Archivist is available under AGPL-3.0-or-later (see `LICENSE`).
+- Arkivist is available under AGPL-3.0-or-later (see `LICENSE`).
 
 2. Commercial authorization requirement
 - Any commercial use that does not strictly comply with AGPL-3.0-or-later

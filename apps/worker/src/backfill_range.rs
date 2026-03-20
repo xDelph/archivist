@@ -180,7 +180,8 @@ fn invalid_backfill_request() -> (StatusCode, Json<ErrorResponse>) {
 #[path = "backfill_range_tests.rs"]
 mod tests;
 
-fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+fn store_failed(error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    tracing::error!(?error, "failed to resolve backfill range from store");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse {

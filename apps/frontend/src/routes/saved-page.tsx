@@ -72,7 +72,7 @@ export function SavedPage() {
 							description={
 								isOnline
 									? "Open a thread and use the save control. It will appear here immediately for quick revisit."
-									: "Save threads while connected and Archivist will keep them available for metro-style offline reading."
+									: "Save threads while connected and Arkivist will keep them available for metro-style offline reading."
 							}
 							icon={<Bookmark className="size-5" />}
 						/>
@@ -84,9 +84,7 @@ export function SavedPage() {
 								key={item.id}
 								{...threadCardDataFromSavedItem(item)}
 								savedItem={item}
-								starredItem={
-									starredItemsByThreadId.get(item.thread_id) ?? null
-								}
+								starredItem={starredItemsByThreadId.get(item.thread_id) ?? null}
 								isOnline={isOnline}
 								savedState={isOfflineReading ? "offline" : "saved"}
 							/>

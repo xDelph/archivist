@@ -32,14 +32,14 @@ describe("pwa helpers", () => {
 		const documentRef = {
 			querySelectorAll: () =>
 				[
-					{ href: "https://archivist.test/assets/index.css" },
-					{ href: "https://archivist.test/assets/index.js" },
-					{ src: "https://archivist.test/assets/app.js" },
+					{ href: "https://arkivist.test/assets/index.css" },
+					{ href: "https://arkivist.test/assets/index.js" },
+					{ src: "https://arkivist.test/assets/app.js" },
 					{ href: "https://cdn.example.com/avatar.png" },
 				] as Array<Partial<HTMLLinkElement | HTMLScriptElement>>,
 		} as unknown as Document;
 		const locationRef = {
-			origin: "https://archivist.test",
+			origin: "https://arkivist.test",
 		} as Location;
 
 		expect(collectCurrentShellAssetUrls(documentRef, locationRef)).toEqual([
@@ -63,12 +63,12 @@ describe("pwa helpers", () => {
 		});
 		const documentRef = {
 			querySelectorAll: () =>
-				[{ href: "https://archivist.test/assets/index.css" }] as Array<
+				[{ href: "https://arkivist.test/assets/index.css" }] as Array<
 					Partial<HTMLLinkElement>
 				>,
 		} as unknown as Document;
 		const locationRef = {
-			origin: "https://archivist.test",
+			origin: "https://arkivist.test",
 			pathname: "/threads/C123:1",
 		} as Location;
 
@@ -80,8 +80,8 @@ describe("pwa helpers", () => {
 		);
 
 		expect(warmed).toBe(true);
-		expect(open).toHaveBeenNthCalledWith(1, "archivist-shell-v2");
-		expect(open).toHaveBeenNthCalledWith(2, "archivist-assets-v2");
+		expect(open).toHaveBeenNthCalledWith(1, "arkivist-shell-v2");
+		expect(open).toHaveBeenNthCalledWith(2, "arkivist-assets-v2");
 		expect(shellPut).toHaveBeenCalled();
 		expect(assetPut).toHaveBeenCalled();
 	});

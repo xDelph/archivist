@@ -99,7 +99,7 @@ describe("offline assets", () => {
 			fetchImpl as typeof fetch,
 		);
 
-		expect(open).toHaveBeenCalledWith("archivist-assets-v2");
+		expect(open).toHaveBeenCalledWith("arkivist-assets-v2");
 		expect(match).toHaveBeenCalledOnce();
 		expect(fetchImpl).toHaveBeenCalledOnce();
 		expect(put).toHaveBeenCalledOnce();

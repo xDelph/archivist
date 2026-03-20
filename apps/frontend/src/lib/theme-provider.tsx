@@ -6,7 +6,7 @@ import {
 	useState,
 } from "react";
 
-export const THEME_STORAGE_KEY = "archivist.theme";
+export const THEME_STORAGE_KEY = "arkivist.theme";
 
 export const APPEARANCE_MODES = ["dark", "light"] as const;
 export const ACCENT_MODES = ["green", "red", "blue"] as const;

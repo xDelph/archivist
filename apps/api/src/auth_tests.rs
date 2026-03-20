@@ -27,7 +27,7 @@ fn authorize_url_omits_team_when_workspace_is_not_configured() {
     let url = build_authorize_url(&SlackAuthConfig {
         client_id: Some("client_123".to_owned()),
         client_secret: None,
-        redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        redirect_uri: Some("https://arkivist.dev/api/auth/slack/callback".to_owned()),
         team_id: None,
         token_url: None,
     })
@@ -38,7 +38,7 @@ fn authorize_url_omits_team_when_workspace_is_not_configured() {
     assert!(url.contains("client_id=client_123"));
     assert!(url.contains("scope=openid%20profile%20email"));
     assert!(
-        url.contains("redirect_uri=https%3A%2F%2Farchivist.dev%2Fapi%2Fauth%2Fslack%2Fcallback")
+        url.contains("redirect_uri=https%3A%2F%2Farkivist.dev%2Fapi%2Fauth%2Fslack%2Fcallback")
     );
     assert!(!url.contains("&team="));
 }
@@ -48,7 +48,7 @@ fn authorize_url_includes_team_when_workspace_is_configured() {
     let url = build_authorize_url(&SlackAuthConfig {
         client_id: Some("client_123".to_owned()),
         client_secret: None,
-        redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        redirect_uri: Some("https://arkivist.dev/api/auth/slack/callback".to_owned()),
         team_id: Some("T1234".to_owned()),
         token_url: None,
     })
@@ -63,7 +63,7 @@ fn authorize_url_requires_client_id_and_redirect_uri() {
         build_authorize_url(&SlackAuthConfig {
             client_id: None,
             client_secret: None,
-            redirect_uri: Some("https://archivist.dev/callback".to_owned()),
+            redirect_uri: Some("https://arkivist.dev/callback".to_owned()),
             team_id: None,
             token_url: None,
         }),
@@ -176,7 +176,7 @@ fn config_with_defaults(tempdir: &TempDir) -> ApiConfig {
         event_log_path: tempdir.path().join("events.jsonl").display().to_string(),
         slack_client_id: Some("client_123".to_owned()),
         slack_client_secret: Some("secret".to_owned()),
-        slack_redirect_uri: Some("https://archivist.dev/api/auth/slack/callback".to_owned()),
+        slack_redirect_uri: Some("https://arkivist.dev/api/auth/slack/callback".to_owned()),
         slack_team_id: None,
         slack_token_url: None,
         session_secret: None,

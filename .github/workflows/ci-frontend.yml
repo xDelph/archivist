@@ -39,16 +39,16 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check formatting
-        run: bun run --filter @archivist/frontend fmt
+        run: bun run --filter @arkivist/frontend fmt
 
       - name: Lint frontend
-        run: bun run --filter @archivist/frontend lint
+        run: bun run --filter @arkivist/frontend lint
 
       - name: Test frontend
-        run: bun run --filter @archivist/frontend test
+        run: bun run --filter @arkivist/frontend test
 
       - name: Typecheck frontend
-        run: bun run --filter @archivist/frontend typecheck
+        run: bun run --filter @arkivist/frontend typecheck
 
       - name: Build frontend
-        run: bun run --filter @archivist/frontend build
+        run: bun run --filter @arkivist/frontend build

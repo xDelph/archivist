@@ -59,12 +59,12 @@ pub struct WorkerConfig {
 impl WorkerConfig {
     pub fn from_env() -> Self {
         Self {
-            host: std::env::var("ARCHIVIST_WORKER_HOST")
+            host: std::env::var("ARKIVIST_WORKER_HOST")
                 .unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
-            port: read_port("ARCHIVIST_WORKER_PORT", DEFAULT_PORT),
-            event_log_path: std::env::var("ARCHIVIST_EVENT_LOG_PATH")
+            port: read_port("ARKIVIST_WORKER_PORT", DEFAULT_PORT),
+            event_log_path: std::env::var("ARKIVIST_EVENT_LOG_PATH")
                 .unwrap_or_else(|_| DEFAULT_EVENT_LOG_PATH.to_owned()),
-            worker_base_url: std::env::var("ARCHIVIST_WORKER_BASE_URL")
+            worker_base_url: std::env::var("ARKIVIST_WORKER_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_WORKER_BASE_URL.to_owned()),
             slack_api_base_url: std::env::var("SLACK_API_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_SLACK_API_BASE_URL.to_owned()),
@@ -79,7 +79,7 @@ impl WorkerConfig {
             r2_bucket: std::env::var("CLOUDFLARE_R2_BUCKET").ok(),
             r2_public_url: std::env::var("CLOUDFLARE_R2_PUBLIC_URL").ok(),
             r2_endpoint_url: std::env::var("CLOUDFLARE_R2_ENDPOINT_URL").ok(),
-            r2_key_prefix: std::env::var("ARCHIVIST_R2_KEY_PREFIX").ok(),
+            r2_key_prefix: std::env::var("ARKIVIST_R2_KEY_PREFIX").ok(),
             current_signing_key: std::env::var("UPSTASH_QSTASH_CURRENT_SIGNING_KEY").ok(),
             next_signing_key: std::env::var("UPSTASH_QSTASH_NEXT_SIGNING_KEY").ok(),
         }

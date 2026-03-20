@@ -190,7 +190,7 @@ async fn thread_detail_route_returns_messages_reactions_and_files() {
     .oneshot(
         Request::builder()
             .uri("/api/threads/C123:1700000000.000001")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -307,7 +307,7 @@ async fn thread_detail_route_rejects_invalid_ids() {
     .oneshot(
         Request::builder()
             .uri("/api/threads/not-a-thread-id")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -379,7 +379,7 @@ async fn thread_detail_route_resolves_single_workspace_threads() {
     .oneshot(
         Request::builder()
             .uri("/api/threads/C123:1700000000.000001")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -499,7 +499,7 @@ async fn thread_detail_route_returns_fresh_generated_summary_metadata() {
     .oneshot(
         Request::builder()
             .uri("/api/threads/C123:1700000000.000001")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )
@@ -660,7 +660,7 @@ async fn thread_detail_route_ignores_stale_generated_summary_metadata() {
     .oneshot(
         Request::builder()
             .uri("/api/threads/C123:1700000000.000001")
-            .header("cookie", format!("archivist_session={session_token}"))
+            .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),
     )

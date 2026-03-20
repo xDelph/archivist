@@ -1,6 +1,6 @@
 {
-  "name": "Archivist",
-  "short_name": "Archivist",
+  "name": "Arkivist",
+  "short_name": "Arkivist",
   "description": "Catch up on public Slack conversations, search archived threads, and keep important community context close at hand.",
   "start_url": "/",
   "scope": "/",

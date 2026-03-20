@@ -15,7 +15,7 @@ use worker::{WorkerConfig, build_router};
 
 const CURRENT_SIGNING_KEY: &str = "current_signing_key";
 const NEXT_SIGNING_KEY: &str = "next_signing_key";
-const WORKER_BASE_URL: &str = "https://archivist.example.com";
+const WORKER_BASE_URL: &str = "https://arkivist.example.com";
 
 #[tokio::test]
 async fn process_event_rejects_missing_signature_when_verification_is_enabled() {

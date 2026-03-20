@@ -19,7 +19,7 @@ export function SignInPage() {
 			</div>
 			<div className="relative max-w-xl text-center">
 				<p className="text-[0.82rem] font-medium uppercase tracking-[0.26em] text-(--color-accent)">
-					Archivist
+					Arkivist
 				</p>
 				<h1 className="mt-5 text-[clamp(2.75rem,8vw,4.8rem)] font-semibold tracking-tight text-(--color-text-primary)">
 					Find the decisions buried in Slack.

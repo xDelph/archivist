@@ -1,6 +1,6 @@
 import type { CurrentUserResponse } from "@/lib/api";
 
-const CURRENT_USER_STORAGE_KEY = "archivist.current-user";
+const CURRENT_USER_STORAGE_KEY = "arkivist.current-user";
 
 export function readCachedCurrentUser(
 	storage: Storage | undefined = globalThis.localStorage,

@@ -8,11 +8,11 @@ on:
 jobs:
   publish-thread-summaries-refresh:
     runs-on: ubuntu-latest
-    if: ${{ secrets.UPSTASH_QSTASH_TOKEN != '' && secrets.ARCHIVIST_WORKER_BASE_URL != '' }}
+    if: ${{ secrets.UPSTASH_QSTASH_TOKEN != '' && secrets.ARKIVIST_WORKER_BASE_URL != '' }}
     env:
       QSTASH_URL: ${{ secrets.UPSTASH_QSTASH_URL }}
       QSTASH_TOKEN: ${{ secrets.UPSTASH_QSTASH_TOKEN }}
-      WORKER_BASE_URL: ${{ secrets.ARCHIVIST_WORKER_BASE_URL }}
+      WORKER_BASE_URL: ${{ secrets.ARKIVIST_WORKER_BASE_URL }}
     steps:
       - name: Publish thread summary refresh job
         shell: bash

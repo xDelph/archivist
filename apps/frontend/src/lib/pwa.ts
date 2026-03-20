@@ -1,6 +1,6 @@
 type ServiceWorkerRegistrar = Pick<ServiceWorkerContainer, "register">;
-const SHELL_CACHE = "archivist-shell-v2";
-const ASSET_CACHE = "archivist-assets-v2";
+const SHELL_CACHE = "arkivist-shell-v2";
+const ASSET_CACHE = "arkivist-assets-v2";
 const CORE_SHELL_URLS = [
 	"/",
 	"/manifest.webmanifest",

@@ -1,6 +1,6 @@
-# Archivist Monorepo Migration Tasks (Rust backend + v0 frontend)
+# Arkivist Monorepo Migration Tasks (Rust backend + v0 frontend)
 
-Goal: move Archivist to a monorepo where Rust is the backend app and v0/shadcn is the frontend app.
+Goal: move Arkivist to a monorepo where Rust is the backend app and v0/shadcn is the frontend app.
 
 Selected decisions:
 - Tooling: Turborepo
@@ -84,7 +84,7 @@ Selected decisions:
 ## Phase 3 - Frontend Integration
 
 - [x] 3.1 Remove mock-data dependency from frontend (`lib/mock-data.ts`).
-- [x] 3.2 Add typed API client in frontend for Archivist endpoints.
+- [x] 3.2 Add typed API client in frontend for Arkivist endpoints.
 - [x] 3.3 Connect tabs, filters, sort, and thread expansion to backend data.
 - [x] 3.4 Implement real file preview/download behavior from archived files.
 - [x] 3.5 Keep local preferences (theme/density) in frontend.

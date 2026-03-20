@@ -156,7 +156,12 @@ pub(crate) async fn slack_callback(
         .auth_store
         .upsert_identity(&identity)
         .await
-        .map_err(|_| {
+        .map_err(|error| {
+            tracing::error!(
+                ?error,
+                slack_user_id = %identity.slack_user_id,
+                "failed to upsert auth identity"
+            );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {

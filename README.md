@@ -1,6 +1,6 @@
-# Archivist Monorepo
+# Arkivist Monorepo
 
-Archivist archive les conversations Slack (messages, threads, reactions, fichiers), calcule des classements hebdo/mensuels, et expose une UI moderne avec authentification.
+Arkivist archive les conversations Slack (messages, threads, reactions, fichiers), calcule des classements hebdo/mensuels, et expose une UI moderne avec authentification.
 
 Ce README documente le monorepo racine.  
 La documentation backend détaillée reste dans `apps/backend/README.md`.
@@ -55,7 +55,7 @@ Utilisateur navigateur
 
 Points importants:
 
-- Les routes backend `api/auth/*` et `api/record/*` sont protégées par un header interne `x-archivist-internal-secret`.
+- Les routes backend `api/auth/*` et `api/record/*` sont protégées par un header interne `x-arkivist-internal-secret`.
 - Le frontend joue le rôle de BFF: il ajoute ce header, relaie la session, et gère les cookies HTTP-only.
 - Les pages applicatives sont protégées par middleware (`apps/frontend/proxy.ts`) et redirigent vers `/login` sans session.
 
@@ -221,7 +221,7 @@ bun run release:smoke -- https://<backend-domain> https://<frontend-domain>
 ### Probes performance / SQL
 
 ```bash
-scripts/perf/probe_backend_endpoints.sh https://archivist-backend.vercel.app 5
+scripts/perf/probe_backend_endpoints.sh https://arkivist-backend.vercel.app 5
 scripts/db/probe_read_model_queries.sh --tab all --limit 50
 scripts/db/probe_read_model_queries.sh --tab all --limit 50 --api-url http://localhost:3100
 ```
@@ -252,8 +252,8 @@ scripts/db/probe_read_model_queries.sh --tab all --limit 50 --api-url http://loc
 
 Les routes frontend correspondantes (`apps/frontend/app/api/auth/[...path]/route.ts` et `apps/frontend/app/api/record/[...path]/route.ts`) injectent:
 
-- `x-archivist-internal-secret`
-- `x-archivist-session` (si cookie session présent)
+- `x-arkivist-internal-secret`
+- `x-arkivist-session` (si cookie session présent)
 
 ## CI/CD et release
 

@@ -53,10 +53,7 @@ describe("thread star helpers", () => {
 
 	it("removes starred items by thread id", () => {
 		expect(
-			removeStarredItemByThreadId(
-				[firstItem, secondItem],
-				firstItem.thread_id,
-			),
+			removeStarredItemByThreadId([firstItem, secondItem], firstItem.thread_id),
 		).toEqual([secondItem]);
 	});
 });
