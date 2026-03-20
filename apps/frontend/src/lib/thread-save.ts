@@ -5,9 +5,16 @@ import {
 	saveThread,
 } from "@/lib/api";
 import {
+	hasOfflineThreadDetail,
 	removeOfflineSavedThread,
 	storeOfflineSavedThread,
 } from "@/lib/offline-library";
+import {
+	dismissOfflineSaveNotification,
+	notifyOfflineSaveError,
+	notifyOfflineSavePending,
+	notifyOfflineSaveSuccess,
+} from "@/lib/offline-save-notification";
 import { savedQueries, threadQueries } from "@/lib/queries";
 import {
 	type QueryClient,
@@ -67,16 +74,33 @@ export function useThreadSaveAction({
 				updateSavedItemsCache(queryClient, (items) =>
 					removeSavedItemByThreadId(items, threadId),
 				);
+				dismissOfflineSaveNotification(threadId);
 				await removeOfflineSavedThread(threadId);
 			} else {
 				updateSavedItemsCache(queryClient, (items) =>
 					upsertSavedItem(items, result.item),
 				);
-				const detail =
-					threadDetail ??
-					(await fetchThreadDetailForOffline(queryClient, threadId));
-				if (detail) {
-					await storeOfflineSavedThread(result.item, detail);
+				const hadOfflineCopy = await hasOfflineThreadDetail(threadId);
+				if (!hadOfflineCopy) {
+					notifyOfflineSavePending(threadId);
+				}
+
+				try {
+					const detail =
+						threadDetail ??
+						(await fetchThreadDetailForOffline(queryClient, threadId));
+					if (detail) {
+						await storeOfflineSavedThread(result.item, detail);
+						if (!hadOfflineCopy) {
+							notifyOfflineSaveSuccess(threadId);
+						}
+					} else if (!hadOfflineCopy) {
+						notifyOfflineSaveError(threadId);
+					}
+				} catch {
+					if (!hadOfflineCopy) {
+						notifyOfflineSaveError(threadId);
+					}
 				}
 			}
 

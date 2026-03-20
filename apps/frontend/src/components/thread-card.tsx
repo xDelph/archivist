@@ -1,11 +1,15 @@
 import { ChannelBadge } from "@/components/channel-badge";
 import { IdentityAvatar } from "@/components/identity-avatar";
+import {
+	HighlightStateBadge,
+	SavedStateBadge,
+} from "@/components/thread-card-badges";
 import { ThreadMetrics } from "@/components/thread-metrics";
 import { formatSlackTimestamp } from "@/lib/format";
 import {
 	type ThreadAuthor,
 	displayAuthorName,
-	renderSlackTextWithoutLinks,
+	renderSlackText,
 } from "@/lib/thread-display";
 import {
 	clampSwipeOffset,
@@ -14,7 +18,7 @@ import {
 } from "@/lib/thread-swipe";
 import { cn } from "@/lib/utils";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookmarkCheck, CloudOff, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import {
 	Children,
 	type ReactNode,
@@ -252,7 +256,24 @@ export function ThreadCard({
 				onTouchEnd={handleTouchEnd}
 				onTouchCancel={handleTouchEnd}
 			>
-				<div className="flex items-start gap-2">
+				<Link
+					to="/threads/$threadId"
+					params={{ threadId }}
+					onClickCapture={(event) => {
+						if (swipeOffset !== 0) {
+							event.preventDefault();
+							closeSwipeActions();
+						}
+					}}
+					className="absolute inset-0 z-0 rounded-[0.75rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
+				>
+					<span className="sr-only">
+						Open thread from{" "}
+						{displayAuthorName(author, authorFallback || channelName)}
+					</span>
+				</Link>
+
+				<div className="relative z-10 flex items-start gap-2 pointer-events-none">
 					{typeof rank === "number" ? (
 						<div className="hidden min-w-5 justify-center pt-0.5 text-[1.15rem] font-semibold leading-none text-(--color-accent) xl:flex">
 							{rank}
@@ -265,17 +286,9 @@ export function ThreadCard({
 						size="md"
 					/>
 
-					<Link
-						to="/threads/$threadId"
-						params={{ threadId }}
-						onClickCapture={(event) => {
-							if (swipeOffset !== 0) {
-								event.preventDefault();
-								closeSwipeActions();
-							}
-						}}
+					<div
 						className={cn(
-							"min-w-0 flex-1 rounded-[0.75rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40",
+							"min-w-0 flex-1 rounded-[0.75rem]",
 							action ? "sm:pr-16" : "",
 						)}
 					>
@@ -289,7 +302,7 @@ export function ThreadCard({
 									{savedState ? <SavedStateBadge state={savedState} /> : null}
 									{isStarred ? <StarStateBadge /> : null}
 								</div>
-								<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4]">
+								<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal pointer-events-none [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4] [&_a]:pointer-events-auto">
 									{renderRichNode(displayMessage)}
 								</div>
 							</div>
@@ -324,34 +337,16 @@ export function ThreadCard({
 								</span>
 							) : null}
 						</div>
-					</Link>
+					</div>
 
 					{action ? (
-						<div className="absolute top-3 right-3 z-10 shrink-0">{action}</div>
+						<div className="absolute top-3 right-3 z-20 shrink-0 pointer-events-auto">
+							{action}
+						</div>
 					) : null}
 				</div>
 			</article>
 		</div>
-	);
-}
-
-function SavedStateBadge({ state }: { state: "saved" | "offline" }) {
-	return (
-		<span
-			className={cn(
-				"inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.67rem] font-semibold tracking-[0.02em]",
-				state === "offline"
-					? "border-(--color-border-accent) bg-(--color-accent)/10 text-(--color-accent-soft)"
-					: "border-(--color-border-default) bg-(--color-bg-elevated) text-(--color-text-secondary)",
-			)}
-		>
-			{state === "offline" ? (
-				<CloudOff className="size-3" />
-			) : (
-				<BookmarkCheck className="size-3" />
-			)}
-			{state === "offline" ? "Offline" : "Saved"}
-		</span>
 	);
 }
 
@@ -405,9 +400,7 @@ function SwipeActionSurface({
 }
 
 function renderRichNode(content: ReactNode) {
-	return typeof content === "string"
-		? renderSlackTextWithoutLinks(content)
-		: content;
+	return typeof content === "string" ? renderSlackText(content) : content;
 }
 
 function announceOpenThreadSwipe(instanceId: string) {

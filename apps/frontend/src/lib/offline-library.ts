@@ -61,6 +61,20 @@ export async function getOfflineThreadDetail(threadId: string) {
 	return record?.thread ?? null;
 }
 
+export async function hasOfflineThreadDetail(threadId: string) {
+	const database = await openOfflineDatabase();
+	if (!database) {
+		return false;
+	}
+
+	const record = await readRecord<OfflineThreadDetailRecord>(
+		database,
+		THREAD_DETAILS_STORE,
+		threadId,
+	);
+	return Boolean(record?.thread);
+}
+
 export async function replaceOfflineSavedItems(items: SavedItem[]) {
 	const database = await openOfflineDatabase();
 	if (!database) {

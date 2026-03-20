@@ -15,6 +15,10 @@ import {
 } from "@/lib/offline-reading";
 import { offlineQueries, savedQueries, threadQueries } from "@/lib/queries";
 import { extractLinks } from "@/lib/thread-display";
+import {
+	getFreshestKnownThreadActivityTs,
+	shouldRefreshThreadDetail,
+} from "@/lib/thread-freshness";
 import { useThreadSaveAction } from "@/lib/thread-save";
 import { useNetworkStatus } from "@/lib/use-network-status";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,7 +33,7 @@ import {
 	Paperclip,
 	Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const INITIAL_MESSAGE_COUNT = 4;
 
@@ -42,6 +46,7 @@ export function ThreadPage() {
 		messageTs: string;
 		index: number;
 	} | null>(null);
+	const lastRefreshAttemptKeyRef = useRef<string | null>(null);
 	const [activeTab, setActiveTab] = useState<
 		"highlights" | "transcript" | "links" | "files"
 	>("highlights");
@@ -66,6 +71,17 @@ export function ThreadPage() {
 		threadQuery.data,
 		offlineThreadQuery.data,
 	);
+	const freshestKnownActivityTs = getFreshestKnownThreadActivityTs(threadId, [
+		...queryClient
+			.getQueriesData({ queryKey: ["catch-up"] })
+			.map(([, data]) => data),
+		...queryClient
+			.getQueriesData({ queryKey: ["saved"] })
+			.map(([, data]) => data),
+		...queryClient
+			.getQueriesData({ queryKey: ["highlights"] })
+			.map(([, data]) => data),
+	]);
 	const isOfflineSnapshot = !threadQuery.data && Boolean(thread);
 	const saveMutation = useThreadSaveAction({
 		threadId,
@@ -84,6 +100,37 @@ export function ThreadPage() {
 			});
 		});
 	}, [isOnline, queryClient, savedItem, threadId, threadQuery.data]);
+
+	useEffect(() => {
+		if (
+			!isOnline ||
+			!threadQuery.data ||
+			!freshestKnownActivityTs ||
+			threadQuery.isFetching
+		) {
+			return;
+		}
+
+		if (!shouldRefreshThreadDetail(threadQuery.data, freshestKnownActivityTs)) {
+			lastRefreshAttemptKeyRef.current = null;
+			return;
+		}
+
+		const refreshAttemptKey = `${threadId}:${freshestKnownActivityTs}`;
+		if (lastRefreshAttemptKeyRef.current === refreshAttemptKey) {
+			return;
+		}
+
+		lastRefreshAttemptKeyRef.current = refreshAttemptKey;
+		void threadQuery.refetch();
+	}, [
+		freshestKnownActivityTs,
+		isOnline,
+		threadId,
+		threadQuery.data,
+		threadQuery.isFetching,
+		threadQuery.refetch,
+	]);
 
 	if (
 		(isOnline && threadQuery.isPending) ||

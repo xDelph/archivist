@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/empty-state";
 import { IdentityAvatar } from "@/components/identity-avatar";
 import { InstallBanner } from "@/components/install-banner";
+import { OfflineSaveNotification } from "@/components/offline-save-notification";
 import { ThemeControls } from "@/components/theme-controls";
 import { useAppWarmup } from "@/lib/app-warmup";
 import { canReadPathOffline } from "@/lib/offline-reading";
@@ -97,6 +98,7 @@ export function AppShell() {
 
 			<div className="mx-auto flex w-full max-w-[1680px] flex-col px-3 py-3 sm:px-4 sm:py-4">
 				<InstallBanner />
+				<OfflineSaveNotification />
 				{!isOnline ? (
 					<div className="mb-3 rounded-[1rem] border border-(--color-border-accent) bg-(--color-accent)/10 px-3 py-2.5 text-[0.82rem] text-(--color-text-secondary)">
 						<div className="flex items-start gap-2">
