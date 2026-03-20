@@ -115,8 +115,8 @@ export function ThemeControls() {
 
 function accentGradient(accent: AccentMode) {
 	return {
-		green: "linear-gradient(to bottom right, #a7f3d0, #6ee7b7, #10b981)",
 		red: "linear-gradient(to bottom right, #fecdd3, #fda4af, #f43f5e)",
+		green: "linear-gradient(to bottom right, #a7f3d0, #6ee7b7, #10b981)",
 		blue: "linear-gradient(to bottom right, #bae6fd, #93c5fd, #3b82f6)",
 	}[accent];
 }
@@ -131,8 +131,8 @@ function accentTransform(i: number) {
 
 function accentShadow(accent: AccentMode) {
 	return {
-		green: "rgba(16, 185, 129, 0.28)",
 		red: "rgba(244, 63, 94, 0.28)",
+		green: "rgba(16, 185, 129, 0.28)",
 		blue: "rgba(59, 130, 246, 0.28)",
 	}[accent];
 }

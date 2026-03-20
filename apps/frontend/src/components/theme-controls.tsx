@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 import { MoonStar, SunMedium } from "lucide-react";
 
 const accentLabels: Record<AccentMode, string> = {
-	green: "Green",
 	red: "Red",
+	green: "Green",
 	blue: "Blue",
 };
 
@@ -95,9 +95,9 @@ export function ThemeControls({ className }: { className?: string }) {
 
 function accentCardPalette(accent: AccentMode) {
 	return {
+		red: "from-rose-200 via-red-300 to-red-500 [--card-shadow:oklch(0.72_0.18_25)]",
 		green:
 			"from-emerald-200 via-emerald-300 to-emerald-500 [--card-shadow:oklch(0.76_0.18_150)]",
-		red: "from-rose-200 via-red-300 to-red-500 [--card-shadow:oklch(0.72_0.18_25)]",
 		blue: "from-sky-200 via-blue-300 to-blue-500 [--card-shadow:oklch(0.7_0.16_258)]",
 	}[accent];
 }

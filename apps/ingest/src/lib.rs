@@ -34,8 +34,7 @@ pub struct IngestConfig {
 impl IngestConfig {
     pub fn from_env() -> Self {
         Self {
-            host: std::env::var("ARKIVIST_INGEST_HOST")
-                .unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
+            host: std::env::var("ARKIVIST_INGEST_HOST").unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
             port: read_port("ARKIVIST_INGEST_PORT", DEFAULT_PORT),
             api_base_url: std::env::var("ARKIVIST_API_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_owned()),

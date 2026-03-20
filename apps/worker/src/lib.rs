@@ -59,8 +59,7 @@ pub struct WorkerConfig {
 impl WorkerConfig {
     pub fn from_env() -> Self {
         Self {
-            host: std::env::var("ARKIVIST_WORKER_HOST")
-                .unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
+            host: std::env::var("ARKIVIST_WORKER_HOST").unwrap_or_else(|_| DEFAULT_HOST.to_owned()),
             port: read_port("ARKIVIST_WORKER_PORT", DEFAULT_PORT),
             event_log_path: std::env::var("ARKIVIST_EVENT_LOG_PATH")
                 .unwrap_or_else(|_| DEFAULT_EVENT_LOG_PATH.to_owned()),

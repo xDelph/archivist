@@ -13,12 +13,12 @@
       try {
         const t = JSON.parse(localStorage.getItem("arkivist.theme") || "{}");
         const a = ["dark","light"].includes(t.appearance) ? t.appearance : "dark";
-        const c = ["green","red","blue"].includes(t.accent) ? t.accent : "green";
+        const c = ["red","green","blue"].includes(t.accent) ? t.accent : "green";
         const d = document.documentElement;
         d.dataset.appearance = a;
         d.dataset.accent = c;
         d.style.colorScheme = a;
-        const mc = {dark:{green:"#122019",red:"#201516",blue:"#101828"},light:{green:"#f4fbf7",red:"#fdf4f4",blue:"#f4f7fe"}};
+        const mc = {dark:{red:"#201516",green:"#122019",blue:"#101828"},light:{red:"#fdf4f4",green:"#f4fbf7",blue:"#f4f7fe"}};
         document.querySelector('meta[name="theme-color"]')?.setAttribute("content", mc[a][c]);
       } catch {}
     </script>

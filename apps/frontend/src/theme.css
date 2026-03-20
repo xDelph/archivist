@@ -17,18 +17,18 @@
 	--info-hue: 240;
 }
 
-html[data-accent="green"] {
-	--accent-hue: 150;
-	--neutral-hue: 152;
-	--signal-hue: 72;
-	--info-hue: 240;
-}
-
 html[data-accent="red"] {
 	--accent-hue: 24;
 	--neutral-hue: 28;
 	--signal-hue: 56;
 	--info-hue: 254;
+}
+
+html[data-accent="green"] {
+	--accent-hue: 150;
+	--neutral-hue: 152;
+	--signal-hue: 72;
+	--info-hue: 240;
 }
 
 html[data-accent="blue"] {

@@ -9,7 +9,7 @@ import {
 export const THEME_STORAGE_KEY = "arkivist.theme";
 
 export const APPEARANCE_MODES = ["dark", "light"] as const;
-export const ACCENT_MODES = ["green", "red", "blue"] as const;
+export const ACCENT_MODES = ["red", "green", "blue"] as const;
 
 export type AppearanceMode = (typeof APPEARANCE_MODES)[number];
 export type AccentMode = (typeof ACCENT_MODES)[number];
@@ -26,13 +26,13 @@ export const DEFAULT_THEME: ThemePreference = {
 
 const THEME_META_COLORS: Record<AppearanceMode, Record<AccentMode, string>> = {
 	dark: {
-		green: "#122019",
 		red: "#201516",
+		green: "#122019",
 		blue: "#101828",
 	},
 	light: {
-		green: "#f4fbf7",
 		red: "#fdf4f4",
+		green: "#f4fbf7",
 		blue: "#f4f7fe",
 	},
 };
