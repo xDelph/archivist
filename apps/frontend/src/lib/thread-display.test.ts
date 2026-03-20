@@ -125,6 +125,21 @@ describe("thread display emoji helpers", () => {
 		);
 	});
 
+	it("renders feed preview links with their full href intact", () => {
+		const markup = renderToStaticMarkup(
+			renderSlackText(
+				"LinkedIn <https://www.linkedin.com/feed/update/urn:li:activity:7439589346451562497/>",
+			),
+		);
+
+		expect(markup).toContain(
+			'href="https://www.linkedin.com/feed/update/urn:li:activity:7439589346451562497/"',
+		);
+		expect(markup).not.toContain(
+			"&lt;https://www.linkedin.com/feed/update/urn:li:activity:7439589346451562497/",
+		);
+	});
+
 	it("decodes html entities before rendering links and text", () => {
 		const markup = renderToStaticMarkup(
 			renderSlackText("Go --&gt; https://example.com?a=1&amp;b=2"),
