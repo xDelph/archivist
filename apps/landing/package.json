@@ -1,0 +1,32 @@
+{
+	"name": "@archivist/landing",
+	"private": true,
+	"version": "0.1.0",
+	"scripts": {
+		"dev": "vite --host 127.0.0.1 --port 3002",
+		"build": "vite build",
+		"lint": "biome check src package.json tsconfig.json vite.config.mts index.html",
+		"test": "vitest run",
+		"typecheck": "tsc --noEmit",
+		"check": "bun run lint && bun run typecheck",
+		"fmt": "biome format src package.json tsconfig.json vite.config.mts index.html"
+	},
+	"dependencies": {
+		"@fontsource/space-grotesk": "^5.2.6",
+		"lucide-react": "^0.511.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@tailwindcss/vite": "^4.1.12",
+		"@types/node": "^22.13.5",
+		"@types/react": "^19.0.10",
+		"@types/react-dom": "^19.0.4",
+		"@vitejs/plugin-react": "^4.4.1",
+		"tailwindcss": "^4.1.12",
+		"typescript": "^5.8.2",
+		"vite": "^6.2.0",
+		"vitest": "^3.0.8"
+	}
+}
