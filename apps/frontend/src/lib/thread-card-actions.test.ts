@@ -1,4 +1,7 @@
-import { buildThreadCardActionKinds } from "@/lib/thread-card-actions";
+import {
+	buildThreadCardActionKinds,
+	buildThreadShareUrl,
+} from "@/lib/thread-card-actions";
 
 describe("thread card action helpers", () => {
 	it("builds save and star add-actions for online admins", () => {
@@ -13,6 +16,7 @@ describe("thread card action helpers", () => {
 			leading: [],
 			trailing: ["save", "star"],
 			menu: ["save", "star"],
+			quick: ["save", "star"],
 		});
 	});
 
@@ -28,6 +32,7 @@ describe("thread card action helpers", () => {
 			leading: ["unsave", "unstar"],
 			trailing: [],
 			menu: ["unsave", "unstar"],
+			quick: ["unsave", "unstar"],
 		});
 	});
 
@@ -43,6 +48,7 @@ describe("thread card action helpers", () => {
 			leading: [],
 			trailing: [],
 			menu: [],
+			quick: [],
 		});
 		expect(
 			buildThreadCardActionKinds({
@@ -55,6 +61,16 @@ describe("thread card action helpers", () => {
 			leading: [],
 			trailing: ["save"],
 			menu: ["save"],
+			quick: ["save"],
 		});
+	});
+
+	it("builds an Arkivist thread URL for share actions", () => {
+		expect(
+			buildThreadShareUrl(
+				"https://app.arkivist.test",
+				"C123456:1742816123.004200",
+			),
+		).toBe("https://app.arkivist.test/threads/C123456%3A1742816123.004200");
 	});
 });

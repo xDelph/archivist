@@ -1,10 +1,8 @@
 import { ChannelBadge } from "@/components/channel-badge";
 import { IdentityAvatar } from "@/components/identity-avatar";
-import {
-	HighlightStateBadge,
-	SavedStateBadge,
-} from "@/components/thread-card-badges";
+import { AiStateBadge, SavedStateBadge } from "@/components/thread-card-badges";
 import { ThreadMetrics } from "@/components/thread-metrics";
+import type { ThreadPreviewSource } from "@/lib/api";
 import { formatSlackTimestamp } from "@/lib/format";
 import {
 	type ThreadAuthor,
@@ -39,6 +37,7 @@ interface ThreadCardProps {
 	authorFallback?: string | null;
 	title: ReactNode;
 	preview: ReactNode;
+	previewSource?: ThreadPreviewSource;
 	lastActivityTs: string;
 	replyCount: number;
 	participantCount: number;
@@ -48,6 +47,7 @@ interface ThreadCardProps {
 	rank?: number;
 	className?: string;
 	action?: ReactNode;
+	mobileAction?: ReactNode;
 	isActionActive?: boolean;
 	savedState?: "saved" | "offline";
 	isStarred?: boolean;
@@ -70,6 +70,7 @@ export function ThreadCard({
 	authorFallback,
 	title,
 	preview,
+	previewSource = "fallback",
 	lastActivityTs,
 	replyCount,
 	participantCount,
@@ -79,6 +80,7 @@ export function ThreadCard({
 	rank,
 	className,
 	action,
+	mobileAction,
 	isActionActive = false,
 	savedState,
 	isStarred = false,
@@ -238,6 +240,7 @@ export function ThreadCard({
 			<article
 				className={cn(
 					"surface-panel surface-panel-soft group relative px-3 py-3 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-base) hover:shadow-[0_18px_40px_rgba(0,0,0,0.24)] focus-within:border-(--color-border-accent)",
+					previewSource === "ai" && "border-(--color-accent-soft)/55",
 					isDragging ? "duration-0" : "ease-[cubic-bezier(0.22,1,0.36,1)]",
 					className,
 				)}
@@ -286,28 +289,21 @@ export function ThreadCard({
 						size="md"
 					/>
 
-					<div
-						className={cn(
-							"min-w-0 flex-1 rounded-[0.75rem]",
-							action ? "sm:pr-16" : "",
-						)}
-					>
-						<div className="flex items-start justify-between gap-2.5">
-							<div className="min-w-0">
+					<div className="min-w-0 flex-1 rounded-[0.75rem]">
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0 flex-1">
 								<div className="flex flex-wrap items-center gap-1.5">
 									<p className="truncate text-[0.88rem] font-medium text-(--color-text-primary)">
 										{displayAuthorName(author, authorFallback || channelName)}
 									</p>
 									<ChannelBadge name={channelName} />
+									{previewSource === "ai" ? <AiStateBadge /> : null}
 									{savedState ? <SavedStateBadge state={savedState} /> : null}
 									{isStarred ? <StarStateBadge /> : null}
 								</div>
-								<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal pointer-events-none [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [tab-size:4] [&_a]:pointer-events-auto">
-									{renderRichNode(displayMessage)}
-								</div>
 							</div>
 
-							<div className="hidden shrink-0 text-right lg:block">
+							<div className="hidden shrink-0 text-right sm:block">
 								<time className="text-copy-soft block text-[0.76rem]">
 									{formatSlackTimestamp(lastActivityTs)}
 								</time>
@@ -319,31 +315,48 @@ export function ThreadCard({
 							</div>
 						</div>
 
-						<ThreadMetrics
-							className="mt-2.5"
-							replyCount={replyCount}
-							reactionCount={reactionCount}
-							participantCount={participantCount}
-							fileCount={fileCount}
-						/>
+						<div className="text-copy-bright mt-1.5 max-h-[3.9rem] overflow-hidden break-words whitespace-pre-wrap text-[0.88rem] leading-[1.45] font-normal pointer-events-none [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] sm:max-h-[5.2rem] sm:[-webkit-line-clamp:4] [tab-size:4] [&_a]:pointer-events-auto">
+							{renderRichNode(displayMessage)}
+						</div>
 
-						<div className="mt-2 flex items-center justify-between gap-3 lg:hidden">
-							<time className="text-copy-soft text-[0.76rem]">
-								{formatSlackTimestamp(lastActivityTs)}
-							</time>
-							{typeof score === "number" ? (
+						<div className="mt-2.5 flex items-center justify-between gap-3">
+							<div className="min-w-0 flex flex-1 items-center gap-3">
+								<ThreadMetrics
+									className="min-w-0 flex-1"
+									replyCount={replyCount}
+									reactionCount={reactionCount}
+									participantCount={participantCount}
+									fileCount={fileCount}
+								/>
+								<time className="text-copy-soft shrink-0 text-[0.76rem] sm:hidden">
+									{formatSlackTimestamp(lastActivityTs)}
+								</time>
+							</div>
+							{action ? (
+								<div
+									className={cn(
+										"hidden shrink-0 items-center gap-1.5 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] sm:flex",
+										isActionActive
+											? "pointer-events-auto translate-y-0 opacity-100"
+											: "pointer-events-auto translate-y-0 opacity-100 lg:pointer-events-none lg:translate-y-1.5 lg:opacity-0 lg:group-hover:pointer-events-auto lg:group-hover:translate-y-0 lg:group-hover:opacity-100 lg:group-focus-within:pointer-events-auto lg:group-focus-within:translate-y-0 lg:group-focus-within:opacity-100",
+									)}
+								>
+									{action}
+								</div>
+							) : null}
+						</div>
+						{mobileAction ? (
+							<div className="mt-2.5 sm:hidden">{mobileAction}</div>
+						) : null}
+
+						{typeof score === "number" ? (
+							<div className="mt-2 flex justify-end sm:hidden">
 								<span className="accent-pill rounded-[0.65rem] px-2 py-0.5 text-[0.7rem] font-medium">
 									{score}
 								</span>
-							) : null}
-						</div>
+							</div>
+						) : null}
 					</div>
-
-					{action ? (
-						<div className="absolute top-3 right-3 z-20 shrink-0 pointer-events-auto">
-							{action}
-						</div>
-					) : null}
 				</div>
 			</article>
 		</div>

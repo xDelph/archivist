@@ -1,6 +1,14 @@
 import { cn } from "@/lib/utils";
 import { MoreHorizontal } from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+	type MouseEvent as ReactMouseEvent,
+	type ReactNode,
+	type PointerEvent as ReactPointerEvent,
+	useEffect,
+	useId,
+	useRef,
+	useState,
+} from "react";
 
 export interface ThreadCardMenuAction {
 	key: string;
@@ -60,14 +68,21 @@ export function ThreadCardActionMenu({
 	}
 
 	return (
-		<div ref={rootRef} className="relative hidden sm:block">
+		<div
+			ref={rootRef}
+			className="relative hidden pointer-events-auto sm:block"
+			onPointerDownCapture={consumeCardPointerEvent}
+		>
 			<button
 				type="button"
 				className="button-ghost inline-flex size-9 items-center justify-center rounded-full bg-(--surface-ghost-strong-bg) text-(--color-text-secondary) hover:text-(--color-text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent-soft)/40"
 				aria-expanded={isOpen}
 				aria-controls={menuId}
 				aria-label="Thread actions"
-				onClick={() => setIsOpen((current) => !current)}
+				onClick={(event) => {
+					consumeCardClickEvent(event);
+					setIsOpen((current) => !current);
+				}}
 			>
 				<MoreHorizontal className="size-4" />
 			</button>
@@ -76,6 +91,7 @@ export function ThreadCardActionMenu({
 				<div
 					id={menuId}
 					className="surface-panel surface-panel-soft absolute top-full right-0 z-20 mt-2 min-w-44 rounded-[1rem] p-1.5 shadow-[var(--shadow-float)]"
+					onPointerDownCapture={consumeCardPointerEvent}
 				>
 					{actions.map((action) => (
 						<button
@@ -88,7 +104,8 @@ export function ThreadCardActionMenu({
 									? "text-(--color-destructive) hover:bg-(--color-destructive)/10"
 									: "text-(--color-text-secondary) hover:bg-(--surface-ghost-hover-bg) hover:text-(--color-text-primary)",
 							)}
-							onClick={() => {
+							onClick={(event) => {
+								consumeCardClickEvent(event);
 								setIsOpen(false);
 								action.onSelect();
 							}}
@@ -101,4 +118,13 @@ export function ThreadCardActionMenu({
 			) : null}
 		</div>
 	);
+}
+
+function consumeCardPointerEvent(event: ReactPointerEvent<HTMLElement>) {
+	event.stopPropagation();
+}
+
+function consumeCardClickEvent(event: ReactMouseEvent<HTMLElement>) {
+	event.preventDefault();
+	event.stopPropagation();
 }

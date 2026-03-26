@@ -85,13 +85,7 @@ export function ThreadMessageCard({
 	);
 }
 
-function MetaChip({
-	label,
-	icon,
-}: {
-	label: string;
-	icon?: ReactNode;
-}) {
+function MetaChip({ label, icon }: { label: string; icon?: ReactNode }) {
 	return (
 		<span className="subtle-chip inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 py-1 text-[0.76rem]">
 			{icon}
