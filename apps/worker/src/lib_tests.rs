@@ -5,6 +5,7 @@ use axum::{
 };
 use db::JsonlEventStore;
 use domain::{ChannelKind, EventPayload, ProcessEventJob};
+use std::collections::HashMap;
 use tempfile::tempdir;
 use tower::util::ServiceExt;
 
@@ -28,6 +29,76 @@ fn config_uses_local_defaults() {
     assert_eq!(config.r2_key_prefix, None);
     assert_eq!(config.current_signing_key, None);
     assert_eq!(config.next_signing_key, None);
+}
+
+#[test]
+fn config_accepts_legacy_r2_env_aliases() {
+    let values = HashMap::from([
+        ("CLOUDFLARED_R2_ACCOUNT_ID", "acct".to_owned()),
+        ("CLOUDFLARED_R2_ACCESS_KEY", "key".to_owned()),
+        ("CLOUDFLARED_R2_SECRET_KEY", "secret".to_owned()),
+        ("CLOUDFLARED_R2_BUCKET", "bucket".to_owned()),
+        (
+            "CLOUDFLARED_R2_PUBLIC_URL",
+            "https://files.example.com".to_owned(),
+        ),
+        (
+            "CLOUDFLARED_R2_ENDPOINT_URL",
+            "https://r2.example.com".to_owned(),
+        ),
+    ]);
+
+    assert_eq!(
+        super::env_var_any_with(
+            &["CLOUDFLARE_R2_ACCOUNT_ID", "CLOUDFLARED_R2_ACCOUNT_ID"],
+            |name| values.get(name).cloned()
+        ),
+        Some("acct".to_owned())
+    );
+    assert_eq!(
+        super::env_var_any_with(
+            &[
+                "CLOUDFLARE_R2_ACCESS_KEY_ID",
+                "CLOUDFLARE_R2_ACCESS_KEY",
+                "CLOUDFLARED_R2_ACCESS_KEY_ID",
+                "CLOUDFLARED_R2_ACCESS_KEY",
+            ],
+            |name| values.get(name).cloned()
+        ),
+        Some("key".to_owned())
+    );
+    assert_eq!(
+        super::env_var_any_with(
+            &[
+                "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+                "CLOUDFLARE_R2_SECRET_KEY",
+                "CLOUDFLARED_R2_SECRET_ACCESS_KEY",
+                "CLOUDFLARED_R2_SECRET_KEY",
+            ],
+            |name| values.get(name).cloned()
+        ),
+        Some("secret".to_owned())
+    );
+    assert_eq!(
+        super::env_var_any_with(&["CLOUDFLARE_R2_BUCKET", "CLOUDFLARED_R2_BUCKET"], |name| {
+            values.get(name).cloned()
+        }),
+        Some("bucket".to_owned())
+    );
+    assert_eq!(
+        super::env_var_any_with(
+            &["CLOUDFLARE_R2_PUBLIC_URL", "CLOUDFLARED_R2_PUBLIC_URL"],
+            |name| values.get(name).cloned()
+        ),
+        Some("https://files.example.com".to_owned())
+    );
+    assert_eq!(
+        super::env_var_any_with(
+            &["CLOUDFLARE_R2_ENDPOINT_URL", "CLOUDFLARED_R2_ENDPOINT_URL"],
+            |name| values.get(name).cloned()
+        ),
+        Some("https://r2.example.com".to_owned())
+    );
 }
 
 #[tokio::test]

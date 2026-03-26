@@ -244,6 +244,72 @@ pub(super) async fn fetch_channel_history(
     Ok(history)
 }
 
+pub(super) async fn fetch_message_history(
+    slack_api_base_url: &str,
+    slack_user_token: &str,
+    channel_id: &str,
+    message_ts: &str,
+) -> Result<Option<SlackHistoryMessage>, (StatusCode, Json<ErrorResponse>)> {
+    let endpoint = format!(
+        "{}/conversations.history",
+        slack_api_base_url.trim_end_matches('/')
+    );
+    let response = reqwest::Client::new()
+        .get(&endpoint)
+        .bearer_auth(slack_user_token)
+        .query(&[
+            ("channel", channel_id),
+            ("oldest", message_ts),
+            ("latest", message_ts),
+            ("inclusive", "true"),
+            ("limit", "1"),
+        ])
+        .send()
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                ?error,
+                channel_id,
+                message_ts,
+                "failed to fetch slack message history"
+            );
+            slack_history_failed()
+        })?;
+    if !response.status().is_success() {
+        tracing::error!(
+            status = %response.status(),
+            channel_id,
+            message_ts,
+            "slack message history returned non-success status"
+        );
+        return Err(slack_history_failed());
+    }
+
+    let history: SlackHistoryResponse = response.json().await.map_err(|error| {
+        tracing::error!(
+            ?error,
+            channel_id,
+            message_ts,
+            "failed to decode slack message history"
+        );
+        slack_history_failed()
+    })?;
+    if !history.ok {
+        tracing::error!(
+            channel_id,
+            message_ts,
+            "slack message history returned ok=false"
+        );
+        return Err(slack_history_failed());
+    }
+
+    Ok(history
+        .messages
+        .unwrap_or_default()
+        .into_iter()
+        .find(|message| message.ts == message_ts))
+}
+
 pub(super) async fn fetch_thread_replies(
     slack_api_base_url: &str,
     slack_user_token: &str,

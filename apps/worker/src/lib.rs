@@ -3,6 +3,7 @@ mod ai_openrouter;
 mod archive;
 mod backfill;
 mod backfill_archive;
+mod backfill_files;
 mod backfill_range;
 mod backfill_slack;
 mod backfill_threads;
@@ -72,12 +73,25 @@ impl WorkerConfig {
             openrouter_api_key: std::env::var("OPENROUTER_API_KEY").ok(),
             openrouter_model: std::env::var("OPENROUTER_MODEL").ok(),
             slack_user_token: std::env::var("SLACK_USER_TOKEN").ok(),
-            r2_account_id: std::env::var("CLOUDFLARE_R2_ACCOUNT_ID").ok(),
-            r2_access_key_id: std::env::var("CLOUDFLARE_R2_ACCESS_KEY_ID").ok(),
-            r2_secret_access_key: std::env::var("CLOUDFLARE_R2_SECRET_ACCESS_KEY").ok(),
-            r2_bucket: std::env::var("CLOUDFLARE_R2_BUCKET").ok(),
-            r2_public_url: std::env::var("CLOUDFLARE_R2_PUBLIC_URL").ok(),
-            r2_endpoint_url: std::env::var("CLOUDFLARE_R2_ENDPOINT_URL").ok(),
+            r2_account_id: env_var_any(&["CLOUDFLARE_R2_ACCOUNT_ID", "CLOUDFLARED_R2_ACCOUNT_ID"]),
+            r2_access_key_id: env_var_any(&[
+                "CLOUDFLARE_R2_ACCESS_KEY_ID",
+                "CLOUDFLARE_R2_ACCESS_KEY",
+                "CLOUDFLARED_R2_ACCESS_KEY_ID",
+                "CLOUDFLARED_R2_ACCESS_KEY",
+            ]),
+            r2_secret_access_key: env_var_any(&[
+                "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+                "CLOUDFLARE_R2_SECRET_KEY",
+                "CLOUDFLARED_R2_SECRET_ACCESS_KEY",
+                "CLOUDFLARED_R2_SECRET_KEY",
+            ]),
+            r2_bucket: env_var_any(&["CLOUDFLARE_R2_BUCKET", "CLOUDFLARED_R2_BUCKET"]),
+            r2_public_url: env_var_any(&["CLOUDFLARE_R2_PUBLIC_URL", "CLOUDFLARED_R2_PUBLIC_URL"]),
+            r2_endpoint_url: env_var_any(&[
+                "CLOUDFLARE_R2_ENDPOINT_URL",
+                "CLOUDFLARED_R2_ENDPOINT_URL",
+            ]),
             r2_key_prefix: std::env::var("ARKIVIST_R2_KEY_PREFIX").ok(),
             current_signing_key: std::env::var("UPSTASH_QSTASH_CURRENT_SIGNING_KEY").ok(),
             next_signing_key: std::env::var("UPSTASH_QSTASH_NEXT_SIGNING_KEY").ok(),
@@ -87,6 +101,21 @@ impl WorkerConfig {
     pub fn bind_address(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
+}
+
+fn env_var_any(names: &[&str]) -> Option<String> {
+    env_var_any_with(names, |name| std::env::var(name).ok())
+}
+
+fn env_var_any_with<F>(names: &[&str], mut get: F) -> Option<String>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    names.iter().find_map(|name| {
+        get(name)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+    })
 }
 
 #[derive(Clone)]
@@ -164,6 +193,7 @@ pub fn build_router(
             post(ai::generate_thread_summaries),
         )
         .route("/jobs/backfill_channel", post(backfill::backfill_channel))
+        .route("/jobs/backfill_files", post(backfill_files::backfill_files))
         .route("/jobs/archive_file", post(archive::archive_file))
         .with_state(AppState {
             store: store.into(),
