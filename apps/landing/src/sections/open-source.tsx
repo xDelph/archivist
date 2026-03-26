@@ -1,146 +1,63 @@
-import { GitBranch, Lock, Server } from "lucide-react";
-import { useInView } from "../hooks/use-in-view";
+import { ArrowUpRight, Github } from "lucide-react";
+
+const REPO_URL = "https://github.com/xDelph/archivist";
+
+const TRUST_POINTS = [
+	"AGPL-3.0 licensed.",
+	"Designed for self-hosted operation.",
+	"Built around searchable, readable thread history.",
+];
 
 export function OpenSource() {
-	const { ref, visible } = useInView();
-
 	return (
-		<section
-			ref={ref}
-			id="open-source"
-			className={`px-6 py-20 ${visible ? "anim-fade-up" : "opacity-0"}`}
-		>
-			<div className="mx-auto max-w-5xl">
+		<section id="open-source" className="px-6 py-12 sm:py-16">
+			<div
+				className="mx-auto max-w-6xl border bg-(--color-bg-panel) p-6 sm:p-8"
+				style={{
+					borderColor: "var(--landing-panel-border)",
+					boxShadow: "var(--landing-panel-shadow)",
+				}}
+			>
 				<div
-					className="overflow-hidden rounded-3xl border"
-					style={{
-						borderColor: "var(--color-border-subtle)",
-						background:
-							"color-mix(in srgb, var(--color-bg-panel) 94%, white 6%)",
-						boxShadow: "var(--shadow-panel)",
-					}}
-				>
-					<div className="grid items-center gap-8 p-8 md:grid-cols-2 md:p-12">
-						<div>
-							<p
-								className="text-sm font-medium tracking-wide uppercase"
-								style={{
-									color: "var(--color-accent-soft)",
-								}}
-							>
-								Open source
-							</p>
-							<h2
-								className="mt-3 text-3xl font-bold tracking-tight"
-								style={{
-									color: "var(--color-text-primary)",
-								}}
-							>
-								Your data, your infrastructure
-							</h2>
-							<p
-								className="mt-4 text-base leading-relaxed"
-								style={{
-									color: "var(--color-text-secondary)",
-								}}
-							>
-								Arkivist is AGPL-licensed. Self-host it on your own
-								infrastructure, audit every line, and own your data completely.
-								No vendor lock-in, no third-party data access.
-							</p>
-						</div>
-
-						<div className="flex flex-col gap-4">
-							<div className="flex items-start gap-3">
-								<GitBranch
-									size={20}
-									style={{
-										color: "var(--color-accent-soft)",
-										marginTop: 2,
-										flexShrink: 0,
-									}}
-								/>
-								<div>
-									<h3
-										className="text-sm font-semibold"
-										style={{
-											color: "var(--color-text-bright)",
-										}}
-									>
-										AGPL licensed
-									</h3>
-									<p
-										className="mt-0.5 text-sm"
-										style={{
-											color: "var(--color-text-tertiary)",
-										}}
-									>
-										Fork it, modify it, contribute back. Full source available
-										on GitHub.
-									</p>
-								</div>
-							</div>
-
-							<div className="flex items-start gap-3">
-								<Server
-									size={20}
-									style={{
-										color: "var(--color-accent-soft)",
-										marginTop: 2,
-										flexShrink: 0,
-									}}
-								/>
-								<div>
-									<h3
-										className="text-sm font-semibold"
-										style={{
-											color: "var(--color-text-bright)",
-										}}
-									>
-										Self-hostable
-									</h3>
-									<p
-										className="mt-0.5 text-sm"
-										style={{
-											color: "var(--color-text-tertiary)",
-										}}
-									>
-										Rust backend + React frontend. Deploy anywhere — Vercel,
-										Docker, bare metal.
-									</p>
-								</div>
-							</div>
-
-							<div className="flex items-start gap-3">
-								<Lock
-									size={20}
-									style={{
-										color: "var(--color-accent-soft)",
-										marginTop: 2,
-										flexShrink: 0,
-									}}
-								/>
-								<div>
-									<h3
-										className="text-sm font-semibold"
-										style={{
-											color: "var(--color-text-bright)",
-										}}
-									>
-										Commercial license available
-									</h3>
-									<p
-										className="mt-0.5 text-sm"
-										style={{
-											color: "var(--color-text-tertiary)",
-										}}
-									>
-										Need to run it without AGPL obligations? Commercial
-										licensing is available.
-									</p>
-								</div>
-							</div>
-						</div>
+					className="mb-6 h-px w-16"
+					style={{ background: "var(--landing-panel-top-line)" }}
+				/>
+				<div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-end">
+					<div>
+						<p className="text-[0.78rem] font-medium uppercase tracking-[0.22em] text-(--color-accent)">
+							Open source
+						</p>
+						<h2 className="mt-3 max-w-2xl text-[clamp(2rem,5vw,3.3rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-(--color-text-primary)">
+							If your team relies on Slack for real decisions, the archive
+							should not be a black box either.
+						</h2>
+						<p className="mt-4 max-w-2xl text-[1rem] leading-7 text-(--color-text-secondary)">
+							Arkivist is for teams that want durable recall without handing
+							over their working memory to another opaque hosted product.
+						</p>
+					</div>
+					<div className="space-y-6">
+						<ul className="space-y-3">
+							{TRUST_POINTS.map((point) => (
+								<li
+									key={point}
+									className="flex items-start gap-3 text-sm leading-6 text-(--color-text-secondary)"
+								>
+									<span className="mt-2 h-1.5 w-1.5 rounded-full bg-(--color-accent)" />
+									<span>{point}</span>
+								</li>
+							))}
+						</ul>
+						<a
+							href={REPO_URL}
+							target="_blank"
+							rel="noreferrer"
+							className="inline-flex min-h-12 items-center gap-2 rounded-full border border-(--color-border-strong) px-5 text-sm font-semibold text-(--color-text-primary) transition-colors hover:border-(--color-border-accent) hover:bg-(--color-bg-elevated)"
+						>
+							<Github className="size-4" />
+							View repository
+							<ArrowUpRight className="size-4" />
+						</a>
 					</div>
 				</div>
 			</div>

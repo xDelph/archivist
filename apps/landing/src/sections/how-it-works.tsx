@@ -1,124 +1,57 @@
-import { Cable, Database, Layout, RefreshCw } from "lucide-react";
-import { useInView } from "../hooks/use-in-view";
-
 const STEPS = [
 	{
-		icon: Cable,
 		step: "01",
-		title: "Install & authenticate",
+		title: "Connect Slack and schedule the archive.",
 		description:
-			"Install the Arkivist Slack app in your workspace. Provide a user token for backfill access — Arkivist needs it to pull channel history and sync users. OIDC handles login.",
+			"Arkivist backfills public-channel history so the archive becomes a living record instead of a one-time import.",
 	},
 	{
-		icon: RefreshCw,
 		step: "02",
-		title: "Backfill & stay current",
+		title: "Store the thread, file, and summary together.",
 		description:
-			"Arkivist backfills your workspace — channels, messages, threads, reactions, files. Incremental and resumable. Periodic syncs keep your archive up to date automatically.",
+			"Messages stay readable, summaries stay attached, and the original context remains available when someone needs the full thread.",
 	},
 	{
-		icon: Database,
 		step: "03",
-		title: "AI summaries & indexing",
+		title: "Open the archive from catch-up, search, or saved reading.",
 		description:
-			"Background workers generate AI summaries for every thread, archive files to durable storage, and build full-text search indexes. All async, all automatic.",
-	},
-	{
-		icon: Layout,
-		step: "04",
-		title: "Search, catch up, read offline",
-		description:
-			"Open the web app or install the PWA. Browse time-windowed feeds, search across everything, save threads for offline reading. Use Slack commands to pin highlights.",
+			"People can recover the right conversation from the workflow that matches the moment instead of hunting through Slack.",
 	},
 ];
 
 export function HowItWorks() {
-	const { ref, visible } = useInView();
-
 	return (
-		<section ref={ref} id="how-it-works" className="px-6 py-20">
-			<div className="mx-auto max-w-5xl">
-				<div
-					className={`text-center ${visible ? "anim-fade-up" : "opacity-0"}`}
-				>
-					<p
-						className="text-sm font-medium tracking-wide uppercase"
-						style={{ color: "var(--color-accent-soft)" }}
-					>
-						How it works
-					</p>
-					<h2
-						className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl"
-						style={{ color: "var(--color-text-primary)" }}
-					>
-						Up and running in minutes
-					</h2>
-					<p
-						className="mx-auto mt-4 max-w-2xl text-lg"
-						style={{ color: "var(--color-text-secondary)" }}
-					>
-						From zero to a fully searchable Slack archive with AI summaries.
-					</p>
-				</div>
-
-				<div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-					{STEPS.map((step, i) => (
-						<div
-							key={step.step}
-							className={
-								visible ? `anim-fade-up d-${(i + 1) * 200}` : "opacity-0"
-							}
-						>
-							<div className="relative">
-								{/* Step number */}
-								<span
-									className="text-[11px] font-bold tracking-widest uppercase"
-									style={{ color: "var(--color-accent-muted)" }}
-								>
-									Step {step.step}
-								</span>
-
-								{/* Timeline connector */}
-								<div
-									className="mt-2 mb-3 h-px"
-									style={{
-										background:
-											"linear-gradient(to right, var(--color-accent-soft), transparent)",
-										transformOrigin: "left",
-										animation: visible
-											? `timeline-draw 0.8s var(--ease-out-expo) ${(i + 1) * 300}ms both`
-											: "none",
-									}}
-								/>
-
-								{/* Icon + title */}
-								<div className="flex items-center gap-3">
-									<div
-										className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-										style={{
-											background: "var(--color-accent)",
-											color: "var(--color-on-accent)",
-											boxShadow: "var(--shadow-accent)",
-										}}
-									>
-										<step.icon size={20} />
-									</div>
-									<h3
-										className="text-base font-semibold"
-										style={{ color: "var(--color-text-bright)" }}
-									>
-										{step.title}
-									</h3>
-								</div>
-								<p
-									className="mt-2 text-sm leading-relaxed"
-									style={{ color: "var(--color-text-tertiary)" }}
-								>
-									{step.description}
+		<section id="workflow" className="px-6 py-12 sm:py-16">
+			<div className="mx-auto max-w-6xl border-t border-(--color-border-subtle) pt-8">
+				<div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+					<div>
+						<p className="text-[0.78rem] font-medium uppercase tracking-[0.22em] text-(--color-accent)">
+							How it works
+						</p>
+						<h2 className="mt-3 max-w-md text-[clamp(2rem,5vw,3.3rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-(--color-text-primary)">
+							Built to reduce re-explaining, not to create another dashboard.
+						</h2>
+					</div>
+					<div className="space-y-8">
+						{STEPS.map((item) => (
+							<article
+								key={item.step}
+								className="grid gap-4 sm:grid-cols-[72px_minmax(0,1fr)]"
+							>
+								<p className="text-xl font-semibold tracking-tight text-(--color-text-quiet)">
+									{item.step}
 								</p>
-							</div>
-						</div>
-					))}
+								<div className="border-l border-(--color-border-subtle) pl-5">
+									<h3 className="text-lg font-semibold tracking-tight text-(--color-text-primary)">
+										{item.title}
+									</h3>
+									<p className="mt-2 max-w-2xl text-sm leading-6 text-(--color-text-secondary)">
+										{item.description}
+									</p>
+								</div>
+							</article>
+						))}
+					</div>
 				</div>
 			</div>
 		</section>

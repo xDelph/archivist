@@ -1,98 +1,57 @@
-import { AlertTriangle, Clock, Search } from "lucide-react";
-import { ScatteredPages } from "../components/scattered-pages";
-import { useInView } from "../hooks/use-in-view";
-
-const PAIN_POINTS = [
+const PROBLEMS = [
 	{
-		icon: Clock,
-		title: "Conversations vanish",
+		number: "01",
+		title: "Decisions disappear into scrollback.",
 		description:
-			"Slack's free plan erases messages after 90 days. Even paid plans bury threads under endless scroll. Critical decisions disappear.",
+			"Slack is where teams actually decide things, but its default experience treats that history as disposable chat.",
 	},
 	{
-		icon: Search,
-		title: "Search is broken",
+		number: "02",
+		title: "Search returns fragments instead of context.",
 		description:
-			"Slack search returns noise, not answers. Finding that one thread from three months ago? Good luck scrolling through hundreds of results.",
+			"Even when you find the right phrase, you still have to rebuild the thread, the file, and the final outcome yourself.",
 	},
 	{
-		icon: AlertTriangle,
-		title: "Knowledge walks out the door",
+		number: "03",
+		title: "The person who remembers becomes the system.",
 		description:
-			"When team members leave, their context goes with them. Onboarding takes weeks because institutional knowledge lives in lost threads.",
+			"That works until they leave, go offline, or simply stop being available when the question comes back.",
 	},
 ];
 
 export function Problem() {
-	const { ref, visible } = useInView();
-
 	return (
-		<section ref={ref} className="relative px-6 py-20">
-			<ScatteredPages />
-			<div className="relative mx-auto max-w-5xl">
-				<div
-					className={`text-center ${visible ? "anim-fade-up" : "opacity-0"}`}
-				>
-					<p
-						className="text-sm font-medium tracking-wide uppercase"
-						style={{ color: "var(--color-accent-soft)" }}
-					>
-						The problem
-					</p>
-					<h2
-						className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl"
-						style={{ color: "var(--color-text-primary)" }}
-					>
-						Your best ideas are trapped in Slack
-					</h2>
-					<p
-						className="mx-auto mt-4 max-w-2xl text-lg"
-						style={{ color: "var(--color-text-secondary)" }}
-					>
-						Every day, your team makes decisions, solves problems, and shares
-						knowledge in Slack. And every day, those conversations sink into the
-						void.
-					</p>
-				</div>
-
-				<div className="mt-16 grid gap-6 md:grid-cols-3">
-					{PAIN_POINTS.map((point, i) => (
-						<div
-							key={point.title}
-							className={`rounded-2xl border p-7 ${visible ? `anim-fade-up d-${(i + 1) * 200}` : "opacity-0"}`}
-							style={{
-								borderColor: "var(--color-border-subtle)",
-								background:
-									"color-mix(in srgb, var(--color-bg-panel) 94%, white 6%)",
-								boxShadow: "var(--shadow-panel)",
-							}}
-						>
-							<div className="flex items-center gap-3">
-								<div
-									className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-									style={{
-										background:
-											"color-mix(in srgb, var(--color-accent) 12%, transparent)",
-										color: "var(--color-accent-soft)",
-									}}
-								>
-									<point.icon size={22} />
-								</div>
-								<h3
-									className="text-lg font-semibold"
-									style={{ color: "var(--color-text-bright)" }}
-								>
-									{point.title}
-								</h3>
-							</div>
-							<p
-								className="mt-2 text-sm leading-relaxed"
-								style={{ color: "var(--color-text-tertiary)" }}
+		<section id="why" className="px-6 py-12 sm:py-16">
+			<div className="mx-auto max-w-6xl border-t border-(--color-border-subtle) pt-8">
+				<div className="grid gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+					<div>
+						<p className="text-[0.78rem] font-medium uppercase tracking-[0.22em] text-(--color-accent)">
+							Why it matters
+						</p>
+						<h2 className="mt-3 max-w-md text-[clamp(2rem,5vw,3.3rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-(--color-text-primary)">
+							Most teams do not need more chat. They need recall.
+						</h2>
+					</div>
+					<div className="space-y-6">
+						{PROBLEMS.map((problem) => (
+							<article
+								key={problem.number}
+								className="grid gap-3 border-b border-(--color-border-subtle) pb-6 last:border-b-0 last:pb-0 sm:grid-cols-[56px_minmax(0,1fr)]"
 							>
-								{point.description}
-							</p>
-						</div>
-					))}
+								<p className="text-sm font-medium text-(--color-text-quiet)">
+									{problem.number}
+								</p>
+								<div>
+									<h3 className="text-lg font-semibold tracking-tight text-(--color-text-primary)">
+										{problem.title}
+									</h3>
+									<p className="mt-2 max-w-2xl text-sm leading-6 text-(--color-text-secondary)">
+										{problem.description}
+									</p>
+								</div>
+							</article>
+						))}
+					</div>
 				</div>
 			</div>
 		</section>

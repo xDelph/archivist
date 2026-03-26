@@ -1,50 +1,35 @@
 import { Github } from "lucide-react";
 
+const REPO_URL = "https://github.com/xDelph/archivist";
+
 export function Footer() {
 	return (
-		<footer
-			className="border-t px-6 py-12"
-			style={{ borderColor: "var(--color-border-subtle)" }}
-		>
-			<div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 sm:flex-row">
-				<div className="flex items-center gap-2.5">
-					<div
-						className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold"
-						style={{
-							background: "var(--color-accent)",
-							color: "oklch(0.15 0.013 152)",
-						}}
-					>
-						R
-					</div>
-					<span
-						className="text-sm font-semibold"
-						style={{ color: "var(--color-text-secondary)" }}
-					>
-						Arkivist
+		<footer className="border-t border-(--color-border-subtle) px-6 py-8">
+			<div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-(--color-text-secondary) sm:flex-row sm:items-center sm:justify-between">
+				<div className="flex items-center gap-3">
+					<span className="flex h-8 w-8 items-center justify-center rounded-xl border border-(--color-border-strong) bg-(--color-bg-panel) text-xs font-semibold text-(--color-text-primary)">
+						A
 					</span>
+					<div>
+						<p className="font-semibold tracking-tight text-(--color-text-primary)">
+							Arkivist
+						</p>
+						<p className="text-xs uppercase tracking-[0.14em] text-(--color-text-quiet)">
+							Slack archive for durable recall
+						</p>
+					</div>
 				</div>
-
-				<div
-					className="flex items-center gap-6 text-sm"
-					style={{ color: "var(--color-text-quiet)" }}
-				>
+				<div className="flex items-center gap-5">
+					<span>AGPL-3.0</span>
 					<a
-						href="https://github.com/your-org/arkivist"
-						className="flex items-center gap-1.5 transition-colors"
+						href={REPO_URL}
 						target="_blank"
-						rel="noopener noreferrer"
-						onMouseEnter={(e) => {
-							e.currentTarget.style.color = "var(--color-text-secondary)";
-						}}
-						onMouseLeave={(e) => {
-							e.currentTarget.style.color = "var(--color-text-quiet)";
-						}}
+						rel="noreferrer"
+						className="inline-flex items-center gap-2 transition-colors hover:text-(--color-text-primary)"
 					>
-						<Github size={16} />
+						<Github className="size-4" />
 						GitHub
 					</a>
-					<span>AGPL-3.0</span>
 				</div>
 			</div>
 		</footer>
