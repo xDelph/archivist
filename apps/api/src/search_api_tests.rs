@@ -8,7 +8,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use db::{JsonlEventStore, SearchDocumentRow, ThreadSummaryRow};
+use db::{GeneratedThreadSummaryRow, JsonlEventStore, SearchDocumentRow, ThreadSummaryRow};
 use domain::{ChannelKind, EventPayload, ProcessEventJob};
 use search::SearchSort;
 use tempfile::tempdir;
@@ -128,6 +128,7 @@ fn build_search_results_respects_filters_and_sorting() {
                 last_activity_ts: "1700000400".to_owned(),
             },
         ],
+        vec![],
         &query,
     );
 
@@ -139,7 +140,11 @@ fn build_search_results_respects_filters_and_sorting() {
     assert_eq!(items[0].participant_count, 2);
     assert_eq!(items[0].reaction_count, 3);
     assert_eq!(items[0].file_count, 4);
+    assert_eq!(items[0].title, "release notes are ready");
+    assert_eq!(items[0].preview, "release notes are ready");
     assert!(items[0].score >= 2);
+    assert_eq!(items[0].preview_source, "fallback");
+    assert_eq!(items[0].summary_preview, None);
 }
 
 #[test]
@@ -205,6 +210,7 @@ fn build_search_results_returns_one_item_per_thread() {
             root_message_at: "1700000200".to_owned(),
             last_activity_ts: "1700000300".to_owned(),
         }],
+        vec![],
         &query,
     );
 
@@ -278,12 +284,82 @@ fn build_search_results_keeps_latest_match_for_newest_sort() {
             root_message_at: "1700000200".to_owned(),
             last_activity_ts: "1700000300".to_owned(),
         }],
+        vec![],
         &query,
     );
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].message_ts, "1700000300.000001");
+    assert_eq!(items[0].title, "release plan");
+    assert_eq!(items[0].preview, "release plan");
     assert_eq!(items[0].snippet, "release checklist");
+}
+
+#[test]
+fn build_search_results_uses_ai_summary_preview_when_available() {
+    let query = search::SearchQuery {
+        text: "release".to_owned(),
+        filters: search::SearchFilters {
+            channel_ids: vec![],
+            date_from: None,
+            date_to: None,
+        },
+        sort: SearchSort::Relevance,
+    };
+
+    let items = build_search_results(
+        vec![domain::Channel {
+            id: "C123".to_owned(),
+            name: Some("product".to_owned()),
+            kind: domain::ChannelKind::Public,
+            is_archived: false,
+        }],
+        vec![domain::Message {
+            channel_id: "C123".to_owned(),
+            ts: "1700000200.000001".to_owned(),
+            thread_ts: None,
+            user_id: Some("U123".to_owned()),
+            text: "release plan".to_owned(),
+        }],
+        vec![SearchDocumentRow {
+            channel_id: "C123".to_owned(),
+            root_ts: "1700000200.000001".to_owned(),
+            message_ts: "1700000200.000001".to_owned(),
+            title: Some("release plan".to_owned()),
+            body: "release plan".to_owned(),
+            message_occurred_at: "1700000200".to_owned(),
+        }],
+        vec![ThreadSummaryRow {
+            channel_id: "C123".to_owned(),
+            root_ts: "1700000200.000001".to_owned(),
+            reply_count: 0,
+            participant_count: 1,
+            reaction_count: 0,
+            file_count: 0,
+            root_message_at: "1700000200".to_owned(),
+            last_activity_ts: "1700000200".to_owned(),
+        }],
+        vec![GeneratedThreadSummaryRow {
+            channel_id: "C123".to_owned(),
+            root_ts: "1700000200.000001".to_owned(),
+            summary: "AI release summary".to_owned(),
+            full_summary: Some("## Release".to_owned()),
+            why_it_mattered: None,
+            status: "discussion".to_owned(),
+            topic_tags: vec![],
+            source_last_activity_ts: "1700000200".to_owned(),
+            model: "test".to_owned(),
+            generated_at: 1,
+        }],
+        &query,
+    );
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].summary_preview.as_deref(),
+        Some("AI release summary")
+    );
+    assert_eq!(items[0].preview_source, "ai");
 }
 
 #[tokio::test]
@@ -418,6 +494,12 @@ async fn search_route_returns_filtered_results_for_authenticated_users() {
         payload.items.len()
     );
     assert!(payload.items.iter().all(|item| item.channel_id == "C123"));
+    assert!(
+        payload
+            .items
+            .iter()
+            .all(|item| !item.preview.trim().is_empty())
+    );
     assert!(payload.items.iter().all(|item| item.participant_count >= 1));
     assert!(
         payload

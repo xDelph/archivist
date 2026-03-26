@@ -6,6 +6,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing("api");
 
     let config = ApiConfig::from_env();
+    if config.session_secret.is_none() {
+        tracing::error!(
+            bind_address = %config.bind_address(),
+            web_origin = %config.web_origin,
+            env_var = "ARKIVIST_SESSION_SECRET",
+            "api started without session configuration; auth routes will fail"
+        );
+    }
     let listener = TcpListener::bind(config.bind_address()).await?;
     let app = build_router(config).await?;
 

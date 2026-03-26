@@ -3,6 +3,7 @@ use crate::{
     analytics::record_analytics,
     auth::SessionClaims,
     slack_text,
+    thread_preview::{build_generated_summary_lookup, resolve_thread_preview},
     thread_text::{build_root_message_text_map, lookup_root_message_text},
     view_models::UserSummaryResponse,
 };
@@ -11,7 +12,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
-use db::ThreadSummaryRow;
+use db::{GeneratedThreadSummaryRow, ThreadSummaryRow};
 use domain::{Channel, ChannelKind, Message};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -56,6 +57,8 @@ struct CatchUpThreadResponse {
     author: Option<UserSummaryResponse>,
     title: String,
     preview: String,
+    summary_preview: Option<String>,
+    preview_source: String,
     reply_count: i64,
     participant_count: i64,
     reaction_count: i64,
@@ -166,6 +169,11 @@ pub(crate) async fn catch_up(
     let catch_up = build_catch_up(
         channels,
         thread_summaries,
+        state
+            .store
+            .generated_thread_summaries()
+            .await
+            .map_err(store_failed)?,
         messages,
         &state.user_store,
         CatchUpFilters {
@@ -208,6 +216,7 @@ pub(crate) async fn catch_up(
 async fn build_catch_up(
     channels: Vec<Channel>,
     thread_summaries: Vec<ThreadSummaryRow>,
+    generated_thread_summaries: Vec<GeneratedThreadSummaryRow>,
     messages: Vec<Message>,
     user_store: &crate::user_store::UserStore,
     filters: CatchUpFilters<'_>,
@@ -223,6 +232,7 @@ async fn build_catch_up(
         .into_iter()
         .map(|channel| (channel.id.clone(), channel))
         .collect::<HashMap<_, _>>();
+    let generated_summary_lookup = build_generated_summary_lookup(generated_thread_summaries);
     let root_texts = build_root_message_text_map(&messages);
     let root_users = messages
         .iter()
@@ -252,7 +262,11 @@ async fn build_catch_up(
         })
         .collect::<std::collections::HashSet<_>>();
     user_ids.extend(slack_text::collect_user_mention_ids(
-        root_texts.values().map(String::as_str),
+        root_texts.values().map(String::as_str).chain(
+            generated_summary_lookup
+                .values()
+                .map(|summary| summary.summary.as_str()),
+        ),
     ));
     let users = user_store
         .find_users(&user_ids.into_iter().collect::<Vec<_>>())
@@ -277,6 +291,8 @@ async fn build_catch_up(
 
         let root_ts = summary.root_ts.clone();
         let root_text = lookup_root_message_text(&root_texts, &summary.channel_id, &root_ts);
+        let preview =
+            resolve_thread_preview(&generated_summary_lookup, &summary.channel_id, &root_ts);
         let channel_name = channel_metadata
             .get(&summary.channel_id)
             .and_then(|channel| channel.name.clone());
@@ -293,6 +309,11 @@ async fn build_catch_up(
             root_ts,
             title: slack_text::render_slack_text(&root_text, &users, &channel_names),
             preview: slack_text::render_slack_text(&root_text, &users, &channel_names),
+            summary_preview: preview
+                .text
+                .as_deref()
+                .map(|text| slack_text::render_slack_text(text, &users, &channel_names)),
+            preview_source: preview.source.to_owned(),
             reply_count: summary.reply_count,
             participant_count: summary.participant_count,
             reaction_count: summary.reaction_count,

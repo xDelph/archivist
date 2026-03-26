@@ -1,5 +1,9 @@
 use crate::{
-    AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
+    AppState,
+    analytics::record_analytics,
+    auth::SessionClaims,
+    slack_text,
+    thread_preview::{build_generated_summary_lookup, resolve_thread_preview},
     view_models::UserSummaryResponse,
 };
 use axum::{
@@ -7,7 +11,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
-use db::{SearchDocumentRow, ThreadSummaryRow};
+use db::{GeneratedThreadSummaryRow, SearchDocumentRow, ThreadSummaryRow};
 use domain::{Channel, Message};
 use search::{SearchFilters, SearchQuery, SearchSort, normalize_query_text};
 use serde::{Deserialize, Serialize};
@@ -44,7 +48,10 @@ struct SearchResultResponse {
     root_ts: String,
     message_ts: String,
     title: String,
+    preview: String,
     snippet: String,
+    summary_preview: Option<String>,
+    preview_source: String,
     reply_count: usize,
     participant_count: usize,
     reaction_count: usize,
@@ -69,7 +76,10 @@ struct SearchResult {
     message_ts: String,
     message_seconds: i64,
     title: String,
+    preview: String,
     snippet: String,
+    summary_preview: Option<String>,
+    preview_source: &'static str,
     reply_count: usize,
     participant_count: usize,
     reaction_count: usize,
@@ -91,6 +101,11 @@ pub(crate) async fn search(
         state.store.messages().await.map_err(store_failed)?,
         state.store.search_documents().await.map_err(store_failed)?,
         state.store.thread_summaries().await.map_err(store_failed)?,
+        state
+            .store
+            .generated_thread_summaries()
+            .await
+            .map_err(store_failed)?,
         &search_query,
     );
     let channel_names = slack_text::build_channel_name_map(&channels);
@@ -101,7 +116,14 @@ pub(crate) async fn search(
     user_ids.extend(slack_text::collect_user_mention_ids(
         items
             .iter()
-            .flat_map(|item| [item.title.as_str(), item.snippet.as_str()]),
+            .flat_map(|item| {
+                [
+                    Some(item.title.as_str()),
+                    Some(item.snippet.as_str()),
+                    item.summary_preview.as_deref(),
+                ]
+            })
+            .flatten(),
     ));
     let users = state
         .user_store
@@ -125,7 +147,13 @@ pub(crate) async fn search(
             root_ts: item.root_ts.clone(),
             message_ts: item.message_ts.clone(),
             title: slack_text::render_slack_text(&item.title, &users, &channel_names),
+            preview: slack_text::render_slack_text(&item.preview, &users, &channel_names),
             snippet: slack_text::render_slack_text(&item.snippet, &users, &channel_names),
+            summary_preview: item
+                .summary_preview
+                .as_deref()
+                .map(|text| slack_text::render_slack_text(text, &users, &channel_names)),
+            preview_source: item.preview_source.to_owned(),
             reply_count: item.reply_count,
             participant_count: item.participant_count,
             reaction_count: item.reaction_count,
@@ -212,6 +240,7 @@ fn build_search_results(
     messages: Vec<Message>,
     search_documents: Vec<SearchDocumentRow>,
     thread_summaries: Vec<ThreadSummaryRow>,
+    generated_thread_summaries: Vec<GeneratedThreadSummaryRow>,
     query: &SearchQuery,
 ) -> Vec<SearchResult> {
     let channel_names = channels
@@ -236,6 +265,7 @@ fn build_search_results(
             )
         })
         .collect::<HashMap<_, _>>();
+    let generated_summary_lookup = build_generated_summary_lookup(generated_thread_summaries);
     let tokens = query
         .text
         .split_whitespace()
@@ -279,6 +309,12 @@ fn build_search_results(
             .copied()
             .or(message.copied());
         let summary = summary_lookup.get(&(document.channel_id.clone(), root_ts.clone()));
+        let preview =
+            resolve_thread_preview(&generated_summary_lookup, &document.channel_id, &root_ts);
+        let root_text = root
+            .map(|root| normalize_query_text(&root.text))
+            .or_else(|| document.title.clone())
+            .unwrap_or_else(|| normalize_query_text(&document.body));
 
         Some(SearchResult {
             id: format!("{}:{root_ts}", document.channel_id),
@@ -293,11 +329,11 @@ fn build_search_results(
             root_seconds: parse_ts_seconds(&root_ts).unwrap_or(message_seconds),
             message_ts: document.message_ts.clone(),
             message_seconds,
-            title: root
-                .map(|root| summarize_text(&root.text))
-                .or_else(|| document.title.clone())
-                .unwrap_or_else(|| summarize_text(&document.body)),
+            title: root_text.clone(),
+            preview: root_text,
             snippet: build_snippet(&document.body, &tokens),
+            summary_preview: preview.text,
+            preview_source: preview.source,
             reply_count: summary.map_or(0, |summary| as_count(summary.reply_count)),
             participant_count: summary.map_or(0, |summary| as_count(summary.participant_count)),
             reaction_count: summary.map_or(0, |summary| as_count(summary.reaction_count)),
@@ -335,6 +371,8 @@ fn merge_search_results(existing: &mut SearchResult, candidate: SearchResult, so
         existing.message_ts = candidate.message_ts;
         existing.message_seconds = candidate.message_seconds;
         existing.snippet = candidate.snippet;
+        existing.summary_preview = candidate.summary_preview;
+        existing.preview_source = candidate.preview_source;
         existing.author_id = candidate.author_id;
     }
 }
@@ -410,14 +448,6 @@ fn build_snippet(message: &str, tokens: &[String]) -> String {
     } else {
         snippet
     }
-}
-
-fn summarize_text(value: &str) -> String {
-    let normalized = normalize_query_text(value);
-    if normalized.is_empty() {
-        return "(no text)".to_owned();
-    }
-    normalized.chars().take(80).collect()
 }
 
 fn parse_ts_seconds(value: &str) -> Option<i64> {

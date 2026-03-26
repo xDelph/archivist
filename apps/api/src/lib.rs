@@ -13,6 +13,7 @@ mod search_api;
 mod slack_highlights;
 mod slack_text;
 mod thread_list;
+mod thread_preview;
 mod thread_text;
 mod threads;
 mod user_role_store;

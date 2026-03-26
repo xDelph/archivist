@@ -14,6 +14,8 @@ const firstItem: SavedItem = {
 	root_ts: "1",
 	title: "First thread",
 	preview: "Preview",
+	summary_preview: null,
+	preview_source: "fallback",
 	reply_count: 3,
 	participant_count: 2,
 	reaction_count: 1,

@@ -26,7 +26,6 @@ import { useParams } from "@tanstack/react-router";
 import {
 	Bookmark,
 	BookmarkCheck,
-	ChevronDown,
 	CloudOff,
 	Link2,
 	MessageSquare,
@@ -36,17 +35,21 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 const INITIAL_MESSAGE_COUNT = 4;
+const TRANSCRIPT_PAGE_SIZE = 12;
 
 export function ThreadPage() {
 	const { threadId } = useParams({ from: "/app/threads/$threadId" });
 	const { isOnline } = useNetworkStatus();
 	const queryClient = useQueryClient();
-	const [isExpanded, setIsExpanded] = useState(false);
+	const [visibleMessageCount, setVisibleMessageCount] = useState(
+		INITIAL_MESSAGE_COUNT,
+	);
 	const [selectedFileState, setSelectedFileState] = useState<{
 		messageTs: string;
 		index: number;
 	} | null>(null);
 	const lastRefreshAttemptKeyRef = useRef<string | null>(null);
+	const previousThreadIdRef = useRef(threadId);
 	const [activeTab, setActiveTab] = useState<
 		"highlights" | "transcript" | "links" | "files"
 	>("highlights");
@@ -88,6 +91,15 @@ export function ThreadPage() {
 		savedItem,
 		threadDetail: thread,
 	});
+
+	useEffect(() => {
+		if (previousThreadIdRef.current === threadId) {
+			return;
+		}
+
+		previousThreadIdRef.current = threadId;
+		setVisibleMessageCount(INITIAL_MESSAGE_COUNT);
+	}, [threadId]);
 
 	useEffect(() => {
 		if (!isOnline || !threadQuery.data || !savedItem) {
@@ -160,10 +172,11 @@ export function ThreadPage() {
 	}
 
 	const { messages } = thread;
-	const visibleMessages =
-		isExpanded || messages.length <= INITIAL_MESSAGE_COUNT
-			? messages
-			: messages.slice(0, INITIAL_MESSAGE_COUNT);
+	const visibleMessages = messages.slice(
+		0,
+		Math.min(messages.length, visibleMessageCount),
+	);
+	const hasMoreTranscriptMessages = visibleMessages.length < messages.length;
 	const highlightedMessages = messages.filter(
 		(message, index) =>
 			index === 0 || message.reactions.length > 0 || message.files.length > 0,
@@ -193,22 +206,26 @@ export function ThreadPage() {
 		{
 			key: "highlights",
 			label: "Highlights",
+			shortLabel: "AI",
 			icon: <Sparkles className="size-3.5 shrink-0 sm:size-4" />,
 		},
 		{
 			key: "transcript",
 			label: "Timeline",
+			shortLabel: "Chat",
 			icon: <MessageSquare className="size-3.5 shrink-0 sm:size-4" />,
 		},
 		{
 			key: "links",
 			label: "Links",
+			shortLabel: "Links",
 			icon: <Link2 className="size-3.5 shrink-0 sm:size-4" />,
 			disabled: links.length === 0,
 		},
 		{
 			key: "files",
 			label: "Files",
+			shortLabel: "Files",
 			icon: <Paperclip className="size-3.5 shrink-0 sm:size-4" />,
 			disabled: allFiles.length === 0,
 		},
@@ -296,21 +313,14 @@ export function ThreadPage() {
 								/>
 							))}
 						</div>
-						{messages.length > INITIAL_MESSAGE_COUNT ? (
-							<div className="mt-4">
-								<Button
-									type="button"
-									variant="secondary"
-									className="button-ghost px-3 py-2 text-[0.78rem]"
-									onClick={() => setIsExpanded((current) => !current)}
-								>
-									<ChevronDown className="size-3.5" />
-									{isExpanded
-										? "Collapse transcript"
-										: `Show all ${messages.length} messages`}
-								</Button>
-							</div>
-						) : null}
+						<TranscriptLoadSentinel
+							hasMore={hasMoreTranscriptMessages}
+							onLoadMore={() =>
+								setVisibleMessageCount((current) =>
+									getNextVisibleTranscriptCount(current, messages.length),
+								)
+							}
+						/>
 					</SectionCard>
 				)}
 
@@ -358,5 +368,49 @@ export function ThreadPage() {
 				/>
 			) : null}
 		</div>
+	);
+}
+
+function TranscriptLoadSentinel({
+	hasMore,
+	onLoadMore,
+}: {
+	hasMore: boolean;
+	onLoadMore: () => void;
+}) {
+	const ref = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (!hasMore || !ref.current) {
+			return;
+		}
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((entry) => entry.isIntersecting)) {
+					onLoadMore();
+				}
+			},
+			{ rootMargin: "480px 0px" },
+		);
+		observer.observe(ref.current);
+
+		return () => observer.disconnect();
+	}, [hasMore, onLoadMore]);
+
+	if (!hasMore) {
+		return null;
+	}
+
+	return <div ref={ref} className="h-6" aria-hidden="true" />;
+}
+
+export function getNextVisibleTranscriptCount(
+	currentCount: number,
+	totalCount: number,
+) {
+	return Math.min(
+		Math.max(totalCount, 0),
+		Math.max(currentCount, INITIAL_MESSAGE_COUNT) + TRANSCRIPT_PAGE_SIZE,
 	);
 }

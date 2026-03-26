@@ -3,6 +3,7 @@ use crate::{
     auth::SessionClaims,
     highlight_store::HighlightedThreadRecord,
     slack_text,
+    thread_preview::{build_generated_summary_lookup, resolve_thread_preview},
     thread_text::{build_root_message_text_map, lookup_root_message_text},
     user_role_store::ADMIN_ROLE,
     view_models::UserSummaryResponse,
@@ -12,7 +13,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use db::ThreadSummaryRow;
+use db::{GeneratedThreadSummaryRow, ThreadSummaryRow};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -55,6 +56,8 @@ pub(crate) struct HighlightItemResponse {
     root_ts: String,
     title: String,
     preview: String,
+    summary_preview: Option<String>,
+    preview_source: String,
     reply_count: i64,
     participant_count: i64,
     reaction_count: i64,
@@ -83,9 +86,15 @@ pub(crate) async fn list_highlights_response(
     let channels = state.store.channels().await.map_err(store_failed)?;
     let messages = state.store.messages().await.map_err(store_failed)?;
     let thread_summaries = state.store.thread_summaries().await.map_err(store_failed)?;
+    let generated_thread_summaries = state
+        .store
+        .generated_thread_summaries()
+        .await
+        .map_err(store_failed)?;
     let root_texts = build_root_message_text_map(&messages);
     let channel_names = slack_text::build_channel_name_map(&channels);
     let summary_lookup = build_thread_summary_lookup(thread_summaries);
+    let generated_summary_lookup = build_generated_summary_lookup(generated_thread_summaries);
     let root_users = build_root_user_lookup(&messages);
     let items = state
         .highlight_store
@@ -103,10 +112,15 @@ pub(crate) async fn list_highlights_response(
         .iter()
         .map(|item| lookup_root_message_text(&root_texts, &item.channel_id, &item.root_ts))
         .collect::<Vec<_>>();
-    let mentioned_user_ids =
-        slack_text::collect_user_mention_ids(item_texts.iter().map(String::as_str))
-            .into_iter()
-            .collect::<Vec<_>>();
+    let mentioned_user_ids = slack_text::collect_user_mention_ids(
+        item_texts.iter().map(String::as_str).chain(
+            generated_summary_lookup
+                .values()
+                .map(|summary| summary.summary.as_str()),
+        ),
+    )
+    .into_iter()
+    .collect::<Vec<_>>();
     let mut user_ids = mentioned_user_ids
         .into_iter()
         .collect::<std::collections::HashSet<_>>();
@@ -126,6 +140,7 @@ pub(crate) async fn list_highlights_response(
                 item,
                 &root_texts,
                 &summary_lookup,
+                &generated_summary_lookup,
                 &root_users,
                 &channel_names,
                 &users,
@@ -188,12 +203,14 @@ fn highlight_item_response(
     item: HighlightedThreadRecord,
     root_texts: &HashMap<(String, String), String>,
     summary_lookup: &HashMap<(String, String), ThreadSummaryRow>,
+    generated_summary_lookup: &HashMap<(String, String), GeneratedThreadSummaryRow>,
     root_users: &HashMap<(String, String), Option<String>>,
     channel_names: &HashMap<String, Option<String>>,
     users: &HashMap<String, crate::user_store::SyncedUserRecord>,
 ) -> HighlightItemResponse {
     let root_text = lookup_root_message_text(root_texts, &item.channel_id, &item.root_ts);
     let summary = summary_lookup.get(&(item.channel_id.clone(), item.root_ts.clone()));
+    let preview = resolve_thread_preview(generated_summary_lookup, &item.channel_id, &item.root_ts);
     HighlightItemResponse {
         id: item.thread_id.clone(),
         thread_id: item.thread_id,
@@ -211,6 +228,11 @@ fn highlight_item_response(
         root_ts: item.root_ts,
         title: slack_text::render_slack_text(&root_text, users, channel_names),
         preview: slack_text::render_slack_text(&root_text, users, channel_names),
+        summary_preview: preview
+            .text
+            .as_deref()
+            .map(|text| slack_text::render_slack_text(text, users, channel_names)),
+        preview_source: preview.source.to_owned(),
         reply_count: summary.map_or(0, |summary| summary.reply_count),
         participant_count: summary.map_or(0, |summary| summary.participant_count),
         reaction_count: summary.map_or(0, |summary| summary.reaction_count),
@@ -370,6 +392,16 @@ pub(crate) async fn pin_highlight_for_user(
         .find_users(&user_ids.into_iter().collect::<Vec<_>>())
         .await;
     let summary_lookup = build_thread_summary_lookup(thread_summary.into_iter().collect());
+    let generated_summary_lookup = build_generated_summary_lookup(
+        state
+            .store
+            .generated_thread_summaries()
+            .await
+            .map_err(store_failed)?
+            .into_iter()
+            .filter(|summary| summary.channel_id == channel_id && summary.root_ts == root_ts)
+            .collect(),
+    );
 
     Ok(Json(HighlightMutationResponse {
         ok: true,
@@ -377,6 +409,7 @@ pub(crate) async fn pin_highlight_for_user(
             highlighted_thread,
             &root_texts,
             &summary_lookup,
+            &generated_summary_lookup,
             &root_users,
             &channel_names,
             &users,

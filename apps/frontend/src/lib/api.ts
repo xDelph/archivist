@@ -48,6 +48,8 @@ export interface CatchUpThread {
 	author: ThreadAuthor | null;
 	title: string;
 	preview: string;
+	summary_preview: string | null;
+	preview_source: ThreadPreviewSource;
 	reply_count: number;
 	participant_count: number;
 	reaction_count: number;
@@ -81,7 +83,10 @@ export interface SearchResult {
 	root_ts: string;
 	message_ts: string;
 	title: string;
+	preview: string;
 	snippet: string;
+	summary_preview: string | null;
+	preview_source: ThreadPreviewSource;
 	reply_count: number;
 	participant_count: number;
 	reaction_count: number;
@@ -98,9 +103,14 @@ export interface LinkMetadata {
 }
 
 export type ThreadSummarySource = "ai" | "fallback" | "none";
+export type ThreadPreviewSource = Extract<
+	ThreadSummarySource,
+	"ai" | "fallback"
+>;
 
 export interface ThreadSummaryBlock {
 	text: string | null;
+	full_summary: string | null;
 	why_it_mattered: string | null;
 	status: string | null;
 	topic_tags: string[];
@@ -158,6 +168,8 @@ export interface SavedItem {
 	root_ts: string;
 	title: string;
 	preview: string;
+	summary_preview: string | null;
+	preview_source: ThreadPreviewSource;
 	reply_count: number;
 	participant_count: number;
 	reaction_count: number;
@@ -175,6 +187,8 @@ export interface StarredItem {
 	root_ts: string;
 	title: string;
 	preview: string;
+	summary_preview: string | null;
+	preview_source: ThreadPreviewSource;
 	reply_count: number;
 	participant_count: number;
 	reaction_count: number;
@@ -289,6 +303,8 @@ export interface SearchParams {
 	dateFrom?: string;
 	dateTo?: string;
 	sort?: "relevance" | "newest";
+	cursor?: string;
+	limit?: number;
 }
 
 export async function fetchSearchResults({
@@ -297,6 +313,8 @@ export async function fetchSearchResults({
 	dateFrom,
 	dateTo,
 	sort = "relevance",
+	cursor,
+	limit,
 }: SearchParams) {
 	const params = new URLSearchParams({
 		q: query,
@@ -310,6 +328,12 @@ export async function fetchSearchResults({
 	}
 	if (dateTo) {
 		params.set("date_to", dateTo);
+	}
+	if (cursor) {
+		params.set("cursor", cursor);
+	}
+	if (limit !== undefined) {
+		params.set("limit", String(limit));
 	}
 
 	return apiRequest<SearchResponse>(`/api/search?${params.toString()}`);

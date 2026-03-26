@@ -45,6 +45,7 @@ async fn build_catch_up_filters_to_the_requested_window() {
         channels,
         summaries,
         vec![],
+        vec![],
         &crate::user_store::LocalUserStore::open(tempdir.path().join("synced-users.json"))
             .await
             .expect("user store")
@@ -62,6 +63,8 @@ async fn build_catch_up_filters_to_the_requested_window() {
     assert_eq!(catch_up.items.len(), 1);
     assert_eq!(catch_up.items[0].title, "(no text)");
     assert_eq!(catch_up.items[0].preview, "(no text)");
+    assert_eq!(catch_up.items[0].summary_preview, None);
+    assert_eq!(catch_up.items[0].preview_source, "fallback");
 }
 
 #[tokio::test]

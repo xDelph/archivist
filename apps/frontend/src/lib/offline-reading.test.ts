@@ -18,6 +18,8 @@ const savedItem: SavedItem = {
 	root_ts: "1700000000.000001",
 	title: "Saved thread",
 	preview: "Preview",
+	summary_preview: null,
+	preview_source: "fallback",
 	reply_count: 3,
 	participant_count: 2,
 	reaction_count: 1,
@@ -40,6 +42,7 @@ const offlineThread: ThreadDetailResponse = {
 	file_count: savedItem.file_count,
 	summary: {
 		text: "Summary",
+		full_summary: "Summary",
 		why_it_mattered: null,
 		status: null,
 		topic_tags: [],

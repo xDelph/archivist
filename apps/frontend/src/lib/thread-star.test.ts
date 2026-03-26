@@ -14,6 +14,8 @@ const firstItem: StarredItem = {
 	root_ts: "1",
 	title: "First star",
 	preview: "Preview",
+	summary_preview: null,
+	preview_source: "fallback",
 	reply_count: 3,
 	participant_count: 2,
 	reaction_count: 1,

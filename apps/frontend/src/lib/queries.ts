@@ -24,6 +24,7 @@ import {
 	listOfflineSavedItems,
 	listOfflineThreadDetailIds,
 } from "@/lib/offline-library";
+import { SEARCH_PAGE_SIZE } from "@/lib/search";
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 
@@ -130,9 +131,16 @@ export const channelQueries = {
 
 export const searchQueries = {
 	results: (params: SearchParams) =>
-		queryOptions({
+		infiniteQueryOptions({
 			queryKey: ["search", params],
-			queryFn: () => fetchSearchResults(params),
+			queryFn: ({ pageParam }) =>
+				fetchSearchResults({
+					...params,
+					cursor: pageParam || undefined,
+					limit: SEARCH_PAGE_SIZE,
+				}),
+			initialPageParam: "",
+			getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 			enabled: params.query.length > 0,
 		}),
 };

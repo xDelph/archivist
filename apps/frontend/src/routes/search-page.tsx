@@ -11,13 +11,14 @@ import {
 	searchQueries,
 	starredQueries,
 } from "@/lib/queries";
+import { flattenSearchPages } from "@/lib/search";
 import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { indexStarredItemsByThreadId } from "@/lib/thread-star";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CalendarRange, Search, SlidersHorizontal } from "lucide-react";
-import { useDeferredValue } from "react";
+import { useDeferredValue, useEffect, useId, useRef, useState } from "react";
 
 export function SearchPage() {
 	const search = useSearch({ from: "/app/search" });
@@ -29,6 +30,17 @@ export function SearchPage() {
 	const dateFrom = search.date_from ?? defaultDateRange.from;
 	const dateTo = search.date_to ?? defaultDateRange.to;
 	const sort = search.sort ?? "relevance";
+	const filterSummary = getSearchFilterSummary({
+		channelId,
+		dateFrom,
+		dateTo,
+		sort,
+		defaultDateRange,
+	});
+	const [areFiltersOpen, setAreFiltersOpen] = useState(
+		filterSummary.hasActiveFilters,
+	);
+	const filtersPanelId = useId();
 
 	const deferredQuery = useDeferredValue(query.trim());
 	const channelsQuery = useQuery(channelQueries.list());
@@ -41,7 +53,7 @@ export function SearchPage() {
 		starredQuery.data?.items,
 	);
 
-	const searchQuery = useQuery(
+	const searchQuery = useInfiniteQuery(
 		searchQueries.results({
 			query: deferredQuery,
 			channelId: channelId || undefined,
@@ -50,6 +62,7 @@ export function SearchPage() {
 			sort,
 		}),
 	);
+	const searchResults = flattenSearchPages(searchQuery.data?.pages ?? []);
 
 	function updateSearch(updates: Record<string, string | undefined>) {
 		void navigate({
@@ -71,9 +84,9 @@ export function SearchPage() {
 				</p>
 				<h2 className="mt-2 text-[clamp(1.4rem,3vw,2rem)] font-semibold tracking-tight text-(--color-text-primary)">
 					Search public-thread history, then open the full conversation when a
-					snippet looks promising.
+					thread preview looks promising.
 				</h2>
-				<div className="mt-4 grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px_200px]">
+				<div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
 					<InputField
 						label="Query"
 						value={query}
@@ -82,74 +95,136 @@ export function SearchPage() {
 						inputMode="search"
 						enterKeyHint="search"
 						icon={<Search className="text-copy-quiet size-3.5 shrink-0" />}
-						fieldClassName="sm:col-span-2"
+						fieldClassName="min-w-0 flex-1"
 						shellClassName="gap-2.5 focus-within:border-(--color-border-accent)"
 						inputClassName="text-[0.92rem]"
 					/>
-					<SelectField
-						label="Channel"
-						value={channelId}
-						onValueChange={(value) =>
-							updateSearch({ channel_id: value || undefined })
-						}
-						disabled={channelsQuery.isPending || channelsQuery.isError}
-						options={[
-							{ key: "__all_channels__", value: "", label: "All channels" },
-							...channelOptions.map((channel) => ({
-								value: channel.id,
-								label: `#${channel.name ?? channel.id}`,
-							})),
-							...(channelId && !hasSelectedChannelOption
-								? [{ value: channelId, label: channelId }]
-								: []),
-						]}
-					/>
-					<div className="grid grid-cols-2 gap-2">
-						<InputField
-							label="From"
-							type="date"
-							value={dateFrom}
-							icon={<CalendarRange className="text-copy-quiet size-4" />}
-							onValueChange={(value) =>
-								updateSearch({ date_from: value || undefined })
-							}
-						/>
-						<InputField
-							label="To"
-							type="date"
-							value={dateTo}
-							icon={<CalendarRange className="text-copy-quiet size-4" />}
-							onValueChange={(value) =>
-								updateSearch({ date_to: value || undefined })
-							}
-						/>
-					</div>
+					<Button
+						type="button"
+						variant="secondary"
+						className="h-11 min-w-34 justify-between gap-3 rounded-[0.9rem] px-4 text-left"
+						aria-expanded={areFiltersOpen}
+						aria-controls={filtersPanelId}
+						onClick={() => setAreFiltersOpen((current) => !current)}
+					>
+						<span className="inline-flex items-center gap-2">
+							<SlidersHorizontal className="size-4" />
+							{areFiltersOpen ? "Hide filters" : "Filters"}
+						</span>
+						{filterSummary.activeCount > 0 ? (
+							<span className="accent-pill rounded-full px-2 py-0.5 text-[0.68rem]">
+								{filterSummary.activeCount}
+							</span>
+						) : null}
+					</Button>
 				</div>
-				<div className="mt-4 flex flex-wrap items-center gap-2">
-					<span className="surface-frost inline-flex min-h-10 items-center gap-2 rounded-[0.8rem] px-3 py-2 text-[0.74rem] uppercase tracking-[0.14em] text-(--color-text-muted)">
-						<SlidersHorizontal className="size-3.5" />
-						Sort
-					</span>
-					{(["relevance", "newest"] as const).map((option) => (
-						<Button
-							key={option}
-							type="button"
-							variant={sort === option ? "default" : "secondary"}
-							size="sm"
-							className={
-								sort === option
-									? "bg-(--color-accent) text-(--color-on-accent) hover:bg-(--color-accent-strong)"
-									: "button-ghost"
-							}
-							onClick={() =>
-								updateSearch({
-									sort: option === "relevance" ? undefined : option,
-								})
-							}
+				<div
+					className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+						areFiltersOpen
+							? "mt-4 grid-rows-[1fr] opacity-100"
+							: "mt-0 grid-rows-[0fr] opacity-0"
+					}`}
+				>
+					<div className="overflow-hidden">
+						<div
+							id={filtersPanelId}
+							className={`surface-frost rounded-(--radius-subpanel) border border-(--color-border-subtle) p-3 transition-opacity duration-200 ${
+								areFiltersOpen ? "pointer-events-auto" : "pointer-events-none"
+							}`}
+							aria-hidden={!areFiltersOpen}
 						>
-							{option}
-						</Button>
-					))}
+							<div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px_200px]">
+								<SelectField
+									label="Channel"
+									value={channelId}
+									onValueChange={(value) =>
+										updateSearch({ channel_id: value || undefined })
+									}
+									disabled={channelsQuery.isPending || channelsQuery.isError}
+									options={[
+										{
+											key: "__all_channels__",
+											value: "",
+											label: "All channels",
+										},
+										...channelOptions.map((channel) => ({
+											value: channel.id,
+											label: `#${channel.name ?? channel.id}`,
+										})),
+										...(channelId && !hasSelectedChannelOption
+											? [{ value: channelId, label: channelId }]
+											: []),
+									]}
+									fieldClassName="xl:col-span-1"
+								/>
+								<div className="grid grid-cols-2 gap-2 xl:col-span-2">
+									<InputField
+										label="From"
+										type="date"
+										value={dateFrom}
+										icon={<CalendarRange className="text-copy-quiet size-4" />}
+										onValueChange={(value) =>
+											updateSearch({ date_from: value || undefined })
+										}
+									/>
+									<InputField
+										label="To"
+										type="date"
+										value={dateTo}
+										icon={<CalendarRange className="text-copy-quiet size-4" />}
+										onValueChange={(value) =>
+											updateSearch({ date_to: value || undefined })
+										}
+									/>
+								</div>
+								<div>
+									<p className="text-copy-quiet mb-2 block text-[0.72rem] font-medium uppercase tracking-[0.2em]">
+										Sort
+									</p>
+									<div className="flex flex-wrap gap-2">
+										{(["relevance", "newest"] as const).map((option) => (
+											<Button
+												key={option}
+												type="button"
+												variant={sort === option ? "default" : "secondary"}
+												size="sm"
+												className={
+													sort === option
+														? "bg-(--color-accent) text-(--color-on-accent) hover:bg-(--color-accent-strong)"
+														: "button-ghost"
+												}
+												onClick={() =>
+													updateSearch({
+														sort: option === "relevance" ? undefined : option,
+													})
+												}
+											>
+												{option}
+											</Button>
+										))}
+									</div>
+								</div>
+							</div>
+							<div className="mt-3 flex justify-end">
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									className="text-copy-soft"
+									onClick={() =>
+										updateSearch({
+											channel_id: undefined,
+											date_from: undefined,
+											date_to: undefined,
+											sort: undefined,
+										})
+									}
+								>
+									Clear filters
+								</Button>
+							</div>
+						</div>
+					</div>
 				</div>
 			</section>
 
@@ -164,10 +239,7 @@ export function SearchPage() {
 				<QueryState
 					isPending={searchQuery.isPending && deferredQuery.length > 0}
 					isError={searchQuery.isError}
-					isEmpty={
-						deferredQuery.length === 0 ||
-						(searchQuery.data?.items.length ?? 0) === 0
-					}
+					isEmpty={deferredQuery.length === 0 || searchResults.length === 0}
 					loading={
 						<CardSkeletonList
 							count={4}
@@ -197,18 +269,31 @@ export function SearchPage() {
 					}
 				>
 					<div className="space-y-3">
-						{searchQuery.data?.items.map((item) => (
-							<SavableThreadCard
-								key={item.id}
-								{...threadCardDataFromSearchResult(item, {
-									title: highlightMatches(item.title, deferredQuery),
-									preview: highlightMatches(item.snippet, deferredQuery),
-								})}
-								savedItem={savedItemsByThreadId.get(item.thread_id)}
-								starredItem={starredItemsByThreadId.get(item.thread_id) ?? null}
-								isOnline={true}
-							/>
-						))}
+						{searchResults.map((item) => {
+							return (
+								<SavableThreadCard
+									key={item.id}
+									{...threadCardDataFromSearchResult(item, {
+										title: highlightMatches(item.title, deferredQuery),
+										preview: highlightMatches(item.preview, deferredQuery),
+									})}
+									savedItem={savedItemsByThreadId.get(item.thread_id)}
+									starredItem={
+										starredItemsByThreadId.get(item.thread_id) ?? null
+									}
+									isOnline={true}
+								/>
+							);
+						})}
+						<SearchResultsSentinel
+							hasNextPage={searchQuery.hasNextPage}
+							isFetchingNextPage={searchQuery.isFetchingNextPage}
+							onLoadMore={() => {
+								if (!searchQuery.isFetchingNextPage) {
+									void searchQuery.fetchNextPage();
+								}
+							}}
+						/>
 					</div>
 				</QueryState>
 			</SectionCard>
@@ -227,9 +312,83 @@ function getDefaultSearchDateRange() {
 	};
 }
 
+export function getSearchFilterSummary({
+	channelId,
+	dateFrom,
+	dateTo,
+	sort,
+	defaultDateRange,
+}: {
+	channelId: string;
+	dateFrom: string;
+	dateTo: string;
+	sort: string;
+	defaultDateRange: { from: string; to: string };
+}) {
+	const activeCount = [
+		channelId.length > 0,
+		dateFrom !== defaultDateRange.from,
+		dateTo !== defaultDateRange.to,
+		sort !== "relevance",
+	].filter(Boolean).length;
+
+	return {
+		activeCount,
+		hasActiveFilters: activeCount > 0,
+	};
+}
+
 function formatDateInputValue(value: Date) {
 	const year = value.getFullYear();
 	const month = String(value.getMonth() + 1).padStart(2, "0");
 	const day = String(value.getDate()).padStart(2, "0");
 	return `${year}-${month}-${day}`;
+}
+
+function SearchResultsSentinel({
+	hasNextPage,
+	isFetchingNextPage,
+	onLoadMore,
+}: {
+	hasNextPage: boolean;
+	isFetchingNextPage: boolean;
+	onLoadMore: () => void;
+}) {
+	const ref = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (!hasNextPage || isFetchingNextPage || !ref.current) {
+			return;
+		}
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((entry) => entry.isIntersecting)) {
+					onLoadMore();
+				}
+			},
+			{ rootMargin: "760px 0px" },
+		);
+		observer.observe(ref.current);
+
+		return () => observer.disconnect();
+	}, [hasNextPage, isFetchingNextPage, onLoadMore]);
+
+	if (!hasNextPage && !isFetchingNextPage) {
+		return null;
+	}
+
+	return (
+		<div ref={ref} className="pt-1">
+			{isFetchingNextPage ? (
+				<CardSkeletonList
+					count={2}
+					cardClassName="h-28 rounded-(--radius-card) border border-(--color-border-subtle) bg-(--color-bg-surface)/40"
+					className="space-y-3"
+				/>
+			) : (
+				<div className="h-8" aria-hidden="true" />
+			)}
+		</div>
+	);
 }
