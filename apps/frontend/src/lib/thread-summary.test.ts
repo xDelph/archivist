@@ -8,6 +8,7 @@ describe("thread summary presentation", () => {
 				preview: "Fallback preview",
 				summary: {
 					text: "AI summary",
+					full_summary: "## AI summary",
 					why_it_mattered: "Useful takeaway",
 					status: "answered",
 					topic_tags: ["launch"],
@@ -19,19 +20,21 @@ describe("thread summary presentation", () => {
 				messages: [{ text: "Root message" }],
 			}),
 		).toEqual({
-			primary: "AI summary",
+			body: "## AI summary",
+			bodyFormat: "markdown",
 			secondary: "Useful takeaway",
 			source: "ai",
 		});
 	});
 
-	it("falls back to title and suppresses duplicate preview", () => {
+	it("falls back to preview when no full summary is available", () => {
 		expect(
 			resolveThreadSummaryPresentation({
 				title: "Launch checklist",
 				preview: " launch   checklist ",
 				summary: {
 					text: "Launch checklist",
+					full_summary: null,
 					why_it_mattered: null,
 					status: null,
 					topic_tags: [],
@@ -43,19 +46,21 @@ describe("thread summary presentation", () => {
 				messages: [{ text: "Root message" }],
 			}),
 		).toEqual({
-			primary: "Launch checklist",
+			body: "Launch checklist",
+			bodyFormat: "plain",
 			secondary: null,
 			source: "fallback",
 		});
 	});
 
-	it("falls back to the root message when summary metadata is missing", () => {
+	it("falls back to a generic heading and root message when summary metadata is missing", () => {
 		expect(
 			resolveThreadSummaryPresentation({
 				title: null,
 				preview: null,
 				summary: {
 					text: null,
+					full_summary: null,
 					why_it_mattered: null,
 					status: null,
 					topic_tags: [],
@@ -67,7 +72,8 @@ describe("thread summary presentation", () => {
 				messages: [{ text: "Root message" }],
 			}),
 		).toEqual({
-			primary: "Root message",
+			body: "Root message",
+			bodyFormat: "plain",
 			secondary: null,
 			source: "none",
 		});

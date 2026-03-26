@@ -355,6 +355,7 @@ async fn generated_thread_summaries_persist_across_reopens() {
         channel_id: "C123".to_owned(),
         root_ts: "1700000000.000001".to_owned(),
         summary: "Launch plan summary".to_owned(),
+        full_summary: Some("## Outcome\nLaunch plan summary".to_owned()),
         why_it_mattered: Some("It captured the agreed rollout steps.".to_owned()),
         status: "answered".to_owned(),
         topic_tags: vec!["launch".to_owned(), "rollout".to_owned()],

@@ -1,5 +1,6 @@
 mod ai;
 mod ai_openrouter;
+mod ai_openrouter_language;
 mod archive;
 mod backfill;
 mod backfill_archive;

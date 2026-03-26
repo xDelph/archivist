@@ -11,6 +11,8 @@ use std::{
 };
 
 const MAX_TOPIC_TAGS: usize = 5;
+const MIN_STANDALONE_SUMMARY_CHARS: usize = 500;
+const MIN_TEMPORARY_SUMMARY_REPLY_COUNT: i64 = 11;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OpenRouterConfig {
@@ -30,6 +32,7 @@ pub(crate) struct GenerateThreadSummariesResponse {
 #[derive(Debug)]
 pub(crate) struct GeneratedSummaryResult {
     pub(crate) summary: String,
+    pub(crate) full_summary: String,
     pub(crate) why_it_mattered: Option<String>,
     pub(crate) status: String,
     pub(crate) topic_tags: Vec<String>,
@@ -105,10 +108,12 @@ pub(crate) async fn generate_thread_summaries(
     let mut failed = 0usize;
     for summary in candidates {
         let key = (summary.channel_id.clone(), summary.root_ts.clone());
-        if existing.get(&key).is_some_and(|row| {
-            row.model == config.model
-                && same_slack_ts(&row.source_last_activity_ts, &summary.last_activity_ts)
-        }) {
+        if !request.force_regenerate
+            && existing.get(&key).is_some_and(|row| {
+                row.model == config.model
+                    && same_slack_ts(&row.source_last_activity_ts, &summary.last_activity_ts)
+            })
+        {
             tracing::info!(
                 channel_id = %summary.channel_id,
                 root_ts = %summary.root_ts,
@@ -119,16 +124,14 @@ pub(crate) async fn generate_thread_summaries(
             skipped += 1;
             continue;
         }
-        if summary.reply_count == 0 {
+        if request.force_regenerate {
             tracing::info!(
                 channel_id = %summary.channel_id,
                 root_ts = %summary.root_ts,
-                "skipping thread summary generation because the thread has no replies"
+                model = %config.model,
+                "forcing thread summary regeneration even if an up-to-date summary already exists"
             );
-            skipped += 1;
-            continue;
         }
-
         let Some(messages) = thread_messages.get(&key) else {
             tracing::info!(
                 channel_id = %summary.channel_id,
@@ -143,6 +146,30 @@ pub(crate) async fn generate_thread_summaries(
                 channel_id = %summary.channel_id,
                 root_ts = %summary.root_ts,
                 "skipping thread summary generation because the thread has no messages"
+            );
+            skipped += 1;
+            continue;
+        }
+        let root_message_chars = root_message_char_count(&summary, messages);
+        if summary.reply_count == 0
+            && root_message_chars.is_none_or(|count| count <= MIN_STANDALONE_SUMMARY_CHARS)
+        {
+            tracing::info!(
+                channel_id = %summary.channel_id,
+                root_ts = %summary.root_ts,
+                root_message_chars = root_message_chars.unwrap_or_default(),
+                "skipping thread summary generation because the thread has no replies and the root message is too short"
+            );
+            skipped += 1;
+            continue;
+        }
+        if summary.reply_count < MIN_TEMPORARY_SUMMARY_REPLY_COUNT {
+            tracing::info!(
+                channel_id = %summary.channel_id,
+                root_ts = %summary.root_ts,
+                reply_count = summary.reply_count,
+                minimum_reply_count = MIN_TEMPORARY_SUMMARY_REPLY_COUNT,
+                "skipping thread summary generation because the temporary high-volume test only targets large threads"
             );
             skipped += 1;
             continue;
@@ -162,6 +189,7 @@ pub(crate) async fn generate_thread_summaries(
                     channel_id: summary.channel_id.clone(),
                     root_ts: summary.root_ts.clone(),
                     summary: result.summary,
+                    full_summary: Some(result.full_summary),
                     why_it_mattered: result.why_it_mattered,
                     status: result.status,
                     topic_tags: result.topic_tags,
@@ -305,6 +333,11 @@ pub(crate) fn normalize_text(value: &str) -> Option<String> {
     (!normalized.is_empty()).then_some(normalized)
 }
 
+pub(crate) fn normalize_markdown_text(value: &str) -> Option<String> {
+    let normalized = value.trim().replace("\r\n", "\n");
+    (!normalized.is_empty()).then_some(normalized)
+}
+
 pub(crate) fn normalize_status(value: Option<&str>) -> String {
     match value
         .map(|value| value.trim().to_ascii_lowercase())
@@ -341,6 +374,13 @@ fn normalized_root_ts(message: &Message) -> String {
         .thread_ts
         .clone()
         .unwrap_or_else(|| message.ts.clone())
+}
+
+fn root_message_char_count(summary: &ThreadSummaryRow, messages: &[Message]) -> Option<usize> {
+    messages
+        .iter()
+        .find(|message| message.ts == summary.root_ts)
+        .map(|message| message.text.chars().count())
 }
 
 fn slack_ts_value(value: &str) -> f64 {

@@ -8,7 +8,8 @@ interface ThreadSummaryInput {
 }
 
 export interface ThreadSummaryPresentation {
-	primary: string | null;
+	body: string | null;
+	bodyFormat: "markdown" | "plain";
 	secondary: string | null;
 	source: ThreadSummarySource;
 }
@@ -16,18 +17,19 @@ export interface ThreadSummaryPresentation {
 export function resolveThreadSummaryPresentation(
 	thread: ThreadSummaryInput,
 ): ThreadSummaryPresentation {
-	const primary = firstNonEmpty(
-		thread.summary.text,
-		thread.title,
-		thread.messages[0]?.text,
-	);
-	const secondary = firstNonEmpty(
-		thread.summary.why_it_mattered,
-		distinctFromPrimary(thread.preview, primary),
-	);
+	const fullSummary = firstNonEmpty(thread.summary.full_summary);
+	const body = fullSummary
+		? fullSummary
+		: firstNonEmpty(
+				thread.summary.text,
+				thread.preview,
+				thread.messages[0]?.text,
+			);
+	const secondary = firstNonEmpty(thread.summary.why_it_mattered);
 
 	return {
-		primary,
+		body,
+		bodyFormat: fullSummary ? "markdown" : "plain",
 		secondary,
 		source: thread.summary.source,
 	};
@@ -46,19 +48,4 @@ function firstNonEmpty(...values: Array<string | null | undefined>) {
 	}
 
 	return null;
-}
-
-function distinctFromPrimary(
-	value: string | null | undefined,
-	primary: string | null,
-) {
-	if (!value) {
-		return null;
-	}
-
-	return normalizeText(value) === normalizeText(primary) ? null : value;
-}
-
-function normalizeText(value: string | null | undefined) {
-	return value?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
 }

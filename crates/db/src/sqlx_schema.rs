@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS generated_thread_summaries (
     channel_id TEXT NOT NULL,
     root_ts TEXT NOT NULL,
     summary TEXT NOT NULL,
+    full_summary TEXT,
     why_it_mattered TEXT,
     status TEXT NOT NULL,
     topic_tags TEXT[] NOT NULL DEFAULT '{}',
@@ -58,6 +59,13 @@ CREATE TABLE IF NOT EXISTS generated_thread_summaries (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (channel_id, root_ts)
 );
+
+ALTER TABLE generated_thread_summaries
+ADD COLUMN IF NOT EXISTS full_summary TEXT;
+
+UPDATE generated_thread_summaries
+SET full_summary = summary
+WHERE full_summary IS NULL;
 
 CREATE INDEX IF NOT EXISTS generated_thread_summaries_generated_at_idx
 ON generated_thread_summaries (generated_at DESC);

@@ -10,6 +10,7 @@ impl PgEventStore {
                 channel_id,
                 root_ts,
                 summary,
+                full_summary,
                 why_it_mattered,
                 status,
                 topic_tags,
@@ -35,6 +36,7 @@ impl PgEventStore {
                 channel_id,
                 root_ts,
                 summary,
+                full_summary,
                 why_it_mattered,
                 status,
                 topic_tags,
@@ -42,9 +44,10 @@ impl PgEventStore {
                 model,
                 generated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9))
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10))
             ON CONFLICT (channel_id, root_ts) DO UPDATE
             SET summary = EXCLUDED.summary,
+                full_summary = EXCLUDED.full_summary,
                 why_it_mattered = EXCLUDED.why_it_mattered,
                 status = EXCLUDED.status,
                 topic_tags = EXCLUDED.topic_tags,
@@ -57,6 +60,7 @@ impl PgEventStore {
         .bind(&row.channel_id)
         .bind(&row.root_ts)
         .bind(&row.summary)
+        .bind(&row.full_summary)
         .bind(&row.why_it_mattered)
         .bind(&row.status)
         .bind(&row.topic_tags)

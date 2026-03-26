@@ -1,6 +1,9 @@
 use crate::ai::{
-    GeneratedSummaryResult, OpenRouterConfig, compact_text, normalize_status, normalize_text,
-    normalize_topic_tags,
+    GeneratedSummaryResult, OpenRouterConfig, compact_text, normalize_markdown_text,
+    normalize_status, normalize_text, normalize_topic_tags,
+};
+use crate::ai_openrouter_language::{
+    LanguageHint, build_language_requirement, detect_thread_language, is_output_language_mismatch,
 };
 use db::ThreadSummaryRow;
 use domain::Message;
@@ -11,6 +14,7 @@ use std::time::{Duration, Instant};
 const MAX_PROMPT_MESSAGES: usize = 40;
 const MAX_MESSAGE_CHARS: usize = 400;
 const OPENROUTER_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+const MAX_SUMMARY_LANGUAGE_ATTEMPTS: usize = 2;
 
 #[derive(Debug, Deserialize)]
 struct OpenRouterResponse {
@@ -30,6 +34,7 @@ struct OpenRouterMessage {
 #[derive(Debug, Deserialize)]
 struct GeneratedSummaryPayload {
     summary: String,
+    full_summary: Option<String>,
     why_it_mattered: Option<String>,
     status: Option<String>,
     topic_tags: Option<Vec<String>>,
@@ -40,14 +45,78 @@ pub(crate) async fn request_summary(
     summary: &ThreadSummaryRow,
     messages: &[Message],
 ) -> Result<GeneratedSummaryResult, AiSummaryError> {
+    let language_hint = detect_thread_language(summary, messages);
+    for attempt in 0..MAX_SUMMARY_LANGUAGE_ATTEMPTS {
+        let generated =
+            request_summary_payload(config, summary, messages, language_hint, attempt).await?;
+        let normalized_summary =
+            normalize_text(&generated.summary).ok_or(AiSummaryError::MissingSummary)?;
+        let full_summary = generated
+            .full_summary
+            .as_deref()
+            .and_then(normalize_markdown_text)
+            .unwrap_or_else(|| normalized_summary.clone());
+        let why_it_mattered = generated
+            .why_it_mattered
+            .and_then(|value| normalize_text(&value));
+
+        if is_output_language_mismatch(
+            language_hint,
+            &normalized_summary,
+            why_it_mattered.as_deref(),
+            Some(full_summary.as_str()),
+        ) {
+            tracing::warn!(
+                channel_id = %summary.channel_id,
+                root_ts = %summary.root_ts,
+                expected_language = language_hint.map_or("unknown", |hint| hint.label),
+                attempt = attempt + 1,
+                "generated summary language did not match the detected thread language"
+            );
+            if attempt + 1 < MAX_SUMMARY_LANGUAGE_ATTEMPTS {
+                continue;
+            }
+            return Err(AiSummaryError::LanguageMismatch);
+        }
+
+        tracing::info!(
+            channel_id = %summary.channel_id,
+            root_ts = %summary.root_ts,
+            status = generated.status.as_deref().unwrap_or("discussion"),
+            topic_tag_count = generated.topic_tags.as_ref().map_or(0, Vec::len),
+            detected_language = language_hint.map_or("unknown", |hint| hint.label),
+            "received OpenRouter thread summary response"
+        );
+
+        return Ok(GeneratedSummaryResult {
+            summary: normalized_summary,
+            full_summary,
+            why_it_mattered,
+            status: normalize_status(generated.status.as_deref()),
+            topic_tags: normalize_topic_tags(generated.topic_tags.unwrap_or_default()),
+        });
+    }
+
+    Err(AiSummaryError::LanguageMismatch)
+}
+
+async fn request_summary_payload(
+    config: &ReadyOpenRouterConfig,
+    summary: &ThreadSummaryRow,
+    messages: &[Message],
+    language_hint: Option<&'static LanguageHint>,
+    attempt: usize,
+) -> Result<GeneratedSummaryPayload, AiSummaryError> {
     let endpoint = chat_completions_url(&config.api_base_url);
-    let prompt = build_prompt(summary, messages);
+    let prompt = build_prompt(summary, messages, language_hint, attempt > 0);
     let request_started_at = Instant::now();
     tracing::info!(
         channel_id = %summary.channel_id,
         root_ts = %summary.root_ts,
         model = %config.model,
         endpoint = %endpoint,
+        detected_language = language_hint.map_or("unknown", |hint| hint.label),
+        attempt = attempt + 1,
         prompt_chars = prompt.len(),
         timeout_seconds = OPENROUTER_REQUEST_TIMEOUT.as_secs(),
         "sending OpenRouter thread summary request"
@@ -65,7 +134,7 @@ pub(crate) async fn request_summary(
             "messages": [
                 {
                     "role": "system",
-                    "content": "You summarize archived public Slack messages for later retrieval. Return concise factual JSON only. Keep references grounded in the provided messages. Write in the main language used by the messages. When mentioning a user, preserve Slack mention syntax like <@U123>."
+                    "content": "You summarize archived public Slack messages for later retrieval. Return concise factual JSON only. Keep references grounded in the provided messages. Write in the main language used by the messages. Write like neutral editorial or documentation copy, not like a chat recap. Do not mention Slack, threads, channels, messages, replies, or users unless a specific identity is materially necessary to understand the outcome. Avoid openings like \"this thread\", \"the discussion\", \"someone asked\", \"a user said\", or their equivalents in any language. When mentioning a specific user because it is materially necessary, preserve Slack mention syntax like <@U123>."
                 },
                 {
                     "role": "user",
@@ -111,29 +180,9 @@ pub(crate) async fn request_summary(
         })?;
     let content = extract_content(payload.choices.first()).ok_or(AiSummaryError::MissingContent)?;
     let repaired_content = repair_generated_summary_payload(&content);
-    let generated =
-        serde_json::from_str::<GeneratedSummaryPayload>(&repaired_content).map_err(|error| {
+    serde_json::from_str::<GeneratedSummaryPayload>(&repaired_content).map_err(|error| {
         tracing::warn!(?error, raw_content = %content, "failed to parse generated summary payload");
         AiSummaryError::InvalidPayload
-    })?;
-    let normalized_summary =
-        normalize_text(&generated.summary).ok_or(AiSummaryError::MissingSummary)?;
-    tracing::info!(
-        channel_id = %summary.channel_id,
-        root_ts = %summary.root_ts,
-        status = generated.status.as_deref().unwrap_or("discussion"),
-        topic_tag_count = generated.topic_tags.as_ref().map_or(0, Vec::len),
-        elapsed_ms = request_started_at.elapsed().as_millis() as u64,
-        "received OpenRouter thread summary response"
-    );
-
-    Ok(GeneratedSummaryResult {
-        summary: normalized_summary,
-        why_it_mattered: generated
-            .why_it_mattered
-            .and_then(|value| normalize_text(&value)),
-        status: normalize_status(generated.status.as_deref()),
-        topic_tags: normalize_topic_tags(generated.topic_tags.unwrap_or_default()),
     })
 }
 
@@ -146,7 +195,12 @@ pub(crate) fn chat_completions_url(api_base_url: &str) -> String {
     format!("{normalized}/chat/completions")
 }
 
-fn build_prompt(summary: &ThreadSummaryRow, messages: &[Message]) -> String {
+fn build_prompt(
+    summary: &ThreadSummaryRow,
+    messages: &[Message],
+    language_hint: Option<&'static LanguageHint>,
+    retrying_after_language_mismatch: bool,
+) -> String {
     let transcript = messages
         .iter()
         .take(MAX_PROMPT_MESSAGES)
@@ -166,22 +220,29 @@ fn build_prompt(summary: &ThreadSummaryRow, messages: &[Message]) -> String {
         .find(|message| message.ts == summary.root_ts)
         .map(|message| compact_text(&message.text, MAX_MESSAGE_CHARS))
         .unwrap_or_else(|| "(no text)".to_owned());
+    let language_requirement =
+        build_language_requirement(language_hint, retrying_after_language_mismatch);
 
     format!(
-        "Summarize the following messages in the main language used by the messages in 2 to 3 sentences maximum.\n\
+        "Summarize the following messages with a short preview summary and a fuller markdown recap.\n\
          \n\
-         Write natural standalone sentences that read like notes or documentation.\n\
-         Do not refer to the conversation itself (avoid phrases like \"this thread\", \"the discussion\", or \"someone asked\").\n\
-         Start directly with the topic, tool, or outcome rather than the people.\n\
+         Write natural standalone sentences that read like neutral notes, release notes, or blog text.\n\
+         Do not refer to the source conversation or medium itself.\n\
+         Avoid phrases like \"this thread\", \"the discussion\", \"someone asked\", \"a user said\", \"in Slack\", \"in the channel\", or equivalents in any language.\n\
+         Start directly with the topic, tool, decision, or outcome rather than the people or the conversation.\n\
+         Keep the text generic and self-contained, as if it could be published outside the chat context.\n\
+         {language_requirement}\
          \n\
-         Return a JSON object with keys: summary, why_it_mattered, status, topic_tags.\n\
+         Return a JSON object with keys: summary, full_summary, why_it_mattered, status, topic_tags.\n\
          Rules:\n\
-         - summary: 2 to 3 concise factual sentences describing the topic, key points, and outcome\n\
+         - summary: 1 to 2 concise factual sentences optimized for a card preview; keep it tighter than the full recap and aim for roughly 220 characters when possible\n\
+         - full_summary: a markdown summary of the thread covering the important context, key points, decisions, and next steps without a hard length cap; keep it factual and reasonably concise\n\
          - merge related ideas instead of retelling the conversation chronologically\n\
-         - prefer topic-first phrasing\n\
-         - preserve user mentions in Slack format like <@U123> when referring to users\n\
+         - prefer topic-first phrasing and outcome-first wording\n\
+         - do not mention people unless their identity materially matters to the outcome; when it does, preserve user mentions in Slack format like <@U123>\n\
          - do not invent facts, users, or outcomes not present in the messages\n\
-         - why_it_mattered: one concise sentence describing the practical takeaway, workflow, recommendation, or decision; use null if unclear\n\
+         - summary, full_summary, and why_it_mattered must match the dominant thread language exactly; do not translate them to English unless the thread is in English\n\
+         - why_it_mattered: one concise sentence describing the practical takeaway, workflow, recommendation, or decision in the same neutral editorial style; use null if unclear\n\
          - status: one of answered, unresolved, announcement, debate, resource, discussion\n\
          - topic_tags: 2 to 5 short lowercase tags without # describing the main tools, technologies, or concepts someone might search for\n\
          - stay grounded in the provided messages only\n\
@@ -294,41 +355,9 @@ pub(crate) enum AiSummaryError {
     MissingContent,
     InvalidPayload,
     MissingSummary,
+    LanguageMismatch,
 }
 
 #[cfg(test)]
-mod parser_tests {
-    use super::{
-        GeneratedSummaryPayload, normalize_generated_payload_key, repair_generated_summary_payload,
-    };
-
-    #[test]
-    fn repair_generated_summary_payload_normalizes_common_bad_keys() {
-        let raw = r#"{
-  "summary: ": "A concise summary.",
-  "why_it_mattered": null,
-  "status": "unresolved",
-  "topic_tags": ["ollama", "configuration"]
-}"#;
-
-        let repaired = repair_generated_summary_payload(raw);
-        let payload = serde_json::from_str::<GeneratedSummaryPayload>(&repaired)
-            .expect("payload should parse");
-
-        assert_eq!(payload.summary, "A concise summary.");
-        assert_eq!(payload.status.as_deref(), Some("unresolved"));
-        assert_eq!(
-            payload.topic_tags.expect("topic tags"),
-            vec!["ollama".to_owned(), "configuration".to_owned()]
-        );
-    }
-
-    #[test]
-    fn normalize_generated_payload_key_strips_trailing_colons() {
-        assert_eq!(normalize_generated_payload_key("summary: "), "summary");
-        assert_eq!(
-            normalize_generated_payload_key("why-it-mattered:"),
-            "why_it_mattered"
-        );
-    }
-}
+#[path = "ai_openrouter_tests.rs"]
+mod tests;

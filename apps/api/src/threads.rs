@@ -1,6 +1,7 @@
 use crate::{
     AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
-    thread_text::normalize_thread_text, view_models::UserSummaryResponse,
+    thread_text::normalize_thread_text, user_store::SyncedUserRecord,
+    view_models::UserSummaryResponse,
 };
 use axum::{
     Extension, Json,
@@ -32,6 +33,7 @@ pub(crate) struct ThreadDetailResponse {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 struct ThreadSummaryBlockResponse {
     text: Option<String>,
+    full_summary: Option<String>,
     why_it_mattered: Option<String>,
     status: Option<String>,
     topic_tags: Vec<String>,
@@ -192,14 +194,35 @@ async fn build_thread_detail(
     user_ids.extend(slack_text::collect_user_mention_ids(
         thread_messages.iter().map(|message| message.text.as_str()),
     ));
+    if let Some(summary) = generated_summary.as_ref() {
+        user_ids.extend(slack_text::collect_user_mention_ids(
+            [
+                Some(summary.summary.as_str()),
+                summary.full_summary.as_deref(),
+                summary.why_it_mattered.as_deref(),
+            ]
+            .into_iter()
+            .flatten(),
+        ));
+    }
     let users = user_store
         .find_users(&user_ids.into_iter().collect::<Vec<_>>())
         .await;
-    let channel_names = if slack_text::collect_channel_mention_ids(
+    let mut channel_mention_ids = slack_text::collect_channel_mention_ids(
         thread_messages.iter().map(|message| message.text.as_str()),
-    )
-    .is_empty()
-    {
+    );
+    if let Some(summary) = generated_summary.as_ref() {
+        channel_mention_ids.extend(slack_text::collect_channel_mention_ids(
+            [
+                Some(summary.summary.as_str()),
+                summary.full_summary.as_deref(),
+                summary.why_it_mattered.as_deref(),
+            ]
+            .into_iter()
+            .flatten(),
+        ));
+    }
+    let channel_names = if channel_mention_ids.is_empty() {
         HashMap::new()
     } else {
         slack_text::build_channel_name_map(&data.channels)
@@ -297,6 +320,8 @@ async fn build_thread_detail(
     let summary = resolve_thread_summary(
         last_activity_ts.as_deref(),
         generated_summary.as_ref(),
+        &users,
+        &channel_names,
         title.clone(),
         preview.clone(),
     );
@@ -321,6 +346,8 @@ async fn build_thread_detail(
 fn resolve_thread_summary(
     current_last_activity_ts: Option<&str>,
     generated_summary: Option<&GeneratedThreadSummaryRow>,
+    users: &HashMap<String, SyncedUserRecord>,
+    channels: &HashMap<String, Option<String>>,
     title: Option<String>,
     preview: Option<String>,
 ) -> ThreadSummaryBlockResponse {
@@ -329,8 +356,31 @@ fn resolve_thread_summary(
             !same_slack_ts(&summary.source_last_activity_ts, last_activity_ts)
         });
         return ThreadSummaryBlockResponse {
-            text: normalize_text(&summary.summary),
-            why_it_mattered: summary.why_it_mattered.as_deref().and_then(normalize_text),
+            text: normalize_text(&slack_text::render_slack_text(
+                &summary.summary,
+                users,
+                channels,
+            )),
+            full_summary: normalize_markdown_text(
+                summary
+                    .full_summary
+                    .as_deref()
+                    .map(|value| slack_text::render_slack_text(value, users, channels))
+                    .as_deref(),
+            )
+            .or_else(|| {
+                normalize_text(&slack_text::render_slack_text(
+                    &summary.summary,
+                    users,
+                    channels,
+                ))
+            }),
+            why_it_mattered: summary
+                .why_it_mattered
+                .as_deref()
+                .map(|value| slack_text::render_slack_text(value, users, channels))
+                .as_deref()
+                .and_then(normalize_text),
             status: normalize_text(&summary.status),
             topic_tags: summary.topic_tags.clone(),
             model: normalize_text(&summary.model),
@@ -344,6 +394,7 @@ fn resolve_thread_summary(
     ThreadSummaryBlockResponse {
         is_stale: false,
         source: if text.is_some() { "fallback" } else { "none" },
+        full_summary: text.clone(),
         text,
         why_it_mattered: None,
         status: None,
@@ -356,6 +407,13 @@ fn resolve_thread_summary(
 fn normalize_text(value: &str) -> Option<String> {
     let trimmed = value.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn normalize_markdown_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 fn same_slack_ts(left: &str, right: &str) -> bool {

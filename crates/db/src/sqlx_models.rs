@@ -75,6 +75,7 @@ pub struct GeneratedThreadSummaryRow {
     pub channel_id: String,
     pub root_ts: String,
     pub summary: String,
+    pub full_summary: Option<String>,
     pub why_it_mattered: Option<String>,
     pub status: String,
     pub topic_tags: Vec<String>,

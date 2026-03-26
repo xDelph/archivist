@@ -55,7 +55,9 @@ fn generated_thread_summary_schema_tracks_model_output_per_thread() {
 
     assert!(schema.contains("CREATE TABLE IF NOT EXISTS generated_thread_summaries"));
     assert!(schema.contains("summary TEXT NOT NULL"));
+    assert!(schema.contains("full_summary TEXT"));
     assert!(schema.contains("topic_tags TEXT[] NOT NULL DEFAULT '{}'"));
     assert!(schema.contains("source_last_activity_ts TEXT NOT NULL"));
+    assert!(schema.contains("ADD COLUMN IF NOT EXISTS full_summary TEXT"));
     assert!(schema.contains("generated_thread_summaries_generated_at_idx"));
 }

@@ -2,6 +2,7 @@ import { ChannelBadge } from "@/components/channel-badge";
 import { IdentityAvatar } from "@/components/identity-avatar";
 import { SectionCard } from "@/components/section-card";
 import { ThreadMetrics } from "@/components/thread-metrics";
+import { ThreadSummaryMarkdown } from "@/components/thread-summary-markdown";
 import type { ThreadDetailResponse } from "@/lib/api";
 import { formatSlackTimestamp } from "@/lib/format";
 import { displayAuthorName, renderSlackText } from "@/lib/thread-display";
@@ -29,16 +30,8 @@ export function ThreadSummaryPanel({
 	return (
 		<SectionCard
 			eyebrow={summary.source === "ai" ? "AI Summary" : "Thread Detail"}
-			title={
-				summary.primary ? (
-					<span className="leading-tight text-(--color-text-primary)">
-						{renderSlackText(summary.primary)}
-					</span>
-				) : (
-					"Conversation overview"
-				)
-			}
-			titleClassName="max-w-[calc(100%-3rem)] text-[1.08rem] font-medium sm:text-[1.28rem]"
+			title={null}
+			titleClassName="hidden"
 			overlayActions
 			actions={action}
 			className="overflow-hidden"
@@ -71,10 +64,25 @@ export function ThreadSummaryPanel({
 					) : null}
 				</div>
 
+				{summary.body ? (
+					summary.bodyFormat === "markdown" ? (
+						<ThreadSummaryMarkdown content={summary.body} />
+					) : (
+						<p className="max-w-2xl text-[0.88rem] leading-6 text-(--color-text-secondary)">
+							{renderSlackText(summary.body)}
+						</p>
+					)
+				) : null}
+
 				{summary.secondary ? (
-					<p className="max-w-2xl text-[0.84rem] leading-6 text-(--color-text-secondary)">
-						{renderSlackText(summary.secondary)}
-					</p>
+					<div className="space-y-1.5">
+						<p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--color-text-faint)">
+							Why It Mattered
+						</p>
+						<p className="text-[0.84rem] leading-6 text-(--color-text-secondary)">
+							{renderSlackText(summary.secondary)}
+						</p>
+					</div>
 				) : null}
 
 				{status || topicTags.length ? (

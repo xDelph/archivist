@@ -3,6 +3,7 @@ use crate::{
     ApiConfig,
     auth::{SessionClaims, build_session_token, current_unix_timestamp},
     build_router,
+    user_store::{LocalUserStore, SyncedUserRecord},
 };
 use axum::{
     body::{Body, to_bytes},
@@ -450,6 +451,10 @@ async fn thread_detail_route_returns_fresh_generated_summary_metadata() {
             channel_id: "C123".to_owned(),
             root_ts: root_ts.to_owned(),
             summary: "Launch plan is settled and assigned.".to_owned(),
+            full_summary: Some(
+                "## Outcome\nLaunch plan is settled and assigned.\n\n## Next steps\nShip it."
+                    .to_owned(),
+            ),
             why_it_mattered: Some("The team can ship without another sync.".to_owned()),
             status: "answered".to_owned(),
             topic_tags: vec!["launch".to_owned(), "checklist".to_owned()],
@@ -522,6 +527,10 @@ async fn thread_detail_route_returns_fresh_generated_summary_metadata() {
         payload["summary"]["why_it_mattered"],
         "The team can ship without another sync."
     );
+    assert_eq!(
+        payload["summary"]["full_summary"],
+        "## Outcome\nLaunch plan is settled and assigned.\n\n## Next steps\nShip it."
+    );
     assert_eq!(payload["summary"]["status"], "answered");
     assert_eq!(
         payload["summary"]["topic_tags"],
@@ -530,6 +539,164 @@ async fn thread_detail_route_returns_fresh_generated_summary_metadata() {
     assert_eq!(payload["summary"]["model"], "openrouter/test");
     assert_eq!(payload["summary"]["generated_at"], 42);
     assert_eq!(payload["summary"]["is_stale"], false);
+}
+
+#[tokio::test]
+async fn thread_detail_route_formats_mentions_in_generated_summary_metadata() {
+    let tempdir = tempdir().expect("tempdir");
+    let path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&path).await.expect("store");
+    let root_ts = "1700000000.000001";
+
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_channel".to_owned(),
+            event_time: 0,
+            received_at: 0,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::ChannelUpdated {
+                name: Some("general".to_owned()),
+                is_archived: Some(false),
+            },
+        })
+        .await
+        .expect("channel insert");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_root".to_owned(),
+            event_time: 1,
+            received_at: 2,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U123".to_owned()),
+                text: Some("Root note".to_owned()),
+                ts: root_ts.to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("root insert");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "evt_reply".to_owned(),
+            event_time: 3,
+            received_at: 4,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U456".to_owned()),
+                text: Some("Reply".to_owned()),
+                ts: "1700000000.000002".to_owned(),
+                thread_ts: Some(root_ts.to_owned()),
+                files: vec![],
+            },
+        })
+        .await
+        .expect("reply insert");
+    let user_store = LocalUserStore::open(tempdir.path().join("synced-users.json"))
+        .await
+        .expect("user store");
+    user_store
+        .upsert_user(SyncedUserRecord {
+            slack_user_id: "U123".to_owned(),
+            display_name: Some("thomas".to_owned()),
+            avatar_url: None,
+            is_active: true,
+        })
+        .await
+        .expect("seed user");
+    user_store
+        .upsert_user(SyncedUserRecord {
+            slack_user_id: "U456".to_owned(),
+            display_name: Some("patrick".to_owned()),
+            avatar_url: None,
+            is_active: true,
+        })
+        .await
+        .expect("seed user");
+    store.refresh_thread_summaries().await;
+    store
+        .upsert_generated_thread_summary(&GeneratedThreadSummaryRow {
+            channel_id: "C123".to_owned(),
+            root_ts: root_ts.to_owned(),
+            summary: "<@U456> confirmed next steps in <#C123|general>.".to_owned(),
+            full_summary: Some(
+                "## Outcome\n<@U456> confirmed next steps in <#C123|general>.".to_owned(),
+            ),
+            why_it_mattered: Some("Keeps <@U123> aligned.".to_owned()),
+            status: "answered".to_owned(),
+            topic_tags: vec![],
+            source_last_activity_ts: "1700000000.000002".to_owned(),
+            model: "openrouter/test".to_owned(),
+            generated_at: 42,
+        })
+        .await
+        .expect("seed generated summary");
+
+    let session_token = build_session_token(
+        "session_secret",
+        &SessionClaims {
+            slack_user_id: "U123".to_owned(),
+            email: None,
+            display_name: Some("Thomas".to_owned()),
+            avatar_url: None,
+            exp: current_unix_timestamp() + 60,
+        },
+    )
+    .expect("session token");
+
+    let response = build_router(ApiConfig {
+        host: "127.0.0.1".to_owned(),
+        port: 4000,
+        event_log_path: path.display().to_string(),
+        slack_client_id: None,
+        slack_client_secret: None,
+        slack_redirect_uri: None,
+        slack_team_id: None,
+        slack_token_url: None,
+        session_secret: Some("session_secret".to_owned()),
+        auth_store_path: tempdir
+            .path()
+            .join("auth-identities.json")
+            .display()
+            .to_string(),
+        synced_users_path: tempdir
+            .path()
+            .join("synced-users.json")
+            .display()
+            .to_string(),
+        web_origin: crate::LOCAL_DEV_WEB_ORIGIN.to_owned(),
+    })
+    .await
+    .expect("router")
+    .oneshot(
+        Request::builder()
+            .uri("/api/threads/C123:1700000000.000001")
+            .header("cookie", format!("arkivist_session={session_token}"))
+            .body(Body::empty())
+            .expect("request"),
+    )
+    .await
+    .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+
+    assert_eq!(
+        payload["summary"]["full_summary"],
+        "## Outcome\n@patrick confirmed next steps in #general."
+    );
+    assert_eq!(
+        payload["summary"]["why_it_mattered"],
+        "Keeps @thomas aligned."
+    );
 }
 
 #[tokio::test]
@@ -593,6 +760,7 @@ async fn thread_detail_route_ignores_stale_generated_summary_metadata() {
             channel_id: "C123".to_owned(),
             root_ts: root_ts.to_owned(),
             summary: "Old answer".to_owned(),
+            full_summary: Some("## Outcome\nOld answer".to_owned()),
             why_it_mattered: Some("Stale".to_owned()),
             status: "answered".to_owned(),
             topic_tags: vec!["old".to_owned()],
@@ -676,6 +844,7 @@ async fn thread_detail_route_ignores_stale_generated_summary_metadata() {
 
     assert_eq!(payload["summary"]["source"], "ai");
     assert_eq!(payload["summary"]["text"], "Old answer");
+    assert_eq!(payload["summary"]["full_summary"], "## Outcome\nOld answer");
     assert_eq!(payload["summary"]["why_it_mattered"], "Stale");
     assert_eq!(payload["summary"]["status"], "answered");
     assert_eq!(payload["summary"]["topic_tags"], serde_json::json!(["old"]));

@@ -11,6 +11,8 @@ pub(crate) struct BackfillChannelRequest {
     pub(crate) oldest_ts: Option<String>,
     #[serde(default)]
     pub(crate) resume_from_last_message_ts: bool,
+    #[serde(default)]
+    pub(crate) force_regenerate: bool,
 }
 
 pub(crate) async fn resolve_oldest_ts(
