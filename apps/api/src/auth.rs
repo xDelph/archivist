@@ -104,6 +104,38 @@ struct SlackIdentityClaims {
     picture: Option<String>,
 }
 
+fn require_session_secret<'a>(
+    state: &'a AppState,
+    context: &'static str,
+    request_path: Option<&str>,
+) -> Result<&'a str, (StatusCode, Json<ErrorResponse>)> {
+    state.session_secret.as_deref().ok_or_else(|| {
+        if let Some(request_path) = request_path {
+            tracing::error!(
+                context,
+                request_path,
+                web_origin = %state.web_origin,
+                env_var = "ARKIVIST_SESSION_SECRET",
+                "session configuration missing in API runtime state"
+            );
+        } else {
+            tracing::error!(
+                context,
+                web_origin = %state.web_origin,
+                env_var = "ARKIVIST_SESSION_SECRET",
+                "session configuration missing in API runtime state"
+            );
+        }
+
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "missing_session_config",
+            }),
+        )
+    })
+}
+
 pub(crate) async fn slack_start(
     State(state): State<AppState>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
@@ -169,12 +201,8 @@ pub(crate) async fn slack_callback(
                 }),
             )
         })?;
-    let session_secret = state.session_secret.as_deref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: "missing_session_config",
-        }),
-    ))?;
+    let session_secret =
+        require_session_secret(&state, "auth.slack_callback", Some("/auth/slack/callback"))?;
     let session_cookie = session_cookie_header(
         session_secret,
         &session_claims(
@@ -215,12 +243,7 @@ pub(crate) async fn me(
             error: "missing_session",
         }),
     ))?;
-    let session_secret = state.session_secret.as_deref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: "missing_session_config",
-        }),
-    ))?;
+    let session_secret = require_session_secret(&state, "auth.me", Some("/auth/me"))?;
     let claims =
         validate_session_token(session_secret, session_token).map_err(me_error_response)?;
     let roles = state
@@ -259,12 +282,9 @@ pub(crate) async fn require_session(
             error: "missing_session",
         }),
     ))?;
-    let session_secret = state.session_secret.as_deref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: "missing_session_config",
-        }),
-    ))?;
+    let request_path = request.uri().path().to_owned();
+    let session_secret =
+        require_session_secret(&state, "auth.require_session", Some(request_path.as_str()))?;
     let claims =
         validate_session_token(session_secret, session_token).map_err(me_error_response)?;
     request.extensions_mut().insert(claims);
