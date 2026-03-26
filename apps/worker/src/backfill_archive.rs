@@ -45,14 +45,14 @@ pub(super) async fn persist_backfill_file_archives(
             resolve_file_storage_location(state, slack_user_token, channel_id, file_id, file_name)
                 .await
                 .expect("r2 config is present");
-        state
-            .store
-            .set_file_archive(file_id, &location.storage_key, &location.public_url)
-            .await
-            .map_err(store_failed)?;
 
         if download_url.is_none() {
             if remote_object_exists(&location.public_url).await {
+                state
+                    .store
+                    .set_file_archive(file_id, &location.storage_key, &location.public_url)
+                    .await
+                    .map_err(store_failed)?;
                 tracing::info!(
                     channel_id,
                     message_ts,

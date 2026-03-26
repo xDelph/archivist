@@ -80,6 +80,7 @@ pub(crate) async fn backfill_channel(
             resolved_channel.as_ref(),
             request.cursor.as_deref(),
             oldest_ts.as_deref(),
+            request.resume_from_last_message_ts,
         )
         .await?;
         return Ok(Json(BackfillChannelResponse {
@@ -127,6 +128,7 @@ pub(crate) async fn backfill_channel(
             Some(channel),
             None,
             oldest_ts.as_deref(),
+            request.resume_from_last_message_ts,
         )
         .await?;
         totals.messages_inserted += channel_totals.messages_inserted;
@@ -159,6 +161,7 @@ async fn backfill_single_channel(
     channel: Option<&SlackConversation>,
     cursor: Option<&str>,
     oldest_ts: Option<&str>,
+    resume_from_last_message_ts: bool,
 ) -> Result<(BackfillTotals, Option<String>), (StatusCode, Json<ErrorResponse>)> {
     tracing::info!(
         channel_id,
@@ -176,12 +179,14 @@ async fn backfill_single_channel(
             "incremental backfill runs per public channel and skips already-stored channel messages, but can still miss late replies on older thread roots until a full backfill runs"
         );
     }
+    let include_oldest = resume_from_last_message_ts && cursor.is_none() && oldest_ts.is_some();
     let history = fetch_channel_history(
         &state.slack_api_base_url,
         slack_user_token,
         channel_id,
         cursor,
         oldest_ts,
+        include_oldest,
     )
     .await?;
     tracing::info!(

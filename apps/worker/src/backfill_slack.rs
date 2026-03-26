@@ -201,11 +201,13 @@ pub(super) async fn fetch_channel_history(
     channel_id: &str,
     cursor: Option<&str>,
     oldest_ts: Option<&str>,
+    inclusive: bool,
 ) -> Result<SlackHistoryResponse, (StatusCode, Json<ErrorResponse>)> {
     let endpoint = format!(
         "{}/conversations.history",
         slack_api_base_url.trim_end_matches('/')
     );
+    let inclusive = if inclusive { "true" } else { "false" };
     let response = reqwest::Client::new()
         .get(&endpoint)
         .bearer_auth(slack_user_token)
@@ -213,7 +215,7 @@ pub(super) async fn fetch_channel_history(
             ("channel", channel_id),
             ("cursor", cursor.unwrap_or_default()),
             ("oldest", oldest_ts.unwrap_or_default()),
-            ("inclusive", "false"),
+            ("inclusive", inclusive),
         ])
         .send()
         .await

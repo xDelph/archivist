@@ -8,7 +8,7 @@ use axum::{
     routing::{get, head, put},
 };
 use db::JsonlEventStore;
-use domain::{ChannelKind, EventPayload, ProcessEventJob};
+use domain::{ChannelKind, EventPayload, ProcessEventJob, SharedFile};
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
@@ -385,7 +385,7 @@ async fn backfill_channel_fails_when_file_has_no_archive_and_no_download_url() {
     })))
     .await;
     let router = build_router(
-        store,
+        store.clone(),
         WorkerConfig {
             host: "127.0.0.1".to_owned(),
             port: 4002,
@@ -429,6 +429,12 @@ async fn backfill_channel_fails_when_file_has_no_archive_and_no_download_url() {
         .expect("body");
     let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
     assert_eq!(payload["error"], "missing_file_download_url");
+    let files = store.files().await;
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        files[0].permalink.as_deref(),
+        Some("https://files.example.com/brief.pdf")
+    );
 }
 
 #[tokio::test]
@@ -747,7 +753,7 @@ async fn backfill_channel_resume_from_last_message_ts_uses_latest_stored_message
         HashMap::from([
             ("channel".to_owned(), "C123".to_owned()),
             ("oldest".to_owned(), "1700000000.000001".to_owned()),
-            ("inclusive".to_owned(), "false".to_owned()),
+            ("inclusive".to_owned(), "true".to_owned()),
         ]),
         Json(json!({
             "ok": true,
@@ -808,6 +814,129 @@ async fn backfill_channel_resume_from_last_message_ts_uses_latest_stored_message
 }
 
 #[tokio::test]
+async fn backfill_channel_resume_from_last_message_ts_reprocesses_boundary_files() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "backfill:C123:1700000000.000001".to_owned(),
+            event_time: 1_700_000_000,
+            received_at: 1_700_000_000,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U111".to_owned()),
+                text: Some("existing message".to_owned()),
+                ts: "1700000000.000001".to_owned(),
+                thread_ts: None,
+                files: vec![SharedFile {
+                    id: "F123".to_owned(),
+                    name: "brief.pdf".to_owned(),
+                    mimetype: Some("application/pdf".to_owned()),
+                    permalink: Some("https://files.example.com/brief.pdf".to_owned()),
+                    size: Some(42),
+                }],
+            },
+        })
+        .await
+        .expect("insert existing message");
+    let (slack_api_base_url, state, handle) = spawn_history_archive_server_with_query_assertions(
+        HashMap::from([
+            ("channel".to_owned(), "C123".to_owned()),
+            ("oldest".to_owned(), "1700000000.000001".to_owned()),
+            ("inclusive".to_owned(), "true".to_owned()),
+        ]),
+        Json(json!({
+            "ok": true,
+            "messages": [
+                {
+                    "ts": "1700000000.000001",
+                    "user": "U111",
+                    "text": "existing message",
+                    "files": [
+                        {
+                            "id": "F123",
+                            "name": "brief.pdf",
+                            "mimetype": "application/pdf",
+                            "permalink": "https://files.example.com/brief.pdf",
+                            "url_private_download": "http://placeholder/download/file",
+                            "size": 42
+                        }
+                    ]
+                }
+            ]
+        })),
+    )
+    .await;
+    let router = build_router(
+        store.clone(),
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url: slack_api_base_url.clone(),
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: Some("acct".to_owned()),
+            r2_access_key_id: Some("key".to_owned()),
+            r2_secret_access_key: Some("secret".to_owned()),
+            r2_bucket: Some("bucket".to_owned()),
+            r2_public_url: Some(format!("{slack_api_base_url}/public/")),
+            r2_endpoint_url: Some(slack_api_base_url.clone()),
+            r2_key_prefix: Some("archive".to_owned()),
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "channel_id": "C123",
+                        "resume_from_last_message_ts": true
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(payload["inserted"], 0);
+    assert_eq!(payload["duplicate"], 1);
+
+    let files = store.files().await;
+    assert_eq!(files.len(), 1);
+    let expected_public_url = format!("{slack_api_base_url}/public//archive/C123/F123/brief.pdf");
+    assert_eq!(
+        files[0].permalink.as_deref(),
+        Some(expected_public_url.as_str())
+    );
+
+    let capture = state.upload.lock().await.clone().expect("upload capture");
+    assert_eq!(capture.path, "bucket/archive/C123/F123/brief.pdf");
+    assert_eq!(capture.body, b"hello world");
+    assert_eq!(capture.content_type.as_deref(), Some("application/pdf"));
+}
+
+#[tokio::test]
 async fn backfill_without_channel_id_uses_explicit_oldest_ts_for_each_public_channel() {
     let tempdir = tempdir().expect("tempdir");
     let log_path = tempdir.path().join("events.jsonl");
@@ -817,6 +946,7 @@ async fn backfill_without_channel_id_uses_explicit_oldest_ts_for_each_public_cha
             ("C123".to_owned(), "1700000000.125".to_owned()),
             ("C456".to_owned(), "1700000000.125".to_owned()),
         ]),
+        false,
         HashMap::from([
             (
                 "C123".to_owned(),
@@ -913,6 +1043,7 @@ async fn backfill_without_channel_id_resume_from_last_message_ts_uses_each_chann
             ("C123".to_owned(), "1700000005.000001".to_owned()),
             ("C456".to_owned(), "1700000003.000001".to_owned()),
         ]),
+        true,
         HashMap::from([
             (
                 "C123".to_owned(),
@@ -1252,6 +1383,87 @@ async fn spawn_history_archive_server(
     (base_url, state, handle)
 }
 
+async fn spawn_history_archive_server_with_query_assertions(
+    expected_query: HashMap<String, String>,
+    response: Json<serde_json::Value>,
+) -> (String, MockStorageState, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+    let base_url = format!("http://{address}");
+    let state = MockStorageState::default();
+    let history = rewrite_download_urls(response.0, &base_url);
+    let app = Router::new()
+        .route(
+            "/conversations.history",
+            get({
+                let history = history.clone();
+                move |Query(query): Query<HashMap<String, String>>| {
+                    let history = history.clone();
+                    let expected_query = expected_query.clone();
+                    async move {
+                        for (key, expected) in expected_query {
+                            assert_eq!(
+                                query.get(&key),
+                                Some(&expected),
+                                "query mismatch for {key}"
+                            );
+                        }
+                        Json(history)
+                    }
+                }
+            }),
+        )
+        .route(
+            "/download/file",
+            get(|| async {
+                (
+                    [(reqwest::header::CONTENT_TYPE.as_str(), "application/pdf")],
+                    "hello world",
+                )
+                    .into_response()
+            }),
+        )
+        .route(
+            "/public/{*key}",
+            head(
+                |State(state): State<MockStorageState>, Path(key): Path<String>| async move {
+                    if state.existing_public_keys.lock().await.contains(&key) {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::NOT_FOUND
+                    }
+                },
+            ),
+        )
+        .route(
+            "/{bucket}/{*key}",
+            put(
+                |State(state): State<MockStorageState>,
+                 Path((bucket, key)): Path<(String, String)>,
+                 headers: HeaderMap,
+                 body: Bytes| async move {
+                    *state.upload.lock().await = Some(UploadCapture {
+                        path: format!("{bucket}/{key}"),
+                        body: body.to_vec(),
+                        content_type: headers
+                            .get(reqwest::header::CONTENT_TYPE)
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_owned),
+                    });
+                    StatusCode::OK
+                },
+            ),
+        )
+        .with_state(state.clone());
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server");
+    });
+
+    (base_url, state, handle)
+}
+
 async fn spawn_history_server_with_query_assertions(
     expected_query: HashMap<String, String>,
     response: Json<serde_json::Value>,
@@ -1500,6 +1712,7 @@ async fn spawn_workspace_backfill_server(
 
 async fn spawn_workspace_backfill_server_with_history_assertions(
     expected_oldest_by_channel: HashMap<String, String>,
+    expected_inclusive: bool,
     histories: HashMap<String, serde_json::Value>,
 ) -> (String, JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -1535,7 +1748,10 @@ async fn spawn_workspace_backfill_server_with_history_assertions(
                             query.get("oldest").cloned(),
                             expected_oldest_by_channel.get(&channel_id).cloned()
                         );
-                        assert_eq!(query.get("inclusive").map(String::as_str), Some("false"));
+                        assert_eq!(
+                            query.get("inclusive").map(String::as_str),
+                            Some(if expected_inclusive { "true" } else { "false" })
+                        );
                         let payload = state
                             .histories
                             .lock()
