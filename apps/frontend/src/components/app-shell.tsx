@@ -46,7 +46,7 @@ export function AppShell() {
 						</div>
 					</Link>
 
-					<nav className="hidden items-center rounded-xl border border-(--color-border-subtle) bg-(--surface-ghost-bg) p-1 lg:flex">
+					<nav className="hidden items-center rounded-xl border border-(--color-border-subtle) bg-(--surface-ghost-bg) p-1 sm:flex">
 						{navItems.map((item) => {
 							const isActive = isNavItemActive(pathname, item.to);
 							const isDisabled = !isOnline && item.to !== "/saved";
@@ -115,7 +115,7 @@ export function AppShell() {
 				</main>
 			</div>
 
-			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-(--color-border-subtle) bg-(--color-mobile-nav-bg) px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+			<nav className="fixed inset-x-0 bottom-0 z-30 border-t border-(--color-border-subtle) bg-(--color-mobile-nav-bg) px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">
 				<div className="mx-auto grid max-w-md grid-cols-3 gap-1 py-1.5">
 					{navItems.map((item) => {
 						const Icon = item.icon;
