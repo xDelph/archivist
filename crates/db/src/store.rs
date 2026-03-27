@@ -2,7 +2,7 @@
 use crate::local_store::runtime_database_url;
 use crate::{
     BackfillBatchStats, GeneratedThreadSummaryRow, JsonlEventStore, PgEventStore,
-    SearchDocumentRow, ThreadSummaryRow,
+    SearchDocumentRow, ThreadCardRow, ThreadSummaryRow,
 };
 use domain::{Channel, File, Message, ProcessEventJob, Reaction};
 use std::path::Path;
@@ -155,6 +155,13 @@ impl EventStore {
         match self {
             Self::Local(store) => Ok(store.thread_summaries().await),
             Self::Postgres(store) => store.thread_summaries().await,
+        }
+    }
+
+    pub async fn thread_cards(&self) -> Result<Vec<ThreadCardRow>, StoreError> {
+        match self {
+            Self::Local(store) => Ok(store.thread_cards().await),
+            Self::Postgres(store) => store.thread_cards().await,
         }
     }
 

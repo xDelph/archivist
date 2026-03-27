@@ -1,6 +1,8 @@
 use crate::{
-    GeneratedThreadSummaryRow, RepositoryHealth, SearchDocumentRow, StoreOutcome, ThreadSummaryRow,
+    GeneratedThreadSummaryRow, RepositoryHealth, SearchDocumentRow, StoreOutcome, ThreadCardRow,
+    ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+    thread_card_index::{ThreadCardMap, build_thread_cards},
     thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
@@ -26,6 +28,7 @@ struct InMemoryState {
     reactions: HashSet<ReactionKey>,
     search_documents: SearchDocumentMap,
     thread_summaries: ThreadSummaryMap,
+    thread_cards: ThreadCardMap,
     generated_thread_summaries: HashMap<GeneratedThreadSummaryKey, GeneratedThreadSummaryRow>,
 }
 
@@ -56,6 +59,7 @@ impl InMemoryEventStore {
         state.apply_job(job);
         state.thread_summaries =
             build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_cards = build_thread_cards(&state.messages, &state.thread_summaries);
 
         StoreOutcome::Inserted
     }
@@ -136,6 +140,15 @@ impl InMemoryEventStore {
             (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
         });
         thread_summaries
+    }
+
+    pub async fn thread_cards(&self) -> Vec<ThreadCardRow> {
+        let state = self.state.lock().await;
+        let mut thread_cards = state.thread_cards.values().cloned().collect::<Vec<_>>();
+        thread_cards.sort_by(|left, right| {
+            (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
+        });
+        thread_cards
     }
 
     pub async fn generated_thread_summaries(&self) -> Vec<GeneratedThreadSummaryRow> {

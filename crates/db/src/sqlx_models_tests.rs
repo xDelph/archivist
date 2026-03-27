@@ -1,6 +1,6 @@
 use super::{
     AnalyticsEventRow, ChannelRow, FileRow, MessageRow, ReactionRow, SavedItemRow,
-    SearchDocumentRow, ThreadSummaryRow, UserRow,
+    SearchDocumentRow, ThreadCardRow, ThreadSummaryRow, UserRow,
 };
 
 #[test]
@@ -72,6 +72,19 @@ fn sqlx_rows_cover_core_entities() {
         root_message_at: "2026-03-10T12:00:00Z".to_owned(),
         last_activity_ts: "1700000000.000002".to_owned(),
     };
+    let thread_card = ThreadCardRow {
+        channel_id: "C123".to_owned(),
+        root_ts: message.ts.clone(),
+        author_user_id: Some("U123".to_owned()),
+        title: "hello".to_owned(),
+        preview: "hello".to_owned(),
+        reply_count: 1,
+        participant_count: 2,
+        reaction_count: 1,
+        file_count: 1,
+        root_message_at: "2026-03-10T12:00:00Z".to_owned(),
+        last_activity_ts: "1700000000.000002".to_owned(),
+    };
 
     assert_eq!(reaction.name, "thumbsup");
     assert_eq!(file.name, "brief.pdf");
@@ -81,5 +94,6 @@ fn sqlx_rows_cover_core_entities() {
     assert_eq!(search_document.body, "hello");
     assert_eq!(saved_item.user_id, "U123");
     assert_eq!(thread_summary.participant_count, 2);
+    assert_eq!(thread_card.author_user_id.as_deref(), Some("U123"));
     assert_eq!(analytics_event.event_type, "thread_viewed");
 }

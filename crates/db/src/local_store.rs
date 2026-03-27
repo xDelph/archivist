@@ -1,7 +1,8 @@
 use crate::{
     BackfillBatchStats, GeneratedThreadSummaryRow, RepositoryHealth, SearchDocumentRow, StoreError,
-    StoreOutcome, ThreadSummaryRow,
+    StoreOutcome, ThreadCardRow, ThreadSummaryRow,
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+    thread_card_index::{ThreadCardMap, build_thread_cards},
     thread_summary_index::{ThreadSummaryMap, build_thread_summaries},
 };
 use domain::{Channel, EventPayload, File, Message, ProcessEventJob, Reaction};
@@ -32,6 +33,7 @@ struct StoreState {
     reactions: HashSet<ReactionKey>,
     search_documents: SearchDocumentMap,
     thread_summaries: ThreadSummaryMap,
+    thread_cards: ThreadCardMap,
     generated_thread_summaries: HashMap<GeneratedThreadSummaryKey, GeneratedThreadSummaryRow>,
 }
 
@@ -76,6 +78,7 @@ impl JsonlEventStore {
         state.apply_job(job);
         state.thread_summaries =
             build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_cards = build_thread_cards(&state.messages, &state.thread_summaries);
 
         Ok(StoreOutcome::Inserted)
     }
@@ -168,6 +171,15 @@ impl JsonlEventStore {
         thread_summaries
     }
 
+    pub async fn thread_cards(&self) -> Vec<ThreadCardRow> {
+        let state = self.state.lock().await;
+        let mut thread_cards = state.thread_cards.values().cloned().collect::<Vec<_>>();
+        thread_cards.sort_by(|left, right| {
+            (&left.channel_id, &left.root_ts).cmp(&(&right.channel_id, &right.root_ts))
+        });
+        thread_cards
+    }
+
     pub async fn generated_thread_summaries(&self) -> Vec<GeneratedThreadSummaryRow> {
         let state = self.state.lock().await;
         let mut generated_thread_summaries = state
@@ -185,6 +197,7 @@ impl JsonlEventStore {
         let mut state = self.state.lock().await;
         state.thread_summaries =
             build_thread_summaries(&state.messages, &state.reactions, &state.files);
+        state.thread_cards = build_thread_cards(&state.messages, &state.thread_summaries);
         state.thread_summaries.len()
     }
 
@@ -344,6 +357,7 @@ async fn load_state(path: &Path) -> Result<StoreState, StoreError> {
     }
     state.thread_summaries =
         build_thread_summaries(&state.messages, &state.reactions, &state.files);
+    state.thread_cards = build_thread_cards(&state.messages, &state.thread_summaries);
 
     Ok(state)
 }

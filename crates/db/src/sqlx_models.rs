@@ -70,6 +70,21 @@ pub struct ThreadSummaryRow {
     pub last_activity_ts: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct ThreadCardRow {
+    pub channel_id: String,
+    pub root_ts: String,
+    pub author_user_id: Option<String>,
+    pub title: String,
+    pub preview: String,
+    pub reply_count: i64,
+    pub participant_count: i64,
+    pub reaction_count: i64,
+    pub file_count: i64,
+    pub root_message_at: String,
+    pub last_activity_ts: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, FromRow)]
 pub struct GeneratedThreadSummaryRow {
     pub channel_id: String,

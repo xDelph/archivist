@@ -42,6 +42,31 @@ ON thread_summaries (channel_id, last_activity_at DESC);
 "#
 }
 
+pub const fn create_thread_cards_table_query() -> &'static str {
+    r#"
+CREATE TABLE IF NOT EXISTS thread_cards (
+    channel_id TEXT NOT NULL,
+    root_ts TEXT NOT NULL,
+    author_user_id TEXT,
+    title TEXT NOT NULL,
+    preview TEXT NOT NULL,
+    reply_count BIGINT NOT NULL,
+    participant_count BIGINT NOT NULL,
+    reaction_count BIGINT NOT NULL,
+    file_count BIGINT NOT NULL,
+    root_message_at TIMESTAMPTZ NOT NULL,
+    last_activity_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (channel_id, root_ts)
+);
+
+CREATE INDEX IF NOT EXISTS thread_cards_last_activity_idx
+ON thread_cards (last_activity_at DESC);
+
+CREATE INDEX IF NOT EXISTS thread_cards_channel_activity_idx
+ON thread_cards (channel_id, last_activity_at DESC);
+"#
+}
+
 pub const fn create_generated_thread_summaries_table_query() -> &'static str {
     r#"
 CREATE TABLE IF NOT EXISTS generated_thread_summaries (

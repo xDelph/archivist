@@ -4,7 +4,6 @@ use crate::{
     auth::SessionClaims,
     slack_text,
     thread_preview::{build_generated_summary_lookup, resolve_thread_preview},
-    thread_text::{build_root_message_text_map, lookup_root_message_text},
     view_models::UserSummaryResponse,
 };
 use axum::{
@@ -12,8 +11,8 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
-use db::{GeneratedThreadSummaryRow, ThreadSummaryRow};
-use domain::{Channel, ChannelKind, Message};
+use db::{GeneratedThreadSummaryRow, ThreadCardRow};
+use domain::{Channel, ChannelKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -170,17 +169,14 @@ pub(crate) async fn catch_up(
     let cursor = parse_cursor(query.cursor.as_deref())?;
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let channels = state.store.channels().await.map_err(store_failed)?;
-    let thread_summaries = state.store.thread_summaries().await.map_err(store_failed)?;
-    let messages = state.store.messages().await.map_err(store_failed)?;
     let catch_up = build_catch_up(
         channels,
-        thread_summaries,
+        state.store.thread_cards().await.map_err(store_failed)?,
         state
             .store
             .generated_thread_summaries()
             .await
             .map_err(store_failed)?,
-        messages,
         &state.user_store,
         CatchUpFilters {
             window,
@@ -221,9 +217,8 @@ pub(crate) async fn catch_up(
 
 async fn build_catch_up(
     channels: Vec<Channel>,
-    thread_summaries: Vec<ThreadSummaryRow>,
+    thread_cards: Vec<ThreadCardRow>,
     generated_thread_summaries: Vec<GeneratedThreadSummaryRow>,
-    messages: Vec<Message>,
     user_store: &crate::user_store::UserStore,
     filters: CatchUpFilters<'_>,
     now: i64,
@@ -239,36 +234,16 @@ async fn build_catch_up(
         .map(|channel| (channel.id.clone(), channel))
         .collect::<HashMap<_, _>>();
     let generated_summary_lookup = build_generated_summary_lookup(generated_thread_summaries);
-    let root_texts = build_root_message_text_map(&messages);
-    let root_users = messages
-        .iter()
-        .filter(|message| {
-            message
-                .thread_ts
-                .as_deref()
-                .is_none_or(|thread_ts| thread_ts == message.ts)
-        })
-        .map(|message| {
-            (
-                (message.channel_id.clone(), message.ts.clone()),
-                message.user_id.clone(),
-            )
-        })
-        .collect::<HashMap<_, _>>();
-    let filtered_summaries = thread_summaries
+    let filtered_cards = thread_cards
         .into_iter()
-        .filter(|summary| parse_ts_seconds(&summary.last_activity_ts) >= cutoff)
+        .filter(|card| parse_ts_seconds(&card.last_activity_ts) >= cutoff)
         .collect::<Vec<_>>();
-    let mut user_ids = filtered_summaries
+    let mut user_ids = filtered_cards
         .iter()
-        .filter_map(|summary| {
-            root_users
-                .get(&(summary.channel_id.clone(), summary.root_ts.clone()))
-                .and_then(|user_id| user_id.clone())
-        })
+        .filter_map(|card| card.author_user_id.clone())
         .collect::<std::collections::HashSet<_>>();
     user_ids.extend(slack_text::collect_user_mention_ids(
-        root_texts.values().map(String::as_str).chain(
+        filtered_cards.iter().map(|card| card.title.as_str()).chain(
             generated_summary_lookup
                 .values()
                 .map(|summary| summary.summary.as_str()),
@@ -281,50 +256,46 @@ async fn build_catch_up(
     let mut channel_activity = HashMap::<String, i64>::new();
     let mut items = Vec::<CatchUpThreadItem>::new();
 
-    for summary in filtered_summaries {
-        let last_activity_seconds = parse_ts_seconds(&summary.last_activity_ts);
-        *channel_counts
-            .entry(summary.channel_id.clone())
-            .or_default() += 1;
+    for card in filtered_cards {
+        let last_activity_seconds = parse_ts_seconds(&card.last_activity_ts);
+        *channel_counts.entry(card.channel_id.clone()).or_default() += 1;
         channel_activity
-            .entry(summary.channel_id.clone())
+            .entry(card.channel_id.clone())
             .and_modify(|current| *current = (*current).max(last_activity_seconds))
             .or_insert(last_activity_seconds);
 
-        if channel_filter.is_some_and(|channel_id| channel_id != summary.channel_id) {
+        if channel_filter.is_some_and(|channel_id| channel_id != card.channel_id) {
             continue;
         }
 
-        let root_ts = summary.root_ts.clone();
-        let root_text = lookup_root_message_text(&root_texts, &summary.channel_id, &root_ts);
         let preview =
-            resolve_thread_preview(&generated_summary_lookup, &summary.channel_id, &root_ts);
+            resolve_thread_preview(&generated_summary_lookup, &card.channel_id, &card.root_ts);
         let channel_name = channel_metadata
-            .get(&summary.channel_id)
+            .get(&card.channel_id)
             .and_then(|channel| channel.name.clone());
         let response = CatchUpThreadResponse {
-            id: format!("{}:{}", summary.channel_id, root_ts),
-            channel_id: summary.channel_id.clone(),
+            id: format!("{}:{}", card.channel_id, card.root_ts),
+            channel_id: card.channel_id.clone(),
             channel_name,
-            author: root_users
-                .get(&(summary.channel_id.clone(), root_ts.clone()))
-                .and_then(|user_id| user_id.as_ref())
+            author: card
+                .author_user_id
+                .as_ref()
                 .and_then(|user_id| users.get(user_id))
                 .cloned()
                 .map(Into::into),
-            root_ts,
-            title: slack_text::render_slack_text(&root_text, &users, &channel_names),
-            preview: slack_text::render_slack_text(&root_text, &users, &channel_names),
+            root_ts: card.root_ts.clone(),
+            title: slack_text::render_slack_text(&card.title, &users, &channel_names),
+            preview: slack_text::render_slack_text(&card.preview, &users, &channel_names),
             summary_preview: preview
                 .text
                 .as_deref()
                 .map(|text| slack_text::render_slack_text(text, &users, &channel_names)),
             preview_source: preview.source.to_owned(),
-            reply_count: summary.reply_count,
-            participant_count: summary.participant_count,
-            reaction_count: summary.reaction_count,
-            file_count: summary.file_count,
-            last_activity_ts: summary.last_activity_ts,
+            reply_count: card.reply_count,
+            participant_count: card.participant_count,
+            reaction_count: card.reaction_count,
+            file_count: card.file_count,
+            last_activity_ts: card.last_activity_ts,
         };
 
         items.push(CatchUpThreadItem {

@@ -1,8 +1,9 @@
 use crate::{
-    PgEventStore, SearchDocumentRow, StoreError, ThreadSummaryRow,
-    pg_materialized::{upsert_search_document, upsert_thread_summary},
+    PgEventStore, SearchDocumentRow, StoreError, ThreadCardRow, ThreadSummaryRow,
+    pg_materialized::{upsert_search_document, upsert_thread_card, upsert_thread_summary},
     pg_support::{map_message_row, normalize_empty, parse_channel_kind},
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+    thread_card_index::build_thread_cards,
     thread_summary_index::build_thread_summaries,
 };
 use domain::{Channel, File, Reaction};
@@ -202,6 +203,52 @@ impl PgEventStore {
             .collect())
     }
 
+    pub async fn thread_cards(&self) -> Result<Vec<ThreadCardRow>, StoreError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                channel_id,
+                root_ts,
+                author_user_id,
+                title,
+                preview,
+                reply_count,
+                participant_count,
+                reaction_count,
+                file_count,
+                to_char(
+                    EXTRACT(EPOCH FROM root_message_at),
+                    'FM999999999999999.000000'
+                ) AS root_message_at,
+                to_char(
+                    EXTRACT(EPOCH FROM last_activity_at),
+                    'FM999999999999999.000000'
+                ) AS last_activity_ts
+            FROM thread_cards
+            ORDER BY channel_id ASC, root_ts ASC
+            "#,
+        )
+        .fetch_all(&self.pool())
+        .await
+        .map_err(StoreError::Sqlx)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| ThreadCardRow {
+                channel_id: row.get("channel_id"),
+                root_ts: row.get("root_ts"),
+                author_user_id: row.get("author_user_id"),
+                title: row.get("title"),
+                preview: row.get("preview"),
+                reply_count: row.get("reply_count"),
+                participant_count: row.get("participant_count"),
+                reaction_count: row.get("reaction_count"),
+                file_count: row.get("file_count"),
+                root_message_at: row.get("root_message_at"),
+                last_activity_ts: row.get("last_activity_ts"),
+            })
+            .collect())
+    }
+
     pub async fn refresh_thread_summaries(&self) -> Result<usize, StoreError> {
         let messages = self.messages().await?;
         let reactions = self.reactions().await?;
@@ -235,6 +282,7 @@ impl PgEventStore {
             })
             .collect::<HashMap<FileKey, _>>();
         let thread_summaries = build_thread_summaries(&message_map, &reaction_set, &file_map);
+        let thread_cards = build_thread_cards(&message_map, &thread_summaries);
         let mut search_documents = SearchDocumentMap::new();
         for summary in thread_summaries.values() {
             refresh_search_documents(
@@ -259,6 +307,13 @@ impl PgEventStore {
             .map_err(StoreError::Sqlx)?;
         for row in thread_summaries.values() {
             upsert_thread_summary(&mut tx, row).await?;
+        }
+        sqlx::query("DELETE FROM thread_cards")
+            .execute(&mut *tx)
+            .await
+            .map_err(StoreError::Sqlx)?;
+        for row in thread_cards.values() {
+            upsert_thread_card(&mut tx, row).await?;
         }
         tx.commit().await.map_err(StoreError::Sqlx)?;
         Ok(thread_summaries.len())

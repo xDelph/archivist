@@ -1,7 +1,7 @@
 use super::{
     backfill_search_documents_query, create_generated_thread_summaries_table_query,
     create_saved_items_table_query, create_search_documents_table_query,
-    create_thread_summaries_table_query,
+    create_thread_cards_table_query, create_thread_summaries_table_query,
 };
 
 #[test]
@@ -37,6 +37,18 @@ fn thread_summary_schema_creates_activity_indexes() {
     assert!(schema.contains("last_activity_at TIMESTAMPTZ NOT NULL"));
     assert!(schema.contains("thread_summaries_last_activity_idx"));
     assert!(schema.contains("thread_summaries_channel_activity_idx"));
+}
+
+#[test]
+fn thread_card_schema_creates_activity_indexes() {
+    let schema = create_thread_cards_table_query();
+
+    assert!(schema.contains("CREATE TABLE IF NOT EXISTS thread_cards"));
+    assert!(schema.contains("author_user_id TEXT"));
+    assert!(schema.contains("title TEXT NOT NULL"));
+    assert!(schema.contains("preview TEXT NOT NULL"));
+    assert!(schema.contains("thread_cards_last_activity_idx"));
+    assert!(schema.contains("thread_cards_channel_activity_idx"));
 }
 
 #[test]

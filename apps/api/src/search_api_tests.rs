@@ -8,11 +8,36 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use db::{GeneratedThreadSummaryRow, JsonlEventStore, SearchDocumentRow, ThreadSummaryRow};
+use db::{GeneratedThreadSummaryRow, JsonlEventStore, SearchDocumentRow, ThreadCardRow};
 use domain::{ChannelKind, EventPayload, ProcessEventJob};
 use search::SearchSort;
 use tempfile::tempdir;
 use tower::util::ServiceExt;
+
+fn thread_card(
+    channel_id: &str,
+    root_ts: &str,
+    author_user_id: Option<&str>,
+    title: &str,
+    metrics: (i64, i64, i64, i64),
+    last_activity_ts: &str,
+) -> ThreadCardRow {
+    let (reply_count, participant_count, reaction_count, file_count) = metrics;
+
+    ThreadCardRow {
+        channel_id: channel_id.to_owned(),
+        root_ts: root_ts.to_owned(),
+        author_user_id: author_user_id.map(str::to_owned),
+        title: title.to_owned(),
+        preview: title.to_owned(),
+        reply_count,
+        participant_count,
+        reaction_count,
+        file_count,
+        root_message_at: root_ts.to_owned(),
+        last_activity_ts: last_activity_ts.to_owned(),
+    }
+}
 
 #[test]
 fn parse_search_query_requires_query_text() {
@@ -58,27 +83,22 @@ fn build_search_results_respects_filters_and_sorting() {
             },
         ],
         vec![
-            domain::Message {
-                channel_id: "C123".to_owned(),
-                ts: "1700000200.000001".to_owned(),
-                thread_ts: None,
-                user_id: Some("U123".to_owned()),
-                text: "release notes are ready".to_owned(),
-            },
-            domain::Message {
-                channel_id: "C123".to_owned(),
-                ts: "1700000300.000001".to_owned(),
-                thread_ts: Some("1700000200.000001".to_owned()),
-                user_id: Some("U123".to_owned()),
-                text: "release notes include search improvements".to_owned(),
-            },
-            domain::Message {
-                channel_id: "C999".to_owned(),
-                ts: "1700000400.000001".to_owned(),
-                thread_ts: None,
-                user_id: Some("U999".to_owned()),
-                text: "release notes in another channel".to_owned(),
-            },
+            thread_card(
+                "C123",
+                "1700000200.000001",
+                Some("U123"),
+                "release notes are ready",
+                (1, 2, 3, 4),
+                "1700000300",
+            ),
+            thread_card(
+                "C999",
+                "1700000400.000001",
+                Some("U999"),
+                "release notes in another channel",
+                (0, 1, 0, 0),
+                "1700000400",
+            ),
         ],
         vec![
             SearchDocumentRow {
@@ -104,28 +124,6 @@ fn build_search_results_respects_filters_and_sorting() {
                 title: Some("release notes in another channel".to_owned()),
                 body: "release notes in another channel".to_owned(),
                 message_occurred_at: "1700000400".to_owned(),
-            },
-        ],
-        vec![
-            ThreadSummaryRow {
-                channel_id: "C123".to_owned(),
-                root_ts: "1700000200.000001".to_owned(),
-                reply_count: 1,
-                participant_count: 2,
-                reaction_count: 3,
-                file_count: 4,
-                root_message_at: "1700000200".to_owned(),
-                last_activity_ts: "1700000300".to_owned(),
-            },
-            ThreadSummaryRow {
-                channel_id: "C999".to_owned(),
-                root_ts: "1700000400.000001".to_owned(),
-                reply_count: 0,
-                participant_count: 1,
-                reaction_count: 0,
-                file_count: 0,
-                root_message_at: "1700000400".to_owned(),
-                last_activity_ts: "1700000400".to_owned(),
             },
         ],
         vec![],
@@ -166,22 +164,14 @@ fn build_search_results_returns_one_item_per_thread() {
             kind: domain::ChannelKind::Public,
             is_archived: false,
         }],
-        vec![
-            domain::Message {
-                channel_id: "C123".to_owned(),
-                ts: "1700000200.000001".to_owned(),
-                thread_ts: None,
-                user_id: Some("U123".to_owned()),
-                text: "release plan".to_owned(),
-            },
-            domain::Message {
-                channel_id: "C123".to_owned(),
-                ts: "1700000300.000001".to_owned(),
-                thread_ts: Some("1700000200.000001".to_owned()),
-                user_id: Some("U456".to_owned()),
-                text: "release checklist".to_owned(),
-            },
-        ],
+        vec![thread_card(
+            "C123",
+            "1700000200.000001",
+            Some("U123"),
+            "release plan",
+            (1, 2, 0, 0),
+            "1700000300",
+        )],
         vec![
             SearchDocumentRow {
                 channel_id: "C123".to_owned(),
@@ -200,16 +190,6 @@ fn build_search_results_returns_one_item_per_thread() {
                 message_occurred_at: "1700000300".to_owned(),
             },
         ],
-        vec![ThreadSummaryRow {
-            channel_id: "C123".to_owned(),
-            root_ts: "1700000200.000001".to_owned(),
-            reply_count: 1,
-            participant_count: 2,
-            reaction_count: 0,
-            file_count: 0,
-            root_message_at: "1700000200".to_owned(),
-            last_activity_ts: "1700000300".to_owned(),
-        }],
         vec![],
         &query,
     );
@@ -240,22 +220,14 @@ fn build_search_results_keeps_latest_match_for_date_sort() {
             kind: domain::ChannelKind::Public,
             is_archived: false,
         }],
-        vec![
-            domain::Message {
-                channel_id: "C123".to_owned(),
-                ts: "1700000200.000001".to_owned(),
-                thread_ts: None,
-                user_id: Some("U123".to_owned()),
-                text: "release plan".to_owned(),
-            },
-            domain::Message {
-                channel_id: "C123".to_owned(),
-                ts: "1700000300.000001".to_owned(),
-                thread_ts: Some("1700000200.000001".to_owned()),
-                user_id: Some("U456".to_owned()),
-                text: "release checklist".to_owned(),
-            },
-        ],
+        vec![thread_card(
+            "C123",
+            "1700000200.000001",
+            Some("U123"),
+            "release plan",
+            (1, 2, 0, 0),
+            "1700000300",
+        )],
         vec![
             SearchDocumentRow {
                 channel_id: "C123".to_owned(),
@@ -274,16 +246,6 @@ fn build_search_results_keeps_latest_match_for_date_sort() {
                 message_occurred_at: "1700000300".to_owned(),
             },
         ],
-        vec![ThreadSummaryRow {
-            channel_id: "C123".to_owned(),
-            root_ts: "1700000200.000001".to_owned(),
-            reply_count: 1,
-            participant_count: 2,
-            reaction_count: 0,
-            file_count: 0,
-            root_message_at: "1700000200".to_owned(),
-            last_activity_ts: "1700000300".to_owned(),
-        }],
         vec![],
         &query,
     );
@@ -323,20 +285,22 @@ fn build_search_results_sorts_threads_by_reactions() {
             },
         ],
         vec![
-            domain::Message {
-                channel_id: "C123".to_owned(),
-                ts: "1700000200.000001".to_owned(),
-                thread_ts: None,
-                user_id: Some("U123".to_owned()),
-                text: "release plan".to_owned(),
-            },
-            domain::Message {
-                channel_id: "C999".to_owned(),
-                ts: "1700000400.000001".to_owned(),
-                thread_ts: None,
-                user_id: Some("U999".to_owned()),
-                text: "release retro".to_owned(),
-            },
+            thread_card(
+                "C123",
+                "1700000200.000001",
+                Some("U123"),
+                "release plan",
+                (4, 3, 1, 0),
+                "1700000300",
+            ),
+            thread_card(
+                "C999",
+                "1700000400.000001",
+                Some("U999"),
+                "release retro",
+                (1, 2, 5, 0),
+                "1700000500",
+            ),
         ],
         vec![
             SearchDocumentRow {
@@ -354,28 +318,6 @@ fn build_search_results_sorts_threads_by_reactions() {
                 title: Some("release retro".to_owned()),
                 body: "release retro".to_owned(),
                 message_occurred_at: "1700000400".to_owned(),
-            },
-        ],
-        vec![
-            ThreadSummaryRow {
-                channel_id: "C123".to_owned(),
-                root_ts: "1700000200.000001".to_owned(),
-                reply_count: 4,
-                participant_count: 3,
-                reaction_count: 1,
-                file_count: 0,
-                root_message_at: "1700000200".to_owned(),
-                last_activity_ts: "1700000300".to_owned(),
-            },
-            ThreadSummaryRow {
-                channel_id: "C999".to_owned(),
-                root_ts: "1700000400.000001".to_owned(),
-                reply_count: 1,
-                participant_count: 2,
-                reaction_count: 5,
-                file_count: 0,
-                root_message_at: "1700000400".to_owned(),
-                last_activity_ts: "1700000500".to_owned(),
             },
         ],
         vec![],
@@ -406,13 +348,14 @@ fn build_search_results_uses_ai_summary_preview_when_available() {
             kind: domain::ChannelKind::Public,
             is_archived: false,
         }],
-        vec![domain::Message {
-            channel_id: "C123".to_owned(),
-            ts: "1700000200.000001".to_owned(),
-            thread_ts: None,
-            user_id: Some("U123".to_owned()),
-            text: "release plan".to_owned(),
-        }],
+        vec![thread_card(
+            "C123",
+            "1700000200.000001",
+            Some("U123"),
+            "release plan",
+            (0, 1, 0, 0),
+            "1700000200",
+        )],
         vec![SearchDocumentRow {
             channel_id: "C123".to_owned(),
             root_ts: "1700000200.000001".to_owned(),
@@ -420,16 +363,6 @@ fn build_search_results_uses_ai_summary_preview_when_available() {
             title: Some("release plan".to_owned()),
             body: "release plan".to_owned(),
             message_occurred_at: "1700000200".to_owned(),
-        }],
-        vec![ThreadSummaryRow {
-            channel_id: "C123".to_owned(),
-            root_ts: "1700000200.000001".to_owned(),
-            reply_count: 0,
-            participant_count: 1,
-            reaction_count: 0,
-            file_count: 0,
-            root_message_at: "1700000200".to_owned(),
-            last_activity_ts: "1700000200".to_owned(),
         }],
         vec![GeneratedThreadSummaryRow {
             channel_id: "C123".to_owned(),

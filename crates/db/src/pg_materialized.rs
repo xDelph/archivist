@@ -1,7 +1,8 @@
 use crate::{
-    SearchDocumentRow, StoreError, ThreadSummaryRow,
+    SearchDocumentRow, StoreError, ThreadCardRow, ThreadSummaryRow,
     pg_support::{map_message_row, normalize_empty, slack_ts_seconds},
     search_index::{MessageMap, SearchDocumentMap, refresh_search_documents},
+    thread_card_index::build_thread_card,
     thread_summary_index::build_thread_summaries,
 };
 use domain::{File, Reaction};
@@ -79,6 +80,17 @@ pub(crate) async fn refresh_thread_views(
         .execute(&mut **tx)
         .await
         .map_err(StoreError::Sqlx)?;
+        sqlx::query(
+            r#"
+            DELETE FROM thread_cards
+            WHERE channel_id = $1 AND root_ts = $2
+            "#,
+        )
+        .bind(channel_id)
+        .bind(root_ts)
+        .execute(&mut **tx)
+        .await
+        .map_err(StoreError::Sqlx)?;
         return Ok(());
     }
 
@@ -115,6 +127,24 @@ pub(crate) async fn refresh_thread_views(
     .map_err(StoreError::Sqlx)?;
     if let Some(row) = summary.as_ref() {
         upsert_thread_summary(tx, row).await?;
+    }
+    sqlx::query(
+        r#"
+        DELETE FROM thread_cards
+        WHERE channel_id = $1 AND root_ts = $2
+        "#,
+    )
+    .bind(channel_id)
+    .bind(root_ts)
+    .execute(&mut **tx)
+    .await
+    .map_err(StoreError::Sqlx)?;
+    if let Some(row) = summary.as_ref().and_then(|summary| {
+        message_map
+            .get(&root_key)
+            .map(|root| build_thread_card(root, summary))
+    }) {
+        upsert_thread_card(tx, &row).await?;
     }
 
     Ok(())
@@ -200,6 +230,57 @@ pub(crate) async fn upsert_thread_summary(
     .bind(row.reaction_count)
     .bind(row.file_count)
     .bind(slack_ts_seconds(&row.root_ts))
+    .bind(slack_ts_seconds(&row.last_activity_ts))
+    .execute(&mut **tx)
+    .await
+    .map_err(StoreError::Sqlx)?;
+
+    Ok(())
+}
+
+pub(crate) async fn upsert_thread_card(
+    tx: &mut Transaction<'_, sqlx::Postgres>,
+    row: &ThreadCardRow,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        r#"
+        INSERT INTO thread_cards (
+            channel_id,
+            root_ts,
+            author_user_id,
+            title,
+            preview,
+            reply_count,
+            participant_count,
+            reaction_count,
+            file_count,
+            root_message_at,
+            last_activity_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10), to_timestamp($11))
+        ON CONFLICT (channel_id, root_ts) DO UPDATE
+        SET author_user_id = EXCLUDED.author_user_id,
+            title = EXCLUDED.title,
+            preview = EXCLUDED.preview,
+            reply_count = EXCLUDED.reply_count,
+            participant_count = EXCLUDED.participant_count,
+            reaction_count = EXCLUDED.reaction_count,
+            file_count = EXCLUDED.file_count,
+            root_message_at = EXCLUDED.root_message_at,
+            last_activity_at = EXCLUDED.last_activity_at,
+            updated_at = now()
+        "#,
+    )
+    .bind(&row.channel_id)
+    .bind(&row.root_ts)
+    .bind(&row.author_user_id)
+    .bind(&row.title)
+    .bind(&row.preview)
+    .bind(row.reply_count)
+    .bind(row.participant_count)
+    .bind(row.reaction_count)
+    .bind(row.file_count)
+    .bind(slack_ts_seconds(&row.root_message_at))
     .bind(slack_ts_seconds(&row.last_activity_ts))
     .execute(&mut **tx)
     .await

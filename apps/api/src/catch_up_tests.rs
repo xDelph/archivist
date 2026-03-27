@@ -8,7 +8,7 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use db::{JsonlEventStore, ThreadSummaryRow};
+use db::{JsonlEventStore, ThreadCardRow};
 use domain::{ChannelKind, EventPayload, ProcessEventJob, SharedFile};
 use tempfile::tempdir;
 use tower::util::ServiceExt;
@@ -18,10 +18,13 @@ async fn build_catch_up_filters_to_the_requested_window() {
     let now = 1_700_000_000;
     let tempdir = tempdir().expect("tempdir");
     let channels = vec![];
-    let summaries = vec![
-        ThreadSummaryRow {
+    let cards = vec![
+        ThreadCardRow {
             channel_id: "C123".to_owned(),
             root_ts: format!("{}.000001", now - 60),
+            author_user_id: None,
+            title: "(no text)".to_owned(),
+            preview: "(no text)".to_owned(),
             reply_count: 0,
             participant_count: 1,
             reaction_count: 0,
@@ -29,9 +32,12 @@ async fn build_catch_up_filters_to_the_requested_window() {
             root_message_at: format!("{}.000001", now - 60),
             last_activity_ts: format!("{}.000001", now - 60),
         },
-        ThreadSummaryRow {
+        ThreadCardRow {
             channel_id: "C123".to_owned(),
             root_ts: format!("{}.000001", now - (8 * DAY_SECONDS)),
+            author_user_id: None,
+            title: "Old thread".to_owned(),
+            preview: "Old thread".to_owned(),
             reply_count: 0,
             participant_count: 1,
             reaction_count: 0,
@@ -43,8 +49,7 @@ async fn build_catch_up_filters_to_the_requested_window() {
 
     let catch_up = build_catch_up(
         channels,
-        summaries,
-        vec![],
+        cards,
         vec![],
         &crate::user_store::LocalUserStore::open(tempdir.path().join("synced-users.json"))
             .await

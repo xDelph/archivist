@@ -1,9 +1,5 @@
 use crate::{
-    AppState,
-    analytics::record_analytics,
-    auth::SessionClaims,
-    slack_text,
-    thread_preview::{build_generated_summary_lookup, resolve_thread_preview},
+    AppState, analytics::record_analytics, auth::SessionClaims, slack_text,
     view_models::UserSummaryResponse,
 };
 use axum::{
@@ -11,11 +7,11 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
 };
-use db::{GeneratedThreadSummaryRow, SearchDocumentRow, ThreadSummaryRow};
-use domain::{Channel, Message};
 use search::{SearchFilters, SearchQuery, SearchSort, normalize_query_text};
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashSet;
+
+pub(crate) use crate::search_results::build_search_results;
 
 const DEFAULT_LIMIT: usize = 20;
 const MAX_LIMIT: usize = 100;
@@ -65,31 +61,6 @@ pub(crate) struct ErrorResponse {
     error: &'static str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SearchResult {
-    id: String,
-    thread_id: String,
-    channel_id: String,
-    channel_name: Option<String>,
-    author_id: Option<String>,
-    root_ts: String,
-    root_seconds: i64,
-    message_ts: String,
-    message_seconds: i64,
-    title: String,
-    preview: String,
-    snippet: String,
-    summary_preview: Option<String>,
-    preview_source: &'static str,
-    last_activity_ts: String,
-    last_activity_seconds: i64,
-    reply_count: usize,
-    participant_count: usize,
-    reaction_count: usize,
-    file_count: usize,
-    score: usize,
-}
-
 pub(crate) async fn search(
     State(state): State<AppState>,
     Extension(claims): Extension<SessionClaims>,
@@ -101,9 +72,8 @@ pub(crate) async fn search(
     let channels = state.store.channels().await.map_err(store_failed)?;
     let items = build_search_results(
         channels.clone(),
-        state.store.messages().await.map_err(store_failed)?,
+        state.store.thread_cards().await.map_err(store_failed)?,
         state.store.search_documents().await.map_err(store_failed)?,
-        state.store.thread_summaries().await.map_err(store_failed)?,
         state
             .store
             .generated_thread_summaries()
@@ -115,7 +85,7 @@ pub(crate) async fn search(
     let mut user_ids = items
         .iter()
         .filter_map(|item| item.author_id.clone())
-        .collect::<std::collections::HashSet<_>>();
+        .collect::<HashSet<_>>();
     user_ids.extend(slack_text::collect_user_mention_ids(
         items
             .iter()
@@ -240,315 +210,6 @@ fn parse_cursor(cursor: Option<&str>) -> Result<usize, (StatusCode, Json<ErrorRe
             )
         })
         .map(|value| value.unwrap_or_default())
-}
-
-fn build_search_results(
-    channels: Vec<Channel>,
-    messages: Vec<Message>,
-    search_documents: Vec<SearchDocumentRow>,
-    thread_summaries: Vec<ThreadSummaryRow>,
-    generated_thread_summaries: Vec<GeneratedThreadSummaryRow>,
-    query: &SearchQuery,
-) -> Vec<SearchResult> {
-    let channel_names = channels
-        .into_iter()
-        .map(|channel| (channel.id, channel.name))
-        .collect::<HashMap<_, _>>();
-    let roots = messages
-        .iter()
-        .filter(|message| message.thread_ts.is_none())
-        .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
-        .collect::<HashMap<_, _>>();
-    let message_lookup = messages
-        .iter()
-        .map(|message| ((message.channel_id.clone(), message.ts.clone()), message))
-        .collect::<HashMap<_, _>>();
-    let summary_lookup = thread_summaries
-        .into_iter()
-        .map(|summary| {
-            (
-                (summary.channel_id.clone(), summary.root_ts.clone()),
-                summary,
-            )
-        })
-        .collect::<HashMap<_, _>>();
-    let generated_summary_lookup = build_generated_summary_lookup(generated_thread_summaries);
-    let tokens = query
-        .text
-        .split_whitespace()
-        .map(str::to_lowercase)
-        .collect::<Vec<_>>();
-    let date_from = query
-        .filters
-        .date_from
-        .as_deref()
-        .and_then(parse_ts_seconds);
-    let date_to = query.filters.date_to.as_deref().and_then(parse_ts_seconds);
-
-    let mut grouped = HashMap::<(String, String), SearchResult>::new();
-
-    for candidate in search_documents.iter().filter_map(|document| {
-        if !query.filters.channel_ids.is_empty()
-            && !query.filters.channel_ids.contains(&document.channel_id)
-        {
-            return None;
-        }
-
-        let message_seconds = parse_ts_seconds(&document.message_ts)?;
-        if date_from.is_some_and(|date_from| message_seconds < date_from)
-            || date_to.is_some_and(|date_to| message_seconds > date_to)
-        {
-            return None;
-        }
-
-        let score = score_document(document.title.as_deref(), &document.body, &tokens);
-        if score == 0 {
-            return None;
-        }
-
-        let message =
-            message_lookup.get(&(document.channel_id.clone(), document.message_ts.clone()));
-        let root_ts = message
-            .and_then(|message| message.thread_ts.clone())
-            .unwrap_or_else(|| document.message_ts.clone());
-        let root = roots
-            .get(&(document.channel_id.clone(), root_ts.clone()))
-            .copied()
-            .or(message.copied());
-        let summary = summary_lookup.get(&(document.channel_id.clone(), root_ts.clone()));
-        let preview =
-            resolve_thread_preview(&generated_summary_lookup, &document.channel_id, &root_ts);
-        let root_text = root
-            .map(|root| normalize_query_text(&root.text))
-            .or_else(|| document.title.clone())
-            .unwrap_or_else(|| normalize_query_text(&document.body));
-        let last_activity_ts = summary
-            .map(|summary| summary.last_activity_ts.clone())
-            .unwrap_or_else(|| document.message_ts.clone());
-
-        Some(SearchResult {
-            id: format!("{}:{root_ts}", document.channel_id),
-            thread_id: format!("{}:{root_ts}", document.channel_id),
-            channel_id: document.channel_id.clone(),
-            channel_name: channel_names
-                .get(&document.channel_id)
-                .cloned()
-                .unwrap_or_default(),
-            author_id: root.and_then(|root| root.user_id.clone()),
-            root_ts: root_ts.clone(),
-            root_seconds: parse_ts_seconds(&root_ts).unwrap_or(message_seconds),
-            message_ts: document.message_ts.clone(),
-            message_seconds,
-            title: root_text.clone(),
-            preview: root_text,
-            snippet: build_snippet(&document.body, &tokens),
-            summary_preview: preview.text,
-            preview_source: preview.source,
-            last_activity_seconds: parse_ts_seconds(&last_activity_ts).unwrap_or(message_seconds),
-            last_activity_ts,
-            reply_count: summary.map_or(0, |summary| as_count(summary.reply_count)),
-            participant_count: summary.map_or(0, |summary| as_count(summary.participant_count)),
-            reaction_count: summary.map_or(0, |summary| as_count(summary.reaction_count)),
-            file_count: summary.map_or(0, |summary| as_count(summary.file_count)),
-            score,
-        })
-    }) {
-        let key = (candidate.channel_id.clone(), candidate.root_ts.clone());
-        match grouped.get_mut(&key) {
-            Some(existing) => merge_search_results(existing, candidate, query.sort),
-            None => {
-                grouped.insert(key, candidate);
-            }
-        }
-    }
-
-    let mut results = grouped.into_values().collect::<Vec<_>>();
-
-    results.sort_by(|left, right| match query.sort {
-        SearchSort::Relevance => compare_relevance(left, right),
-        SearchSort::Date => compare_date(left, right),
-        SearchSort::Replies => compare_replies(left, right),
-        SearchSort::Reactions => compare_reactions(left, right),
-        SearchSort::People => compare_people(left, right),
-    });
-    results
-}
-
-fn merge_search_results(existing: &mut SearchResult, candidate: SearchResult, sort: SearchSort) {
-    let should_replace = match sort {
-        SearchSort::Relevance => compare_relevance(&candidate, existing) == Ordering::Less,
-        SearchSort::Date | SearchSort::Replies | SearchSort::Reactions | SearchSort::People => {
-            compare_latest_match(&candidate, existing) == Ordering::Less
-        }
-    };
-    existing.score += candidate.score;
-
-    if should_replace {
-        existing.id = candidate.id;
-        existing.message_ts = candidate.message_ts;
-        existing.message_seconds = candidate.message_seconds;
-        existing.snippet = candidate.snippet;
-        existing.summary_preview = candidate.summary_preview;
-        existing.preview_source = candidate.preview_source;
-        existing.author_id = candidate.author_id;
-    }
-}
-
-fn compare_relevance(left: &SearchResult, right: &SearchResult) -> Ordering {
-    (
-        right.score,
-        right.message_seconds,
-        right.root_seconds,
-        right.message_ts.as_str(),
-    )
-        .cmp(&(
-            left.score,
-            left.message_seconds,
-            left.root_seconds,
-            left.message_ts.as_str(),
-        ))
-}
-
-fn compare_latest_match(left: &SearchResult, right: &SearchResult) -> Ordering {
-    (
-        right.message_seconds,
-        right.score,
-        right.root_seconds,
-        right.message_ts.as_str(),
-    )
-        .cmp(&(
-            left.message_seconds,
-            left.score,
-            left.root_seconds,
-            left.message_ts.as_str(),
-        ))
-}
-
-fn compare_date(left: &SearchResult, right: &SearchResult) -> Ordering {
-    (
-        right.last_activity_seconds,
-        right.root_seconds,
-        right.reply_count,
-        right.reaction_count,
-        right.participant_count,
-        left.thread_id.as_str(),
-    )
-        .cmp(&(
-            left.last_activity_seconds,
-            left.root_seconds,
-            left.reply_count,
-            left.reaction_count,
-            left.participant_count,
-            right.thread_id.as_str(),
-        ))
-}
-
-fn compare_replies(left: &SearchResult, right: &SearchResult) -> Ordering {
-    (
-        right.reply_count,
-        right.reaction_count,
-        right.participant_count,
-        right.last_activity_seconds,
-        right.root_seconds,
-        left.thread_id.as_str(),
-    )
-        .cmp(&(
-            left.reply_count,
-            left.reaction_count,
-            left.participant_count,
-            left.last_activity_seconds,
-            left.root_seconds,
-            right.thread_id.as_str(),
-        ))
-}
-
-fn compare_reactions(left: &SearchResult, right: &SearchResult) -> Ordering {
-    (
-        right.reaction_count,
-        right.reply_count,
-        right.participant_count,
-        right.last_activity_seconds,
-        right.root_seconds,
-        left.thread_id.as_str(),
-    )
-        .cmp(&(
-            left.reaction_count,
-            left.reply_count,
-            left.participant_count,
-            left.last_activity_seconds,
-            left.root_seconds,
-            right.thread_id.as_str(),
-        ))
-}
-
-fn compare_people(left: &SearchResult, right: &SearchResult) -> Ordering {
-    (
-        right.participant_count,
-        right.reply_count,
-        right.reaction_count,
-        right.last_activity_seconds,
-        right.root_seconds,
-        left.thread_id.as_str(),
-    )
-        .cmp(&(
-            left.participant_count,
-            left.reply_count,
-            left.reaction_count,
-            left.last_activity_seconds,
-            left.root_seconds,
-            right.thread_id.as_str(),
-        ))
-}
-
-fn score_document(title: Option<&str>, body: &str, tokens: &[String]) -> usize {
-    let mut score = score_text(body, tokens);
-    if let Some(title) = title {
-        score += score_text(title, tokens) * 2;
-    }
-    score
-}
-
-fn score_text(value: &str, tokens: &[String]) -> usize {
-    let haystack = value.to_lowercase();
-    let mut score = 0;
-    for token in tokens {
-        if haystack.contains(token) {
-            score += haystack.matches(token).count();
-        }
-    }
-    if !tokens.is_empty() && haystack.contains(&tokens.join(" ")) {
-        score += 2;
-    }
-    score
-}
-
-fn build_snippet(message: &str, tokens: &[String]) -> String {
-    let normalized = normalize_query_text(message);
-    if normalized.is_empty() {
-        return "(no text)".to_owned();
-    }
-
-    let lowercase = normalized.to_lowercase();
-    let start = tokens
-        .iter()
-        .filter_map(|token| lowercase.find(token))
-        .min()
-        .unwrap_or(0);
-    let snippet = normalized.chars().skip(start).take(120).collect::<String>();
-
-    if start > 0 {
-        format!("...{snippet}")
-    } else {
-        snippet
-    }
-}
-
-fn parse_ts_seconds(value: &str) -> Option<i64> {
-    value.split('.').next()?.parse().ok()
-}
-
-fn as_count(value: i64) -> usize {
-    value.max(0) as usize
 }
 
 fn store_failed(_error: db::StoreError) -> (StatusCode, Json<ErrorResponse>) {

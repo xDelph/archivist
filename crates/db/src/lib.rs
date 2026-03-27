@@ -13,6 +13,7 @@ mod sqlx_models;
 mod sqlx_queries;
 mod sqlx_schema;
 mod store;
+mod thread_card_index;
 mod thread_summary_index;
 
 pub use backfill_batch::BackfillBatchStats;
@@ -21,7 +22,7 @@ pub use memory::InMemoryEventStore;
 pub use pg_store::PgEventStore;
 pub use sqlx_models::{
     AnalyticsEventRow, ChannelRow, FileRow, GeneratedThreadSummaryRow, MessageRow, ReactionRow,
-    SavedItemRow, SearchDocumentRow, ThreadSummaryRow, UserRow,
+    SavedItemRow, SearchDocumentRow, ThreadCardRow, ThreadSummaryRow, UserRow,
 };
 pub use sqlx_queries::{
     attach_file_query, delete_saved_item_query, initial_catch_up_query,
@@ -32,6 +33,6 @@ pub use sqlx_queries::{
 pub use sqlx_schema::{
     backfill_search_documents_query, create_generated_thread_summaries_table_query,
     create_saved_items_table_query, create_search_documents_table_query,
-    create_thread_summaries_table_query,
+    create_thread_cards_table_query, create_thread_summaries_table_query,
 };
 pub use store::{EventStore, RepositoryHealth, RepositoryMode, StoreError, StoreOutcome};
