@@ -4,7 +4,11 @@ export function AnimatedCounter({
 	end,
 	duration = 1200,
 	visible,
-}: { end: number; duration?: number; visible: boolean }) {
+}: {
+	end: number;
+	duration?: number;
+	visible: boolean;
+}) {
 	const [count, setCount] = useState(0);
 
 	useEffect(() => {
