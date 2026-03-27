@@ -1,16 +1,19 @@
+import { AppLaunchScreen } from "@/components/app-launch-screen";
 import { EmptyState } from "@/components/empty-state";
 import { IdentityAvatar } from "@/components/identity-avatar";
 import { InstallBanner } from "@/components/install-banner";
 import { OfflineSaveNotification } from "@/components/offline-save-notification";
 import { ThemeControls } from "@/components/theme-controls";
+import { resolveHomeEntryTarget } from "@/lib/app-entry-loading";
 import { useAppWarmup } from "@/lib/app-warmup";
 import { canReadPathOffline } from "@/lib/offline-reading";
-import { authQueries } from "@/lib/queries";
+import { authQueries, catchUpQueries, starredQueries } from "@/lib/queries";
 import { useNetworkStatus } from "@/lib/use-network-status";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { Archive, Bookmark, CloudOff, House, Search } from "lucide-react";
+import { startTransition, useEffect, useState } from "react";
 
 const navItems = [
 	{ to: "/", label: "Catch up", icon: House },
@@ -29,7 +32,53 @@ export function AppShell() {
 	const userQuery = useQuery(authQueries.me());
 	const user = userQuery.data?.user;
 	const isOfflineRestricted = !isOnline && !canReadPathOffline(pathname);
+	const homeEntryTarget = resolveHomeEntryTarget(pathname, search);
+	const [isInitialArchiveViewReady, setIsInitialArchiveViewReady] = useState(
+		() => homeEntryTarget === null,
+	);
+	const homeEntryStarredQuery = useQuery({
+		...starredQueries.list({ channelId: homeEntryTarget?.channelId }),
+		enabled: !isInitialArchiveViewReady && homeEntryTarget?.tab === "starred",
+	});
+	const homeEntryCatchUpQuery = useInfiniteQuery({
+		...catchUpQueries.feed({
+			window: homeEntryTarget?.window ?? "24h",
+			channelId: homeEntryTarget?.channelId,
+			sort: homeEntryTarget?.sort,
+		}),
+		enabled:
+			!isInitialArchiveViewReady &&
+			homeEntryTarget !== null &&
+			homeEntryTarget.tab !== "starred",
+	});
 	useAppWarmup({ isOnline, pathname, search });
+
+	const isHomeEntryPending =
+		homeEntryTarget === null
+			? false
+			: homeEntryTarget.tab === "starred"
+				? homeEntryStarredQuery.isPending
+				: homeEntryCatchUpQuery.isPending;
+
+	useEffect(() => {
+		if (isInitialArchiveViewReady) {
+			return;
+		}
+
+		if (homeEntryTarget === null || !isHomeEntryPending) {
+			startTransition(() => {
+				setIsInitialArchiveViewReady(true);
+			});
+		}
+	}, [homeEntryTarget, isHomeEntryPending, isInitialArchiveViewReady]);
+
+	if (
+		!isInitialArchiveViewReady &&
+		homeEntryTarget !== null &&
+		isHomeEntryPending
+	) {
+		return <AppLaunchScreen tab={homeEntryTarget.tab} />;
+	}
 
 	return (
 		<div className="min-h-dvh bg-(--color-bg-deep) pb-20 text-(--color-text-primary)">
