@@ -81,7 +81,7 @@ struct CatchUpData {
 struct CatchUpThreadItem {
     response: CatchUpThreadResponse,
     last_activity_seconds: i64,
-    trend_score: i64,
+    root_seconds: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,23 +116,29 @@ impl CatchUpWindow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CatchUpSort {
-    Activity,
-    Trending,
+    Date,
+    Replies,
+    Reactions,
+    People,
 }
 
 impl CatchUpSort {
     fn parse(value: Option<&str>) -> Option<Self> {
-        match value.unwrap_or("activity") {
-            "activity" => Some(Self::Activity),
-            "trending" => Some(Self::Trending),
+        match value.unwrap_or("date") {
+            "date" => Some(Self::Date),
+            "replies" => Some(Self::Replies),
+            "reactions" => Some(Self::Reactions),
+            "people" => Some(Self::People),
             _ => None,
         }
     }
 
     const fn as_str(self) -> &'static str {
         match self {
-            Self::Activity => "activity",
-            Self::Trending => "trending",
+            Self::Date => "date",
+            Self::Replies => "replies",
+            Self::Reactions => "reactions",
+            Self::People => "people",
         }
     }
 }
@@ -323,7 +329,7 @@ async fn build_catch_up(
 
         items.push(CatchUpThreadItem {
             last_activity_seconds,
-            trend_score: calculate_trend_score(&response),
+            root_seconds: parse_ts_seconds(&response.root_ts),
             response,
         });
     }
@@ -388,47 +394,74 @@ fn parse_cursor(cursor: Option<&str>) -> Result<usize, (StatusCode, Json<ErrorRe
         .map(|value| value.unwrap_or_default())
 }
 
-fn calculate_trend_score(thread: &CatchUpThreadResponse) -> i64 {
-    thread.reply_count * 3
-        + thread.participant_count * 2
-        + thread.reaction_count * 2
-        + thread.file_count * 4
-}
-
 fn compare_catch_up_items(
     left: &CatchUpThreadItem,
     right: &CatchUpThreadItem,
     sort: CatchUpSort,
 ) -> std::cmp::Ordering {
     match sort {
-        CatchUpSort::Activity => (
+        CatchUpSort::Date => (
             right.last_activity_seconds,
+            right.root_seconds,
             right.response.reply_count,
             right.response.reaction_count,
-            right.response.file_count,
+            right.response.participant_count,
             left.response.id.as_str(),
         )
             .cmp(&(
                 left.last_activity_seconds,
+                left.root_seconds,
                 left.response.reply_count,
                 left.response.reaction_count,
-                left.response.file_count,
+                left.response.participant_count,
                 right.response.id.as_str(),
             )),
-        CatchUpSort::Trending => (
-            right.trend_score,
-            right.last_activity_seconds,
+        CatchUpSort::Replies => (
             right.response.reply_count,
             right.response.reaction_count,
-            right.response.file_count,
+            right.response.participant_count,
+            right.last_activity_seconds,
+            right.root_seconds,
             left.response.id.as_str(),
         )
             .cmp(&(
-                left.trend_score,
-                left.last_activity_seconds,
                 left.response.reply_count,
                 left.response.reaction_count,
-                left.response.file_count,
+                left.response.participant_count,
+                left.last_activity_seconds,
+                left.root_seconds,
+                right.response.id.as_str(),
+            )),
+        CatchUpSort::Reactions => (
+            right.response.reaction_count,
+            right.response.reply_count,
+            right.response.participant_count,
+            right.last_activity_seconds,
+            right.root_seconds,
+            left.response.id.as_str(),
+        )
+            .cmp(&(
+                left.response.reaction_count,
+                left.response.reply_count,
+                left.response.participant_count,
+                left.last_activity_seconds,
+                left.root_seconds,
+                right.response.id.as_str(),
+            )),
+        CatchUpSort::People => (
+            right.response.participant_count,
+            right.response.reply_count,
+            right.response.reaction_count,
+            right.last_activity_seconds,
+            right.root_seconds,
+            left.response.id.as_str(),
+        )
+            .cmp(&(
+                left.response.participant_count,
+                left.response.reply_count,
+                left.response.reaction_count,
+                left.last_activity_seconds,
+                left.root_seconds,
                 right.response.id.as_str(),
             )),
     }

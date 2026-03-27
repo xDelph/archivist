@@ -17,7 +17,10 @@ impl SearchBackend {
 #[serde(rename_all = "snake_case")]
 pub enum SearchSort {
     Relevance,
-    Newest,
+    Date,
+    Replies,
+    Reactions,
+    People,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

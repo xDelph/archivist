@@ -1,3 +1,5 @@
+import type { SearchThreadSort, ThreadListSort } from "@/lib/thread-list-sort";
+
 export interface ApiHealth {
 	service: string;
 	version: string;
@@ -87,6 +89,7 @@ export interface SearchResult {
 	snippet: string;
 	summary_preview: string | null;
 	preview_source: ThreadPreviewSource;
+	last_activity_ts: string;
 	reply_count: number;
 	participant_count: number;
 	reaction_count: number;
@@ -198,7 +201,7 @@ export interface StarredItem {
 }
 
 export type CatchUpWindow = "24h" | "7d";
-export type CatchUpSort = "activity" | "trending";
+export type CatchUpSort = ThreadListSort;
 
 export interface CatchUpParams {
 	window: CatchUpWindow;
@@ -274,7 +277,7 @@ export async function fetchCatchUp({
 	channelId,
 	cursor,
 	limit,
-	sort = "activity",
+	sort = "date",
 }: CatchUpParams) {
 	const params = new URLSearchParams({
 		window,
@@ -302,7 +305,7 @@ export interface SearchParams {
 	channelId?: string;
 	dateFrom?: string;
 	dateTo?: string;
-	sort?: "relevance" | "newest";
+	sort?: SearchThreadSort;
 	cursor?: string;
 	limit?: number;
 }

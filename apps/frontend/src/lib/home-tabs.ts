@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-export const homeTabValues = [
-	"starred",
-	"fresh",
-	"steady",
-	"trending",
-] as const;
+export const homeTabValues = ["starred", "fresh", "steady"] as const;
 
 export const homeTabSchema = z.enum(homeTabValues);
 

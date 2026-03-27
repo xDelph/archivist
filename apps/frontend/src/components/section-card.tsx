@@ -7,6 +7,7 @@ interface SectionCardProps extends PropsWithChildren {
 	description?: string;
 	eyebrow?: string;
 	actions?: ReactNode;
+	toolbar?: ReactNode;
 	overlayActions?: boolean;
 	className?: string;
 }
@@ -17,6 +18,7 @@ export function SectionCard({
 	description,
 	eyebrow,
 	actions,
+	toolbar,
 	overlayActions = false,
 	className,
 	children,
@@ -60,7 +62,8 @@ export function SectionCard({
 					</div>
 				) : null}
 			</div>
-			<div className="mt-3.5">{children}</div>
+			{toolbar ? <div className="mt-3">{toolbar}</div> : null}
+			<div className={toolbar ? "mt-3" : "mt-3.5"}>{children}</div>
 		</section>
 	);
 }

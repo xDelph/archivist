@@ -53,7 +53,7 @@ async fn build_catch_up_filters_to_the_requested_window() {
         super::CatchUpFilters {
             window: CatchUpWindow::Week,
             channel_id: None,
-            sort: super::CatchUpSort::Activity,
+            sort: super::CatchUpSort::Date,
         },
         now,
     )
@@ -107,7 +107,7 @@ async fn catch_up_route_requires_authenticated_session() {
 }
 
 #[tokio::test]
-async fn catch_up_route_groups_threads_by_channel_and_sorts_by_activity() {
+async fn catch_up_route_groups_threads_by_channel_and_sorts_by_date() {
     let tempdir = tempdir().expect("tempdir");
     let path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&path).await.expect("store");
@@ -519,7 +519,7 @@ async fn catch_up_route_paginates_and_filters_threads() {
 }
 
 #[tokio::test]
-async fn catch_up_route_supports_trending_sort() {
+async fn catch_up_route_supports_reaction_sort() {
     let tempdir = tempdir().expect("tempdir");
     let path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&path).await.expect("store");
@@ -628,7 +628,7 @@ async fn catch_up_route_supports_trending_sort() {
     .expect("router")
     .oneshot(
         Request::builder()
-            .uri("/api/catch-up?window=7d&sort=trending")
+            .uri("/api/catch-up?window=7d&sort=reactions")
             .header("cookie", format!("arkivist_session={session_token}"))
             .body(Body::empty())
             .expect("request"),

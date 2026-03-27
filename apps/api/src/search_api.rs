@@ -52,6 +52,7 @@ struct SearchResultResponse {
     snippet: String,
     summary_preview: Option<String>,
     preview_source: String,
+    last_activity_ts: String,
     reply_count: usize,
     participant_count: usize,
     reaction_count: usize,
@@ -80,6 +81,8 @@ struct SearchResult {
     snippet: String,
     summary_preview: Option<String>,
     preview_source: &'static str,
+    last_activity_ts: String,
+    last_activity_seconds: i64,
     reply_count: usize,
     participant_count: usize,
     reaction_count: usize,
@@ -154,6 +157,7 @@ pub(crate) async fn search(
                 .as_deref()
                 .map(|text| slack_text::render_slack_text(text, &users, &channel_names)),
             preview_source: item.preview_source.to_owned(),
+            last_activity_ts: item.last_activity_ts.clone(),
             reply_count: item.reply_count,
             participant_count: item.participant_count,
             reaction_count: item.reaction_count,
@@ -193,7 +197,10 @@ fn parse_search_query(
 
     let sort = match query.sort.as_deref().unwrap_or("relevance") {
         "relevance" => SearchSort::Relevance,
-        "newest" => SearchSort::Newest,
+        "date" => SearchSort::Date,
+        "replies" => SearchSort::Replies,
+        "reactions" => SearchSort::Reactions,
+        "people" => SearchSort::People,
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -315,6 +322,9 @@ fn build_search_results(
             .map(|root| normalize_query_text(&root.text))
             .or_else(|| document.title.clone())
             .unwrap_or_else(|| normalize_query_text(&document.body));
+        let last_activity_ts = summary
+            .map(|summary| summary.last_activity_ts.clone())
+            .unwrap_or_else(|| document.message_ts.clone());
 
         Some(SearchResult {
             id: format!("{}:{root_ts}", document.channel_id),
@@ -334,6 +344,8 @@ fn build_search_results(
             snippet: build_snippet(&document.body, &tokens),
             summary_preview: preview.text,
             preview_source: preview.source,
+            last_activity_seconds: parse_ts_seconds(&last_activity_ts).unwrap_or(message_seconds),
+            last_activity_ts,
             reply_count: summary.map_or(0, |summary| as_count(summary.reply_count)),
             participant_count: summary.map_or(0, |summary| as_count(summary.participant_count)),
             reaction_count: summary.map_or(0, |summary| as_count(summary.reaction_count)),
@@ -354,7 +366,10 @@ fn build_search_results(
 
     results.sort_by(|left, right| match query.sort {
         SearchSort::Relevance => compare_relevance(left, right),
-        SearchSort::Newest => compare_newest(left, right),
+        SearchSort::Date => compare_date(left, right),
+        SearchSort::Replies => compare_replies(left, right),
+        SearchSort::Reactions => compare_reactions(left, right),
+        SearchSort::People => compare_people(left, right),
     });
     results
 }
@@ -362,7 +377,9 @@ fn build_search_results(
 fn merge_search_results(existing: &mut SearchResult, candidate: SearchResult, sort: SearchSort) {
     let should_replace = match sort {
         SearchSort::Relevance => compare_relevance(&candidate, existing) == Ordering::Less,
-        SearchSort::Newest => compare_newest(&candidate, existing) == Ordering::Less,
+        SearchSort::Date | SearchSort::Replies | SearchSort::Reactions | SearchSort::People => {
+            compare_latest_match(&candidate, existing) == Ordering::Less
+        }
     };
     existing.score += candidate.score;
 
@@ -392,7 +409,7 @@ fn compare_relevance(left: &SearchResult, right: &SearchResult) -> Ordering {
         ))
 }
 
-fn compare_newest(left: &SearchResult, right: &SearchResult) -> Ordering {
+fn compare_latest_match(left: &SearchResult, right: &SearchResult) -> Ordering {
     (
         right.message_seconds,
         right.score,
@@ -404,6 +421,82 @@ fn compare_newest(left: &SearchResult, right: &SearchResult) -> Ordering {
             left.score,
             left.root_seconds,
             left.message_ts.as_str(),
+        ))
+}
+
+fn compare_date(left: &SearchResult, right: &SearchResult) -> Ordering {
+    (
+        right.last_activity_seconds,
+        right.root_seconds,
+        right.reply_count,
+        right.reaction_count,
+        right.participant_count,
+        left.thread_id.as_str(),
+    )
+        .cmp(&(
+            left.last_activity_seconds,
+            left.root_seconds,
+            left.reply_count,
+            left.reaction_count,
+            left.participant_count,
+            right.thread_id.as_str(),
+        ))
+}
+
+fn compare_replies(left: &SearchResult, right: &SearchResult) -> Ordering {
+    (
+        right.reply_count,
+        right.reaction_count,
+        right.participant_count,
+        right.last_activity_seconds,
+        right.root_seconds,
+        left.thread_id.as_str(),
+    )
+        .cmp(&(
+            left.reply_count,
+            left.reaction_count,
+            left.participant_count,
+            left.last_activity_seconds,
+            left.root_seconds,
+            right.thread_id.as_str(),
+        ))
+}
+
+fn compare_reactions(left: &SearchResult, right: &SearchResult) -> Ordering {
+    (
+        right.reaction_count,
+        right.reply_count,
+        right.participant_count,
+        right.last_activity_seconds,
+        right.root_seconds,
+        left.thread_id.as_str(),
+    )
+        .cmp(&(
+            left.reaction_count,
+            left.reply_count,
+            left.participant_count,
+            left.last_activity_seconds,
+            left.root_seconds,
+            right.thread_id.as_str(),
+        ))
+}
+
+fn compare_people(left: &SearchResult, right: &SearchResult) -> Ordering {
+    (
+        right.participant_count,
+        right.reply_count,
+        right.reaction_count,
+        right.last_activity_seconds,
+        right.root_seconds,
+        left.thread_id.as_str(),
+    )
+        .cmp(&(
+            left.participant_count,
+            left.reply_count,
+            left.reaction_count,
+            left.last_activity_seconds,
+            left.root_seconds,
+            right.thread_id.as_str(),
         ))
 }
 

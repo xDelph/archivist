@@ -43,6 +43,7 @@ describe("thread card props", () => {
 				snippet: "Matched snippet",
 				summary_preview: null,
 				preview_source: "fallback",
+				last_activity_ts: "1700000004.000001",
 				reply_count: 3,
 				participant_count: 2,
 				reaction_count: 1,
@@ -54,6 +55,7 @@ describe("thread card props", () => {
 
 		expect(card.preview).toBe("Root preview expands to full width");
 		expect(card.previewSource).toBe("fallback");
+		expect(card.lastActivityTs).toBe("1700000004.000001");
 	});
 
 	it("prefers the ai summary preview for saved and starred cards", () => {

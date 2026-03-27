@@ -16,6 +16,7 @@ import {
 	savedQueries,
 	starredQueries,
 } from "@/lib/queries";
+import { normalizeThreadListSort } from "@/lib/thread-list-sort";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
@@ -38,13 +39,13 @@ type HomeWarmTarget =
 export function buildHomeWarmTargets(pathname: string, search: string) {
 	const params = new URLSearchParams(search);
 	const channelId = params.get("channel") || undefined;
+	const sort = normalizeThreadListSort(params.get("sort") ?? undefined);
 	const activeTab =
 		pathname === "/" ? normalizeHomeTab(params.get("tab") ?? undefined) : null;
 	const targets: HomeWarmTarget[] = [
 		{ tab: "starred", channelId },
-		{ tab: "fresh", window: "24h", channelId },
-		{ tab: "steady", window: "7d", channelId },
-		{ tab: "trending", window: "7d", sort: "trending", channelId },
+		{ tab: "fresh", window: "24h", sort, channelId },
+		{ tab: "steady", window: "7d", sort, channelId },
 	];
 
 	return targets.filter(
@@ -57,7 +58,7 @@ export function getHomeWarmTargetKey(target: HomeWarmTarget) {
 		return `starred:${target.channelId ?? "all"}`;
 	}
 
-	return `${target.window}:${target.sort ?? "activity"}:${target.channelId ?? "all"}`;
+	return `${target.window}:${target.sort ?? "date"}:${target.channelId ?? "all"}`;
 }
 
 export function useAppWarmup({

@@ -12,7 +12,6 @@ describe("search filter disclosure helpers", () => {
 				channelId: "",
 				dateFrom: defaultDateRange.from,
 				dateTo: defaultDateRange.to,
-				sort: "relevance",
 				defaultDateRange,
 			}),
 		).toEqual({
@@ -27,11 +26,10 @@ describe("search filter disclosure helpers", () => {
 				channelId: "C123",
 				dateFrom: defaultDateRange.from,
 				dateTo: "2026-03-20",
-				sort: "newest",
 				defaultDateRange,
 			}),
 		).toEqual({
-			activeCount: 3,
+			activeCount: 2,
 			hasActiveFilters: true,
 		});
 	});

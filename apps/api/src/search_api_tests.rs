@@ -222,7 +222,7 @@ fn build_search_results_returns_one_item_per_thread() {
 }
 
 #[test]
-fn build_search_results_keeps_latest_match_for_newest_sort() {
+fn build_search_results_keeps_latest_match_for_date_sort() {
     let query = search::SearchQuery {
         text: "release".to_owned(),
         filters: search::SearchFilters {
@@ -230,7 +230,7 @@ fn build_search_results_keeps_latest_match_for_newest_sort() {
             date_from: None,
             date_to: None,
         },
-        sort: SearchSort::Newest,
+        sort: SearchSort::Date,
     };
 
     let items = build_search_results(
@@ -293,6 +293,98 @@ fn build_search_results_keeps_latest_match_for_newest_sort() {
     assert_eq!(items[0].title, "release plan");
     assert_eq!(items[0].preview, "release plan");
     assert_eq!(items[0].snippet, "release checklist");
+}
+
+#[test]
+fn build_search_results_sorts_threads_by_reactions() {
+    let query = search::SearchQuery {
+        text: "release".to_owned(),
+        filters: search::SearchFilters {
+            channel_ids: vec![],
+            date_from: None,
+            date_to: None,
+        },
+        sort: SearchSort::Reactions,
+    };
+
+    let items = build_search_results(
+        vec![
+            domain::Channel {
+                id: "C123".to_owned(),
+                name: Some("product".to_owned()),
+                kind: domain::ChannelKind::Public,
+                is_archived: false,
+            },
+            domain::Channel {
+                id: "C999".to_owned(),
+                name: Some("launch".to_owned()),
+                kind: domain::ChannelKind::Public,
+                is_archived: false,
+            },
+        ],
+        vec![
+            domain::Message {
+                channel_id: "C123".to_owned(),
+                ts: "1700000200.000001".to_owned(),
+                thread_ts: None,
+                user_id: Some("U123".to_owned()),
+                text: "release plan".to_owned(),
+            },
+            domain::Message {
+                channel_id: "C999".to_owned(),
+                ts: "1700000400.000001".to_owned(),
+                thread_ts: None,
+                user_id: Some("U999".to_owned()),
+                text: "release retro".to_owned(),
+            },
+        ],
+        vec![
+            SearchDocumentRow {
+                channel_id: "C123".to_owned(),
+                root_ts: "1700000200.000001".to_owned(),
+                message_ts: "1700000200.000001".to_owned(),
+                title: Some("release plan".to_owned()),
+                body: "release plan".to_owned(),
+                message_occurred_at: "1700000200".to_owned(),
+            },
+            SearchDocumentRow {
+                channel_id: "C999".to_owned(),
+                root_ts: "1700000400.000001".to_owned(),
+                message_ts: "1700000400.000001".to_owned(),
+                title: Some("release retro".to_owned()),
+                body: "release retro".to_owned(),
+                message_occurred_at: "1700000400".to_owned(),
+            },
+        ],
+        vec![
+            ThreadSummaryRow {
+                channel_id: "C123".to_owned(),
+                root_ts: "1700000200.000001".to_owned(),
+                reply_count: 4,
+                participant_count: 3,
+                reaction_count: 1,
+                file_count: 0,
+                root_message_at: "1700000200".to_owned(),
+                last_activity_ts: "1700000300".to_owned(),
+            },
+            ThreadSummaryRow {
+                channel_id: "C999".to_owned(),
+                root_ts: "1700000400.000001".to_owned(),
+                reply_count: 1,
+                participant_count: 2,
+                reaction_count: 5,
+                file_count: 0,
+                root_message_at: "1700000400".to_owned(),
+                last_activity_ts: "1700000500".to_owned(),
+            },
+        ],
+        vec![],
+        &query,
+    );
+
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].thread_id, "C999:1700000400.000001");
+    assert_eq!(items[0].last_activity_ts, "1700000500");
 }
 
 #[test]

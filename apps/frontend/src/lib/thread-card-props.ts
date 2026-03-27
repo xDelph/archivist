@@ -59,7 +59,7 @@ export function threadCardDataFromSearchResult(
 		title,
 		preview: item.summary_preview ?? preview,
 		previewSource: item.preview_source,
-		lastActivityTs: item.message_ts,
+		lastActivityTs: item.last_activity_ts ?? item.message_ts,
 		replyCount: item.reply_count ?? 0,
 		participantCount: item.participant_count ?? 0,
 		reactionCount: item.reaction_count ?? 0,

@@ -2,6 +2,7 @@ import { EmptyState } from "@/components/empty-state";
 import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
+import { ThreadListSortBar } from "@/components/thread-list-sort-bar";
 import { Button } from "@/components/ui/button";
 import { InputField, SelectField } from "@/components/ui/form-field";
 import { highlightMatches } from "@/lib/highlight";
@@ -13,6 +14,11 @@ import {
 } from "@/lib/queries";
 import { flattenSearchPages } from "@/lib/search";
 import { threadCardDataFromSearchResult } from "@/lib/thread-card-props";
+import {
+	normalizeSearchThreadSort,
+	searchThreadSortOptions,
+	toSearchThreadSortSearch,
+} from "@/lib/thread-list-sort";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -29,12 +35,11 @@ export function SearchPage() {
 	const channelId = search.channel_id ?? "";
 	const dateFrom = search.date_from ?? defaultDateRange.from;
 	const dateTo = search.date_to ?? defaultDateRange.to;
-	const sort = search.sort ?? "relevance";
+	const sort = normalizeSearchThreadSort(search.sort);
 	const filterSummary = getSearchFilterSummary({
 		channelId,
 		dateFrom,
 		dateTo,
-		sort,
 		defaultDateRange,
 	});
 	const [areFiltersOpen, setAreFiltersOpen] = useState(
@@ -133,7 +138,7 @@ export function SearchPage() {
 							}`}
 							aria-hidden={!areFiltersOpen}
 						>
-							<div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px_200px]">
+							<div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_200px_200px]">
 								<SelectField
 									label="Channel"
 									value={channelId}
@@ -177,33 +182,6 @@ export function SearchPage() {
 										}
 									/>
 								</div>
-								<div>
-									<p className="text-copy-quiet mb-2 block text-[0.72rem] font-medium uppercase tracking-[0.2em]">
-										Sort
-									</p>
-									<div className="flex flex-wrap gap-2">
-										{(["relevance", "newest"] as const).map((option) => (
-											<Button
-												key={option}
-												type="button"
-												variant={sort === option ? "default" : "secondary"}
-												size="sm"
-												className={
-													sort === option
-														? "bg-(--color-accent) text-(--color-on-accent) hover:bg-(--color-accent-strong)"
-														: "button-ghost"
-												}
-												onClick={() =>
-													updateSearch({
-														sort: option === "relevance" ? undefined : option,
-													})
-												}
-											>
-												{option}
-											</Button>
-										))}
-									</div>
-								</div>
 							</div>
 							<div className="mt-3 flex justify-end">
 								<Button
@@ -216,7 +194,6 @@ export function SearchPage() {
 											channel_id: undefined,
 											date_from: undefined,
 											date_to: undefined,
-											sort: undefined,
 										})
 									}
 								>
@@ -234,6 +211,18 @@ export function SearchPage() {
 					deferredQuery
 						? `Results for "${deferredQuery}"`
 						: "Search the archive"
+				}
+				toolbar={
+					<ThreadListSortBar
+						label="Order"
+						options={searchThreadSortOptions}
+						value={sort}
+						onChange={(nextSort) => {
+							updateSearch({
+								sort: toSearchThreadSortSearch(nextSort),
+							});
+						}}
+					/>
 				}
 			>
 				<QueryState
@@ -316,20 +305,17 @@ export function getSearchFilterSummary({
 	channelId,
 	dateFrom,
 	dateTo,
-	sort,
 	defaultDateRange,
 }: {
 	channelId: string;
 	dateFrom: string;
 	dateTo: string;
-	sort: string;
 	defaultDateRange: { from: string; to: string };
 }) {
 	const activeCount = [
 		channelId.length > 0,
 		dateFrom !== defaultDateRange.from,
 		dateTo !== defaultDateRange.to,
-		sort !== "relevance",
 	].filter(Boolean).length;
 
 	return {

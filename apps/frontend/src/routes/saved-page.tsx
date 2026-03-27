@@ -2,18 +2,29 @@ import { EmptyState } from "@/components/empty-state";
 import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
+import { ThreadListSortBar } from "@/components/thread-list-sort-bar";
 import {
 	filterSavedItemsWithSnapshots,
 	resolveSavedItemsForReading,
 } from "@/lib/offline-reading";
 import { offlineQueries, savedQueries, starredQueries } from "@/lib/queries";
 import { threadCardDataFromSavedItem } from "@/lib/thread-card-props";
+import {
+	normalizeThreadListSort,
+	sortThreadList,
+	threadListSortOptions,
+	toThreadListSortSearch,
+} from "@/lib/thread-list-sort";
 import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { useNetworkStatus } from "@/lib/use-network-status";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Bookmark } from "lucide-react";
 
 export function SavedPage() {
+	const { sort } = useSearch({ from: "/app/saved" });
+	const navigate = useNavigate();
+	const activeSort = normalizeThreadListSort(sort);
 	const { isOnline } = useNetworkStatus();
 	const savedQuery = useQuery({
 		...savedQueries.list(),
@@ -35,6 +46,14 @@ export function SavedPage() {
 	const items = isOnline
 		? availableItems
 		: filterSavedItemsWithSnapshots(availableItems, offlineThreadIdsQuery.data);
+	const sortedItems = sortThreadList(items, activeSort, (item) => ({
+		id: item.thread_id,
+		lastActivityTs: item.last_activity_ts,
+		rootTs: item.root_ts,
+		replyCount: item.reply_count,
+		reactionCount: item.reaction_count,
+		participantCount: item.participant_count,
+	}));
 	const isOfflineReading = !savedQuery.data?.items.length && items.length > 0;
 	const shouldShowError = isOnline && savedQuery.isError && items.length === 0;
 	const isPending =
@@ -44,7 +63,22 @@ export function SavedPage() {
 
 	return (
 		<div className="space-y-5">
-			<SectionCard eyebrow="Saved" title="Bookmarked threads">
+			<SectionCard
+				eyebrow="Saved"
+				title="Bookmarked threads"
+				toolbar={
+					<ThreadListSortBar
+						options={threadListSortOptions}
+						value={activeSort}
+						onChange={(nextSort) => {
+							void navigate({
+								to: "/saved",
+								search: { sort: toThreadListSortSearch(nextSort) },
+							});
+						}}
+					/>
+				}
+			>
 				<QueryState
 					isPending={isPending}
 					isError={shouldShowError}
@@ -79,7 +113,7 @@ export function SavedPage() {
 					}
 				>
 					<div className="space-y-3">
-						{items.map((item) => (
+						{sortedItems.map((item) => (
 							<SavableThreadCard
 								key={item.id}
 								{...threadCardDataFromSavedItem(item)}

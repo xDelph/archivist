@@ -2,6 +2,7 @@ import { EmptyState } from "@/components/empty-state";
 import { CardSkeletonList, QueryState } from "@/components/query-state";
 import { SavableThreadCard } from "@/components/savable-thread-card";
 import { SectionCard } from "@/components/section-card";
+import { ThreadListSortBar } from "@/components/thread-list-sort-bar";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { TabPanelTransition } from "@/components/ui/tab-panel-transition";
 import type {
@@ -26,18 +27,26 @@ import {
 	threadCardDataFromCatchUpThread,
 	threadCardDataFromStarredItem,
 } from "@/lib/thread-card-props";
+import {
+	type ThreadListSort,
+	normalizeThreadListSort,
+	sortThreadList,
+	threadListSortOptions,
+	toThreadListSortSearch,
+} from "@/lib/thread-list-sort";
 import { indexSavedItemsByThreadId } from "@/lib/thread-save";
 import { indexStarredItemsByThreadId } from "@/lib/thread-star";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Calendar, ChevronDown, Clock, Flame, Hash, Star } from "lucide-react";
+import { Calendar, ChevronDown, Clock, Hash, Star } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export function HomePage() {
-	const { channel: channelFilter, tab } = useSearch({ from: "/app/" });
+	const { channel: channelFilter, sort, tab } = useSearch({ from: "/app/" });
 	const navigate = useNavigate();
 	const activeTab = normalizeHomeTab(tab);
+	const activeSort = normalizeThreadListSort(sort);
 	const activeFilter = channelFilter ?? "all";
 	const activeChannelId = activeFilter === "all" ? undefined : activeFilter;
 	const overviewQuery = useQuery(catchUpQueries.summary("7d"));
@@ -54,18 +63,14 @@ export function HomePage() {
 	const dayFeedQuery = useCatchUpFeed({
 		window: "24h",
 		channelId: activeChannelId,
+		sort: activeSort,
 		enabled: activeTab === "fresh",
 	});
 	const weekFeedQuery = useCatchUpFeed({
 		window: "7d",
 		channelId: activeChannelId,
+		sort: activeSort,
 		enabled: activeTab === "steady",
-	});
-	const trendingFeedQuery = useCatchUpFeed({
-		window: "7d",
-		channelId: activeChannelId,
-		sort: "trending",
-		enabled: activeTab === "trending",
 	});
 
 	const availableChannels = [...(overviewQuery.data?.channels ?? [])].sort(
@@ -91,13 +96,24 @@ export function HomePage() {
 			shortLabel: "Week",
 			icon: <Calendar className="size-3.5 shrink-0 sm:size-4" />,
 		},
-		{
-			key: "trending",
-			label: "Trending",
-			shortLabel: "Trend",
-			icon: <Flame className="size-3.5 shrink-0 sm:size-4" />,
-		},
 	] as const;
+	const sortBar = (
+		<ThreadListSortBar
+			options={threadListSortOptions}
+			value={activeSort}
+			onChange={(nextSort) => {
+				void navigate({
+					to: "/",
+					search: {
+						channel: channelFilter,
+						tab: toHomeTabSearch(activeTab),
+						sort: toThreadListSortSearch(nextSort),
+					},
+					replace: false,
+				});
+			}}
+		/>
+	);
 
 	return (
 		<div className="space-y-4">
@@ -117,6 +133,7 @@ export function HomePage() {
 				<div className="relative mt-4 sm:hidden">
 					<MobileChannelFilter
 						activeFilter={activeFilter}
+						activeSort={activeSort}
 						activeTab={activeTab}
 						availableChannels={availableChannels}
 					/>
@@ -129,6 +146,7 @@ export function HomePage() {
 						search={{
 							channel: undefined,
 							tab: toHomeTabSearch(activeTab),
+							sort: toThreadListSortSearch(activeSort),
 						}}
 					/>
 					{availableChannels.map((channel) => (
@@ -139,6 +157,7 @@ export function HomePage() {
 							search={{
 								channel: channel.id,
 								tab: toHomeTabSearch(activeTab),
+								sort: toThreadListSortSearch(activeSort),
 							}}
 						/>
 					))}
@@ -154,6 +173,7 @@ export function HomePage() {
 						search: {
 							channel: channelFilter,
 							tab: toHomeTabSearch(nextTab),
+							sort: toThreadListSortSearch(activeSort),
 						},
 						replace: false,
 					});
@@ -166,6 +186,7 @@ export function HomePage() {
 						eyebrow="Starred"
 						title="Admin picks worth opening"
 						actions={<Star className="text-eyebrow size-5" />}
+						toolbar={sortBar}
 					>
 						<StarredSection
 							items={starredQuery.data?.items ?? []}
@@ -173,12 +194,17 @@ export function HomePage() {
 							isError={starredQuery.isError}
 							savedItemsByThreadId={savedItemsByThreadId}
 							starredItemsByThreadId={starredItemsByThreadId}
+							sort={activeSort}
 						/>
 					</SectionCard>
 				)}
 
 				{activeTab === "fresh" && (
-					<SectionCard eyebrow="Last 24 hours" title="Fresh threads">
+					<SectionCard
+						eyebrow="Last 24 hours"
+						title="Fresh threads"
+						toolbar={sortBar}
+					>
 						<CatchUpFeedSection
 							query={dayFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
@@ -190,32 +216,17 @@ export function HomePage() {
 				)}
 
 				{activeTab === "steady" && (
-					<SectionCard eyebrow="This week" title="Steady conversations">
+					<SectionCard
+						eyebrow="This week"
+						title="Steady conversations"
+						toolbar={sortBar}
+					>
 						<CatchUpFeedSection
 							query={weekFeedQuery}
 							savedItemsByThreadId={savedItemsByThreadId}
 							starredItemsByThreadId={starredItemsByThreadId}
 							emptyTitle="No weekly catch-up yet"
 							emptyDescription="Once the worker processes more history, longer windows will show up here."
-						/>
-					</SectionCard>
-				)}
-
-				{activeTab === "trending" && (
-					<SectionCard
-						eyebrow="Trending"
-						title="Threads with momentum"
-						actions={<Flame className="text-eyebrow size-5" />}
-					>
-						<CatchUpFeedSection
-							query={trendingFeedQuery}
-							savedItemsByThreadId={savedItemsByThreadId}
-							starredItemsByThreadId={starredItemsByThreadId}
-							cardClassName="bg-(--color-bg-panel)"
-							emptyTitle="Trending needs more history"
-							emptyDescription="This panel fills in automatically as the worker accumulates more public-channel thread summaries."
-							errorTitle="Trending is unavailable"
-							errorDescription="The API route is reachable, but the trending query failed. Retry once the local API is healthy again."
 						/>
 					</SectionCard>
 				)}
@@ -230,13 +241,24 @@ function StarredSection({
 	isError,
 	savedItemsByThreadId,
 	starredItemsByThreadId,
+	sort,
 }: {
 	items: StarredItem[];
 	isPending: boolean;
 	isError: boolean;
 	savedItemsByThreadId: Map<string, SavedItem>;
 	starredItemsByThreadId: Map<string, StarredItem>;
+	sort: ThreadListSort;
 }) {
+	const sortedItems = sortThreadList(items, sort, (item) => ({
+		id: item.thread_id,
+		lastActivityTs: item.last_activity_ts,
+		rootTs: item.root_ts,
+		replyCount: item.reply_count,
+		reactionCount: item.reaction_count,
+		participantCount: item.participant_count,
+	}));
+
 	return (
 		<QueryState
 			isPending={isPending}
@@ -257,7 +279,7 @@ function StarredSection({
 			}
 		>
 			<div className="space-y-2.5">
-				{items.map((item) => (
+				{sortedItems.map((item) => (
 					<SavableThreadCard
 						key={item.id}
 						{...threadCardDataFromStarredItem(item)}
@@ -273,10 +295,12 @@ function StarredSection({
 
 function MobileChannelFilter({
 	activeFilter,
+	activeSort,
 	activeTab,
 	availableChannels,
 }: {
 	activeFilter: string;
+	activeSort: ThreadListSort;
 	activeTab: HomeTab;
 	availableChannels: {
 		id: string;
@@ -322,6 +346,7 @@ function MobileChannelFilter({
 						search: {
 							channel: nextValue === "all" ? undefined : nextValue,
 							tab: toHomeTabSearch(activeTab),
+							sort: toThreadListSortSearch(activeSort),
 						},
 						replace: false,
 					});
@@ -344,7 +369,7 @@ function MobileChannelFilter({
 function useCatchUpFeed({
 	window,
 	channelId,
-	sort = "activity",
+	sort = "date",
 	enabled,
 }: {
 	window: CatchUpWindow;
@@ -475,7 +500,7 @@ function ChannelPill({
 }: {
 	label: string;
 	isActive: boolean;
-	search: { channel?: string; tab?: HomeTab };
+	search: { channel?: string; sort?: ThreadListSort; tab?: HomeTab };
 }) {
 	return (
 		<Link

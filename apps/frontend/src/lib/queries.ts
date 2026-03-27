@@ -25,6 +25,7 @@ import {
 	listOfflineThreadDetailIds,
 } from "@/lib/offline-library";
 import { SEARCH_PAGE_SIZE } from "@/lib/search";
+import { searchThreadSortSchema } from "@/lib/thread-list-sort";
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 
@@ -33,7 +34,7 @@ export const searchSearchSchema = z.object({
 	channel_id: z.string().optional().catch(undefined),
 	date_from: z.string().optional().catch(undefined),
 	date_to: z.string().optional().catch(undefined),
-	sort: z.enum(["relevance", "newest"]).optional().catch(undefined),
+	sort: searchThreadSortSchema.optional().catch(undefined),
 });
 
 export type SearchSearchParams = z.infer<typeof searchSearchSchema>;
@@ -77,7 +78,7 @@ export const catchUpQueries = {
 	feedKey: ({
 		window,
 		channelId,
-		sort = "activity",
+		sort = "date",
 	}: {
 		window: CatchUpWindow;
 		channelId?: string;
@@ -86,7 +87,7 @@ export const catchUpQueries = {
 	feed: ({
 		window,
 		channelId,
-		sort = "activity",
+		sort = "date",
 		limit = CATCH_UP_PAGE_SIZE,
 	}: {
 		window: CatchUpWindow;

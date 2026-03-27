@@ -10,6 +10,10 @@ import {
 	searchSearchSchema,
 	starredQueries,
 } from "@/lib/queries";
+import {
+	normalizeThreadListSort,
+	threadListSortSchema,
+} from "@/lib/thread-list-sort";
 import { AccountPage } from "@/routes/account-page";
 import { HomePage } from "@/routes/home-page";
 import { SavedPage } from "@/routes/saved-page";
@@ -71,6 +75,11 @@ const appRoute = createRoute({
 const homeSearchSchema = z.object({
 	channel: z.string().optional().catch(undefined),
 	tab: homeTabSchema.optional().catch(undefined),
+	sort: threadListSortSchema.optional().catch(undefined),
+});
+
+const savedSearchSchema = z.object({
+	sort: threadListSortSchema.optional().catch(undefined),
 });
 
 const indexRoute = createRoute({
@@ -78,7 +87,11 @@ const indexRoute = createRoute({
 	path: "/",
 	component: HomePage,
 	validateSearch: homeSearchSchema,
-	loaderDeps: ({ search }) => ({ channel: search.channel, tab: search.tab }),
+	loaderDeps: ({ search }) => ({
+		channel: search.channel,
+		tab: search.tab,
+		sort: search.sort,
+	}),
 	loader: ({ context, deps }) => {
 		preloadRouteData(context.queryClient, catchUpQueries.summary("7d"));
 		preloadActiveHomeTab(context.queryClient, deps);
@@ -102,6 +115,7 @@ const savedRoute = createRoute({
 	getParentRoute: () => appRoute,
 	path: "/saved",
 	component: SavedPage,
+	validateSearch: savedSearchSchema,
 	loader: ({ context }) => {
 		preloadRouteData(context.queryClient, savedQueries.list());
 	},
@@ -167,12 +181,15 @@ function preloadActiveHomeTab(
 	{
 		channel,
 		tab,
+		sort,
 	}: {
 		channel?: string;
 		tab?: string;
+		sort?: string;
 	},
 ) {
 	const activeTab = normalizeHomeTab(tab);
+	const activeSort = normalizeThreadListSort(sort);
 	if (activeTab === "starred") {
 		preloadRouteData(queryClient, starredQueries.list({ channelId: channel }));
 		return;
@@ -180,13 +197,15 @@ function preloadActiveHomeTab(
 
 	const options =
 		activeTab === "fresh"
-			? catchUpQueries.feed({ window: "24h", channelId: channel })
-			: activeTab === "steady"
-				? catchUpQueries.feed({ window: "7d", channelId: channel })
-				: catchUpQueries.feed({
-						window: "7d",
-						channelId: channel,
-						sort: "trending",
-					});
+			? catchUpQueries.feed({
+					window: "24h",
+					channelId: channel,
+					sort: activeSort,
+				})
+			: catchUpQueries.feed({
+					window: "7d",
+					channelId: channel,
+					sort: activeSort,
+				});
 	void queryClient.prefetchInfiniteQuery(options).catch(() => undefined);
 }

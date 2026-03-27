@@ -3,19 +3,24 @@ import { describe, expect, it } from "vitest";
 
 describe("app warmup helpers", () => {
 	it("warms the inactive catch-up tabs for the current home filter", () => {
-		expect(buildHomeWarmTargets("/", "?tab=steady&channel=C123")).toEqual([
+		expect(
+			buildHomeWarmTargets("/", "?tab=steady&channel=C123&sort=reactions"),
+		).toEqual([
 			{ tab: "starred", channelId: "C123" },
-			{ tab: "fresh", window: "24h", channelId: "C123" },
-			{ window: "7d", sort: "trending", channelId: "C123", tab: "trending" },
+			{
+				tab: "fresh",
+				window: "24h",
+				sort: "reactions",
+				channelId: "C123",
+			},
 		]);
 	});
 
 	it("warms all default catch-up tabs outside the home view", () => {
 		expect(buildHomeWarmTargets("/saved", "")).toEqual([
 			{ tab: "starred", channelId: undefined },
-			{ tab: "fresh", window: "24h", channelId: undefined },
-			{ tab: "steady", window: "7d", channelId: undefined },
-			{ tab: "trending", window: "7d", sort: "trending", channelId: undefined },
+			{ tab: "fresh", window: "24h", sort: "date", channelId: undefined },
+			{ tab: "steady", window: "7d", sort: "date", channelId: undefined },
 		]);
 	});
 
@@ -28,11 +33,11 @@ describe("app warmup helpers", () => {
 		).toBe("starred:C123");
 		expect(
 			getHomeWarmTargetKey({
-				tab: "trending",
+				tab: "steady",
 				window: "7d",
-				sort: "trending",
+				sort: "reactions",
 				channelId: "C123",
 			}),
-		).toBe("7d:trending:C123");
+		).toBe("7d:reactions:C123");
 	});
 });
