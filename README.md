@@ -184,6 +184,80 @@ Source de vérité: `.env.example`.
 - `AUTH_DEV_EXPOSE_RESET_TOKEN=true` peut exposer le token de reset en dev uniquement.
 - Les comptes sont liés aux utilisateurs Slack existants en DB (email eligible).
 
+## Déploiement Docker Compose
+
+Le repo contient maintenant un déploiement Compose complet pour la stack principale:
+
+- `frontend`: bundle Vite servi par nginx avec reverse proxy vers les services backend
+- `api`: API Rust
+- `ingest`: endpoints Slack Events + slash commands
+- `worker`: jobs async, backfill, archivage, résumés
+- `migrate`: exécution des migrations SQL avant le démarrage applicatif
+
+Les images runtime restent minimales:
+
+- services Rust: `gcr.io/distroless/cc-debian12`
+- frontend: `nginxinc/nginx-unprivileged:alpine`
+- builds: stages séparés Rust et Bun dans le `Dockerfile` racine
+
+### Préparer l'environnement Compose
+
+```bash
+cp .env.compose.example .env
+```
+
+Puis renseigner au minimum:
+
+- `DATABASE_URL` complet vers votre base Postgres
+- optionnel: `DATABASE_URL_UNPOOLED` si vous distinguez pooler et connexion directe
+- `ARKIVIST_SESSION_SECRET`
+- secrets Slack (`SLACK_SIGNING_SECRET`, `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_REDIRECT_URI`) si auth/ingest activés
+- secrets optionnels QStash, OpenRouter et R2 si vous utilisez ces intégrations
+
+### Lancer la stack
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+URLs exposées par défaut:
+
+- Application web: `http://localhost:3001`
+- API directe: `http://127.0.0.1:4000`
+- Ingest direct: `http://127.0.0.1:4001`
+- Worker direct: `http://127.0.0.1:4002`
+- Health API via proxy frontend: `http://localhost:3001/health`
+- Slack Events API: `http://localhost:3001/api/slack/events`
+- Slack slash commands: `http://localhost:3001/api/slack/commands/archive`
+- OAuth callback Slack: `http://localhost:3001/api/auth/slack/callback`
+
+Le frontend ne publie qu'un seul port et route:
+
+- `/api/slack/*` vers `ingest`
+- `/api/*` et `/health` vers `api`
+- le reste vers l'application SPA
+
+Le stack Compose suppose une base Postgres externe ou managée. `migrate`, `api` et `worker`
+consomment directement `DATABASE_URL` depuis `.env`.
+
+### Commandes utiles Compose
+
+```bash
+docker compose logs -f
+docker compose run --rm migrate
+docker compose up -d --build
+docker compose down
+```
+
+Fichiers concernés:
+
+- `Dockerfile`
+- `compose.yaml`
+- `docker/nginx/frontend.conf`
+- `.env.compose.example`
+- `.dockerignore`
+
 ## Commandes utiles
 
 ### Commandes monorepo

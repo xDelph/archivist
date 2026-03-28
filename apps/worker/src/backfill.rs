@@ -49,6 +49,12 @@ struct BackfillTotals {
     files_archived: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct BackfillMode {
+    resume_from_last_message_ts: bool,
+    revisit_known_threads: bool,
+}
+
 pub(crate) async fn backfill_channel(
     State(state): State<AppState>,
     body: Bytes,
@@ -80,7 +86,10 @@ pub(crate) async fn backfill_channel(
             resolved_channel.as_ref(),
             request.cursor.as_deref(),
             oldest_ts.as_deref(),
-            request.resume_from_last_message_ts,
+            BackfillMode {
+                resume_from_last_message_ts: request.resume_from_last_message_ts,
+                revisit_known_threads: true,
+            },
         )
         .await?;
         return Ok(Json(BackfillChannelResponse {
@@ -128,7 +137,10 @@ pub(crate) async fn backfill_channel(
             Some(channel),
             None,
             oldest_ts.as_deref(),
-            request.resume_from_last_message_ts,
+            BackfillMode {
+                resume_from_last_message_ts: request.resume_from_last_message_ts,
+                revisit_known_threads: true,
+            },
         )
         .await?;
         totals.messages_inserted += channel_totals.messages_inserted;
@@ -161,7 +173,7 @@ async fn backfill_single_channel(
     channel: Option<&SlackConversation>,
     cursor: Option<&str>,
     oldest_ts: Option<&str>,
-    resume_from_last_message_ts: bool,
+    mode: BackfillMode,
 ) -> Result<(BackfillTotals, Option<String>), (StatusCode, Json<ErrorResponse>)> {
     tracing::info!(
         channel_id,
@@ -172,75 +184,90 @@ async fn backfill_single_channel(
         oldest_ts = oldest_ts.unwrap_or(""),
         "starting channel backfill"
     );
-    if oldest_ts.is_some() {
+    let mut totals = BackfillTotals::default();
+    let mut current_cursor = cursor.map(str::to_owned);
+    let mut should_revisit_known_threads = mode.revisit_known_threads && oldest_ts.is_some();
+
+    loop {
+        let include_oldest =
+            mode.resume_from_last_message_ts && current_cursor.is_none() && oldest_ts.is_some();
+        let history = fetch_channel_history(
+            &state.slack_api_base_url,
+            slack_user_token,
+            channel_id,
+            current_cursor.as_deref(),
+            oldest_ts,
+            include_oldest,
+        )
+        .await?;
         tracing::info!(
             channel_id,
-            oldest_ts = oldest_ts.unwrap_or(""),
-            "incremental backfill runs per public channel and skips already-stored channel messages, but can still miss late replies on older thread roots until a full backfill runs"
+            fetched_messages = history.messages.as_ref().map_or(0, Vec::len),
+            next_cursor = history
+                .response_metadata
+                .as_ref()
+                .and_then(|metadata| metadata.next_cursor.as_deref())
+                .unwrap_or(""),
+            "fetched slack history page"
         );
-    }
-    let include_oldest = resume_from_last_message_ts && cursor.is_none() && oldest_ts.is_some();
-    let history = fetch_channel_history(
-        &state.slack_api_base_url,
-        slack_user_token,
-        channel_id,
-        cursor,
-        oldest_ts,
-        include_oldest,
-    )
-    .await?;
-    tracing::info!(
-        channel_id,
-        fetched_messages = history.messages.as_ref().map_or(0, Vec::len),
-        next_cursor = history
+
+        let mut messages = history.messages.unwrap_or_default();
+        messages = expand_thread_replies(
+            state,
+            slack_user_token,
+            channel_id,
+            messages,
+            should_revisit_known_threads,
+            oldest_ts,
+        )
+        .await?;
+        messages
+            .sort_by(|left, right| parse_event_time(&left.ts).cmp(&parse_event_time(&right.ts)));
+        let page_files_seen = messages
+            .iter()
+            .map(|message| message.files.len())
+            .sum::<usize>();
+        let reaction_users = messages
+            .iter()
+            .map(|message| {
+                message
+                    .reactions
+                    .iter()
+                    .map(|reaction| reaction.users.len())
+                    .sum::<usize>()
+            })
+            .sum::<usize>();
+        tracing::info!(
+            channel_id,
+            messages = messages.len(),
+            reactions = reaction_users,
+            files = page_files_seen,
+            "persisting channel history payload"
+        );
+        let event_time = current_unix_timestamp();
+        let channel_job = build_channel_job(channel_id, channel, event_time);
+        let (message_jobs, reaction_jobs) = build_backfill_jobs(channel_id, &messages);
+        let batch_stats = state
+            .store
+            .backfill_channel_jobs(channel_job.as_ref(), &message_jobs, &reaction_jobs)
+            .await
+            .map_err(store_failed)?;
+        apply_batch_stats(&mut totals, batch_stats);
+        totals.files_seen += page_files_seen;
+        totals.files_archived +=
+            persist_backfill_file_archives(state, slack_user_token, channel_id, &messages).await?;
+
+        let next_cursor = history
             .response_metadata
-            .as_ref()
-            .and_then(|metadata| metadata.next_cursor.as_deref())
-            .unwrap_or(""),
-        "fetched slack history page"
-    );
+            .and_then(|metadata| metadata.next_cursor)
+            .filter(|value| !value.trim().is_empty());
+        should_revisit_known_threads = false;
+        let Some(next_cursor) = next_cursor else {
+            break;
+        };
+        current_cursor = Some(next_cursor);
+    }
 
-    let mut totals = BackfillTotals::default();
-    let mut messages = history.messages.unwrap_or_default();
-    messages = expand_thread_replies(state, slack_user_token, channel_id, messages).await?;
-    messages.sort_by(|left, right| parse_event_time(&left.ts).cmp(&parse_event_time(&right.ts)));
-    totals.files_seen = messages
-        .iter()
-        .map(|message| message.files.len())
-        .sum::<usize>();
-    let reaction_users = messages
-        .iter()
-        .map(|message| {
-            message
-                .reactions
-                .iter()
-                .map(|reaction| reaction.users.len())
-                .sum::<usize>()
-        })
-        .sum::<usize>();
-    tracing::info!(
-        channel_id,
-        messages = messages.len(),
-        reactions = reaction_users,
-        files = totals.files_seen,
-        "persisting channel history payload"
-    );
-    let event_time = current_unix_timestamp();
-    let channel_job = build_channel_job(channel_id, channel, event_time);
-    let (message_jobs, reaction_jobs) = build_backfill_jobs(channel_id, &messages);
-    let batch_stats = state
-        .store
-        .backfill_channel_jobs(channel_job.as_ref(), &message_jobs, &reaction_jobs)
-        .await
-        .map_err(store_failed)?;
-    apply_batch_stats(&mut totals, batch_stats);
-    totals.files_archived =
-        persist_backfill_file_archives(state, slack_user_token, channel_id, &messages).await?;
-
-    let next_cursor = history
-        .response_metadata
-        .and_then(|metadata| metadata.next_cursor)
-        .filter(|value| !value.trim().is_empty());
     tracing::info!(
         channel_id,
         inserted = totals.messages_inserted,
@@ -249,10 +276,10 @@ async fn backfill_single_channel(
         reactions_duplicate = totals.reactions_duplicate,
         files_seen = totals.files_seen,
         files_archived = totals.files_archived,
-        next_cursor = next_cursor.as_deref().unwrap_or(""),
+        next_cursor = "",
         "completed channel backfill"
     );
-    Ok((totals, next_cursor))
+    Ok((totals, None))
 }
 
 async fn sync_workspace_users(

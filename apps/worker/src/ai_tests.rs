@@ -474,7 +474,7 @@ async fn generate_thread_summaries_resume_mode_filters_per_channel() {
         .expect("body");
     let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
     assert_eq!(payload["generated"], 2);
-    assert_eq!(payload["skipped"], 0);
+    assert_eq!(payload["skipped"], 2);
     assert_eq!(payload["failed"], 0);
 
     let summaries = store.generated_thread_summaries().await;
@@ -490,6 +490,93 @@ async fn generate_thread_summaries_resume_mode_filters_per_channel() {
         ]
     );
     assert_eq!(state.requests.lock().await.len(), 2);
+}
+
+#[tokio::test]
+async fn generate_thread_summaries_resume_mode_includes_stale_generated_summaries() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    seed_root_message(
+        &store,
+        "C123",
+        "1700000100.000001",
+        "Need a refreshed summary for this thread",
+    )
+    .await;
+    seed_reply_message(
+        &store,
+        "C123",
+        "1700000101.000001",
+        "1700000100.000001",
+        "Initial reply",
+    )
+    .await;
+    let initial_last_activity_ts = store.thread_summaries().await[0].last_activity_ts.clone();
+    store
+        .upsert_generated_thread_summary(&GeneratedThreadSummaryRow {
+            channel_id: "C123".to_owned(),
+            root_ts: "1700000100.000001".to_owned(),
+            summary: "Old summary".to_owned(),
+            full_summary: Some("Old full summary".to_owned()),
+            why_it_mattered: Some("Old why".to_owned()),
+            status: "discussion".to_owned(),
+            topic_tags: vec!["old".to_owned()],
+            source_last_activity_ts: initial_last_activity_ts,
+            model: "openai/gpt-oss-120b:free".to_owned(),
+            generated_at: 1,
+        })
+        .await
+        .expect("seed stale generated summary");
+    seed_additional_replies(&store, "C123", "1700000100.000001", 20, "Fresh follow-up").await;
+    seed_root_message(
+        &store,
+        "C123",
+        "1700000200.000001",
+        "A newer unrelated channel message",
+    )
+    .await;
+
+    let (openrouter_base_url, state, handle) = spawn_openrouter_server().await;
+    let router = build_router(
+        store.clone(),
+        worker_config(
+            &log_path,
+            &openrouter_base_url,
+            Some("test-openrouter-key"),
+            Some("openai/gpt-oss-120b:free"),
+        ),
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/generate_thread_summaries")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"resume_from_last_message_ts":true}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(payload["generated"], 1);
+    assert_eq!(payload["skipped"], 1);
+    assert_eq!(payload["failed"], 0);
+
+    let summaries = store.generated_thread_summaries().await;
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].root_ts, "1700000100.000001");
+    assert!(summaries[0].summary.contains("launch plan"));
+    assert_eq!(state.requests.lock().await.len(), 1);
 }
 
 fn worker_config(

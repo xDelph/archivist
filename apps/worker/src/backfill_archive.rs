@@ -65,23 +65,18 @@ pub(super) async fn persist_backfill_file_archives(
                 continue;
             }
 
-            tracing::error!(
+            tracing::warn!(
                 channel_id,
                 message_ts,
                 file_id,
                 storage_key = %location.storage_key,
                 public_url = %location.public_url,
-                "cannot archive file without slack private download url"
+                "skipping file archive without slack private download url"
             );
-            return Err((
-                StatusCode::BAD_GATEWAY,
-                Json(ErrorResponse {
-                    error: "missing_file_download_url",
-                }),
-            ));
+            continue;
         }
 
-        let archived = archive_slack_file(
+        let archived = match archive_slack_file(
             state,
             slack_user_token,
             ArchiveSlackFile {
@@ -93,7 +88,22 @@ pub(super) async fn persist_backfill_file_archives(
                 mimetype,
             },
         )
-        .await?;
+        .await
+        {
+            Ok(archived) => archived,
+            Err((status, error)) if status == StatusCode::BAD_GATEWAY => {
+                tracing::warn!(
+                    channel_id,
+                    message_ts,
+                    file_id,
+                    ?status,
+                    "skipping file archive after transfer failure"
+                );
+                let _ = error;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         tracing::info!(
             channel_id,
             message_ts,

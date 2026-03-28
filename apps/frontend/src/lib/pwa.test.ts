@@ -1,5 +1,6 @@
 import {
 	collectCurrentShellAssetUrls,
+	disableAppServiceWorker,
 	registerAppServiceWorker,
 	shouldRegisterServiceWorker,
 	warmOfflineShellAssets,
@@ -13,8 +14,17 @@ describe("pwa helpers", () => {
 				serviceWorker: {
 					register: async () => ({}) as ServiceWorkerRegistration,
 				},
+				isDevelopment: false,
 			}),
 		).toBe(true);
+		expect(
+			shouldRegisterServiceWorker({
+				serviceWorker: {
+					register: async () => ({}) as ServiceWorkerRegistration,
+				},
+				isDevelopment: true,
+			}),
+		).toBe(false);
 		expect(shouldRegisterServiceWorker({})).toBe(false);
 	});
 
@@ -26,6 +36,23 @@ describe("pwa helpers", () => {
 		});
 
 		expect(registered).toBe(false);
+	});
+
+	it("unregisters existing service workers and clears offline caches", async () => {
+		const unregister = vi.fn().mockResolvedValue(true);
+		const getRegistrations = vi.fn().mockResolvedValue([{ unregister }]);
+		const deleteCache = vi.fn().mockResolvedValue(true);
+
+		const disabled = await disableAppServiceWorker(
+			{ getRegistrations } as unknown as ServiceWorkerContainer,
+			{ delete: deleteCache } as unknown as CacheStorage,
+		);
+
+		expect(disabled).toBe(true);
+		expect(getRegistrations).toHaveBeenCalledTimes(1);
+		expect(unregister).toHaveBeenCalledTimes(1);
+		expect(deleteCache).toHaveBeenCalledWith("arkivist-shell-v2");
+		expect(deleteCache).toHaveBeenCalledWith("arkivist-assets-v2");
 	});
 
 	it("collects current same-origin shell assets", () => {

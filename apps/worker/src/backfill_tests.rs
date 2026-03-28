@@ -81,40 +81,53 @@ async fn backfill_channel_fetches_history_and_upserts_messages() {
     let tempdir = tempdir().expect("tempdir");
     let log_path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&log_path).await.expect("store");
-    let (slack_api_base_url, handle) = spawn_history_server(Json(json!({
-        "ok": true,
-        "messages": [
-            {
-                "ts": "1700000000.000002",
-                "user": "U456",
-                "text": "reply from backfill",
-                "thread_ts": "1700000000.000001",
-                "reactions": [
+    let (slack_api_base_url, handle) = spawn_paginated_history_server(HashMap::from([
+        (
+            "".to_owned(),
+            json!({
+                "ok": true,
+                "messages": [
                     {
-                        "name": "eyes",
-                        "users": ["U999"]
+                        "ts": "1700000000.000001",
+                        "user": "U123",
+                        "text": "hello from backfill",
+                        "files": [
+                            {
+                                "id": "F123",
+                                "name": "brief.pdf",
+                                "mimetype": "application/pdf",
+                                "permalink": "https://files.example.com/brief.pdf",
+                                "size": 42
+                            }
+                        ]
+                    }
+                ],
+                "response_metadata": {
+                    "next_cursor": "cursor_2"
+                }
+            }),
+        ),
+        (
+            "cursor_2".to_owned(),
+            json!({
+                "ok": true,
+                "messages": [
+                    {
+                        "ts": "1700000000.000002",
+                        "user": "U456",
+                        "text": "reply from backfill",
+                        "thread_ts": "1700000000.000001",
+                        "reactions": [
+                            {
+                                "name": "eyes",
+                                "users": ["U999"]
+                            }
+                        ]
                     }
                 ]
-            },
-            {
-                "ts": "1700000000.000001",
-                "user": "U123",
-                "text": "hello from backfill",
-                "files": [
-                    {
-                        "id": "F123",
-                        "name": "brief.pdf",
-                        "mimetype": "application/pdf",
-                        "permalink": "https://files.example.com/brief.pdf",
-                        "size": 42
-                    }
-                ]
-            }
-        ],
-        "response_metadata": {
-            "next_cursor": "cursor_2"
-        }
-    })))
+            }),
+        ),
+    ]))
     .await;
     let router = build_router(
         store.clone(),
@@ -175,7 +188,7 @@ async fn backfill_channel_fetches_history_and_upserts_messages() {
     let first_payload: serde_json::Value = serde_json::from_slice(&first_body).expect("json");
     assert_eq!(first_payload["inserted"], 2);
     assert_eq!(first_payload["duplicate"], 0);
-    assert_eq!(first_payload["next_cursor"], "cursor_2");
+    assert_eq!(first_payload["next_cursor"], serde_json::Value::Null);
 
     let second_body = to_bytes(second.into_body(), usize::MAX)
         .await
@@ -360,7 +373,7 @@ async fn backfill_channel_reuses_existing_r2_object_without_slack_download_url()
 }
 
 #[tokio::test]
-async fn backfill_channel_fails_when_file_has_no_archive_and_no_download_url() {
+async fn backfill_channel_skips_file_when_download_url_is_missing() {
     let tempdir = tempdir().expect("tempdir");
     let log_path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&log_path).await.expect("store");
@@ -423,12 +436,15 @@ async fn backfill_channel_fails_when_file_has_no_archive_and_no_download_url() {
 
     handle.abort();
 
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body");
     let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
-    assert_eq!(payload["error"], "missing_file_download_url");
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["inserted"], 1);
+    assert_eq!(payload["duplicate"], 0);
+    assert_eq!(payload["next_cursor"], serde_json::Value::Null);
     let files = store.files().await;
     assert_eq!(files.len(), 1);
     assert_eq!(
@@ -937,6 +953,114 @@ async fn backfill_channel_resume_from_last_message_ts_reprocesses_boundary_files
 }
 
 #[tokio::test]
+async fn backfill_channel_resume_from_last_message_ts_refreshes_existing_thread_replies() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "backfill:C123:1700000100.000001".to_owned(),
+            event_time: 1_700_000_100,
+            received_at: 1_700_000_100,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U111".to_owned()),
+                text: Some("existing thread root".to_owned()),
+                ts: "1700000100.000001".to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("insert root");
+    for (offset, ts) in [
+        "1700000101.000001",
+        "1700000102.000001",
+        "1700000103.000001",
+        "1700000104.000001",
+        "1700000105.000001",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        store
+            .record_process_event(&ProcessEventJob {
+                event_id: format!("backfill:C123:{ts}"),
+                event_time: 1_700_000_101 + offset as i64,
+                received_at: 1_700_000_101 + offset as i64,
+                channel_id: "C123".to_owned(),
+                channel_kind: ChannelKind::Public,
+                payload: EventPayload::Message {
+                    user_id: Some("U222".to_owned()),
+                    text: Some(format!("existing reply {}", offset + 1)),
+                    ts: ts.to_owned(),
+                    thread_ts: Some("1700000100.000001".to_owned()),
+                    files: vec![],
+                },
+            })
+            .await
+            .expect("insert existing reply");
+    }
+
+    let (slack_api_base_url, handle) =
+        spawn_resume_thread_refresh_server("1700000105.000001", "1700000105.000001").await;
+    let router = build_router(
+        store.clone(),
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url,
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "channel_id": "C123",
+                        "resume_from_last_message_ts": true
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let thread_cards = store.thread_cards().await;
+    let refreshed_card = thread_cards
+        .iter()
+        .find(|card| card.root_ts == "1700000100.000001")
+        .expect("refreshed thread card");
+    assert_eq!(refreshed_card.reply_count, 35);
+    assert_eq!(store.messages().await.len(), 36);
+}
+
+#[tokio::test]
 async fn backfill_without_channel_id_uses_explicit_oldest_ts_for_each_public_channel() {
     let tempdir = tempdir().expect("tempdir");
     let log_path = tempdir.path().join("events.jsonl");
@@ -1009,6 +1133,118 @@ async fn backfill_without_channel_id_uses_explicit_oldest_ts_for_each_public_cha
     assert_eq!(response.status(), StatusCode::OK);
     let messages = store.messages().await;
     assert_eq!(messages.len(), 2);
+}
+
+#[tokio::test]
+async fn backfill_without_channel_id_oldest_ts_refreshes_existing_thread_replies() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    store
+        .record_process_event(&ProcessEventJob {
+            event_id: "backfill:C123:1700000100.000001".to_owned(),
+            event_time: 1_700_000_100,
+            received_at: 1_700_000_100,
+            channel_id: "C123".to_owned(),
+            channel_kind: ChannelKind::Public,
+            payload: EventPayload::Message {
+                user_id: Some("U111".to_owned()),
+                text: Some("existing thread root".to_owned()),
+                ts: "1700000100.000001".to_owned(),
+                thread_ts: None,
+                files: vec![],
+            },
+        })
+        .await
+        .expect("insert root");
+    for (offset, ts) in [
+        "1700000101.000001",
+        "1700000102.000001",
+        "1700000103.000001",
+        "1700000104.000001",
+        "1700000105.000001",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        store
+            .record_process_event(&ProcessEventJob {
+                event_id: format!("backfill:C123:{ts}"),
+                event_time: 1_700_000_101 + offset as i64,
+                received_at: 1_700_000_101 + offset as i64,
+                channel_id: "C123".to_owned(),
+                channel_kind: ChannelKind::Public,
+                payload: EventPayload::Message {
+                    user_id: Some("U222".to_owned()),
+                    text: Some(format!("existing reply {}", offset + 1)),
+                    ts: ts.to_owned(),
+                    thread_ts: Some("1700000100.000001".to_owned()),
+                    files: vec![],
+                },
+            })
+            .await
+            .expect("insert existing reply");
+    }
+    let (slack_api_base_url, handle) = spawn_workspace_backfill_server_with_thread_refresh(
+        HashMap::from([
+            ("C123".to_owned(), "1700000200.000000".to_owned()),
+            ("C456".to_owned(), "1700000200.000000".to_owned()),
+        ]),
+        HashMap::from([
+            ("C123".to_owned(), json!({ "ok": true, "messages": [] })),
+            ("C456".to_owned(), json!({ "ok": true, "messages": [] })),
+        ]),
+    )
+    .await;
+    let router = build_router(
+        store.clone(),
+        WorkerConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 4002,
+            event_log_path: log_path.display().to_string(),
+            worker_base_url: "http://127.0.0.1:4002".to_owned(),
+            slack_api_base_url,
+            openrouter_base_url: "https://openrouter.ai/api/v1".to_owned(),
+            openrouter_api_key: None,
+            openrouter_model: None,
+            slack_user_token: Some("xoxp-test".to_owned()),
+            r2_account_id: None,
+            r2_access_key_id: None,
+            r2_secret_access_key: None,
+            r2_bucket: None,
+            r2_public_url: None,
+            r2_endpoint_url: None,
+            r2_key_prefix: None,
+            current_signing_key: None,
+            next_signing_key: None,
+        },
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/backfill_channel")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "oldest_ts": "1700000200.000000" }).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    handle.abort();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let thread_cards = store.thread_cards().await;
+    let refreshed_card = thread_cards
+        .iter()
+        .find(|card| card.root_ts == "1700000100.000001")
+        .expect("refreshed thread card");
+    assert_eq!(refreshed_card.reply_count, 35);
+    assert_eq!(store.messages().await.len(), 36);
 }
 
 #[tokio::test]
@@ -1304,6 +1540,35 @@ async fn spawn_history_server(response: Json<serde_json::Value>) -> (String, Joi
         get(move |_body: Bytes| {
             let response = response.clone();
             async move { response }
+        }),
+    );
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server");
+    });
+
+    (format!("http://{address}"), handle)
+}
+
+async fn spawn_paginated_history_server(
+    pages: HashMap<String, serde_json::Value>,
+) -> (String, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+    let app = Router::new().route(
+        "/conversations.history",
+        get(move |Query(query): Query<HashMap<String, String>>| {
+            let pages = pages.clone();
+            async move {
+                let cursor = query.get("cursor").cloned().unwrap_or_default();
+                Json(
+                    pages
+                        .get(&cursor)
+                        .cloned()
+                        .expect("history payload for cursor"),
+                )
+            }
         }),
     );
     let handle = tokio::spawn(async move {
@@ -1657,6 +1922,87 @@ async fn spawn_thread_history_server_with_reply_rate_limit() -> (String, JoinHan
     (format!("http://{address}"), handle)
 }
 
+async fn spawn_resume_thread_refresh_server(
+    latest_message_ts: &str,
+    latest_stored_reply_ts: &str,
+) -> (String, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+    let latest_message_ts = latest_message_ts.to_owned();
+    let latest_stored_reply_ts = latest_stored_reply_ts.to_owned();
+    let app = Router::new()
+        .route(
+            "/conversations.history",
+            get(move |Query(query): Query<HashMap<String, String>>| {
+                let latest_message_ts = latest_message_ts.clone();
+                async move {
+                    assert_eq!(query.get("channel").map(String::as_str), Some("C123"));
+                    assert_eq!(
+                        query.get("oldest").map(String::as_str),
+                        Some(latest_message_ts.as_str())
+                    );
+                    assert_eq!(query.get("inclusive").map(String::as_str), Some("true"));
+                    Json(json!({
+                        "ok": true,
+                        "messages": [
+                            {
+                                "ts": latest_message_ts,
+                                "user": "U333",
+                                "text": "latest stored channel message"
+                            }
+                        ]
+                    }))
+                }
+            }),
+        )
+        .route(
+            "/conversations.replies",
+            get(move |Query(query): Query<HashMap<String, String>>| {
+                let latest_stored_reply_ts = latest_stored_reply_ts.clone();
+                async move {
+                    assert_eq!(query.get("channel").map(String::as_str), Some("C123"));
+                    assert_eq!(
+                        query.get("ts").map(String::as_str),
+                        Some("1700000100.000001")
+                    );
+                    assert_eq!(
+                        query.get("oldest").map(String::as_str),
+                        Some(latest_stored_reply_ts.as_str())
+                    );
+                    assert_eq!(query.get("inclusive").map(String::as_str), Some("true"));
+
+                    let mut messages = vec![json!({
+                        "ts": latest_stored_reply_ts,
+                        "user": "U222",
+                        "text": "reply 5",
+                        "thread_ts": "1700000100.000001"
+                    })];
+                    for offset in 0..30 {
+                        let seconds = 106 + offset;
+                        messages.push(json!({
+                            "ts": format!("1700000{seconds:03}.000001"),
+                            "user": "U222",
+                            "text": format!("reply {}", offset + 6),
+                            "thread_ts": "1700000100.000001"
+                        }));
+                    }
+
+                    Json(json!({
+                        "ok": true,
+                        "messages": messages
+                    }))
+                }
+            }),
+        );
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server");
+    });
+
+    (format!("http://{address}"), handle)
+}
+
 #[derive(Clone, Default)]
 struct WorkspaceBackfillState {
     histories: Arc<Mutex<HashMap<String, serde_json::Value>>>,
@@ -1763,6 +2109,100 @@ async fn spawn_workspace_backfill_server_with_history_assertions(
                     }
                 },
             ),
+        )
+        .with_state(state);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server");
+    });
+
+    (format!("http://{address}"), handle)
+}
+
+async fn spawn_workspace_backfill_server_with_thread_refresh(
+    expected_oldest_by_channel: HashMap<String, String>,
+    histories: HashMap<String, serde_json::Value>,
+) -> (String, JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+    let state = WorkspaceBackfillState {
+        histories: Arc::new(Mutex::new(histories)),
+    };
+    let app = Router::new()
+        .route(
+            "/conversations.list",
+            get(|| async {
+                Json(json!({
+                    "ok": true,
+                    "channels": [
+                        { "id": "C123", "name": "general", "is_archived": false },
+                        { "id": "C456", "name": "random", "is_archived": false }
+                    ]
+                }))
+            }),
+        )
+        .route(
+            "/conversations.history",
+            get(
+                move |State(state): State<WorkspaceBackfillState>,
+                      Query(query): Query<HashMap<String, String>>| {
+                    let expected_oldest_by_channel = expected_oldest_by_channel.clone();
+                    async move {
+                        let channel_id =
+                            query.get("channel").cloned().expect("channel query param");
+                        assert_eq!(
+                            query.get("oldest").cloned(),
+                            expected_oldest_by_channel.get(&channel_id).cloned()
+                        );
+                        assert_eq!(query.get("inclusive").map(String::as_str), Some("false"));
+                        let payload = state
+                            .histories
+                            .lock()
+                            .await
+                            .get(&channel_id)
+                            .cloned()
+                            .expect("channel history payload");
+                        Json(payload)
+                    }
+                },
+            ),
+        )
+        .route(
+            "/conversations.replies",
+            get(|Query(query): Query<HashMap<String, String>>| async move {
+                assert_eq!(query.get("channel").map(String::as_str), Some("C123"));
+                assert_eq!(
+                    query.get("ts").map(String::as_str),
+                    Some("1700000100.000001")
+                );
+                assert_eq!(
+                    query.get("oldest").map(String::as_str),
+                    Some("1700000105.000001")
+                );
+                assert_eq!(query.get("inclusive").map(String::as_str), Some("true"));
+
+                let mut messages = vec![json!({
+                    "ts": "1700000105.000001",
+                    "user": "U222",
+                    "text": "reply 5",
+                    "thread_ts": "1700000100.000001"
+                })];
+                for offset in 0..30 {
+                    let seconds = 106 + offset;
+                    messages.push(json!({
+                        "ts": format!("1700000{seconds:03}.000001"),
+                        "user": "U222",
+                        "text": format!("reply {}", offset + 6),
+                        "thread_ts": "1700000100.000001"
+                    }));
+                }
+
+                Json(json!({
+                    "ok": true,
+                    "messages": messages
+                }))
+            }),
         )
         .with_state(state);
     let handle = tokio::spawn(async move {

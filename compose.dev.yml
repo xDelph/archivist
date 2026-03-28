@@ -1,0 +1,151 @@
+name: archivist-dev
+
+services:
+  api:
+    container_name: archivist-dev-api
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: rust-dev
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DATABASE_URL_UNPOOLED: ${DATABASE_URL_UNPOOLED:-${DATABASE_URL:?DATABASE_URL is required}}
+      ARKIVIST_API_HOST: 0.0.0.0
+      ARKIVIST_API_PORT: 4000
+      ARKIVIST_WEB_ORIGIN: http://localhost:3001
+      ARKIVIST_AUTH_STORE_PATH: /var/lib/arkivist/logs/auth-identities.json
+      ARKIVIST_SYNCED_USERS_PATH: /var/lib/arkivist/logs/synced-users.json
+      ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
+      CARGO_HOME: /cargo
+      CARGO_TARGET_DIR: /app/target/api
+      PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - cargo watch --poll -x "run -p api"
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - cargo-home:/cargo
+      - api-target:/app/target
+      - arkivist-data:/var/lib/arkivist
+    ports:
+      - "127.0.0.1:4000:4000"
+
+  worker:
+    container_name: archivist-dev-worker
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: rust-dev
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DATABASE_URL_UNPOOLED: ${DATABASE_URL_UNPOOLED:-${DATABASE_URL:?DATABASE_URL is required}}
+      ARKIVIST_WORKER_HOST: 0.0.0.0
+      ARKIVIST_WORKER_PORT: 4002
+      ARKIVIST_WORKER_BASE_URL: http://worker:4002
+      ARKIVIST_WEB_ORIGIN: http://localhost:3001
+      ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
+      CARGO_HOME: /cargo
+      CARGO_TARGET_DIR: /app/target/worker
+      PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - cargo watch --poll -x "run -p worker"
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - cargo-home:/cargo
+      - worker-target:/app/target
+      - arkivist-data:/var/lib/arkivist
+    ports:
+      - "127.0.0.1:4002:4002"
+
+  ingest:
+    container_name: archivist-dev-ingest
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: rust-dev
+    depends_on:
+      api:
+        condition: service_started
+      worker:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      ARKIVIST_INGEST_HOST: 0.0.0.0
+      ARKIVIST_INGEST_PORT: 4001
+      ARKIVIST_API_BASE_URL: http://api:4000
+      ARKIVIST_WORKER_BASE_URL: http://worker:4002
+      ARKIVIST_WEB_ORIGIN: http://localhost:3001
+      CARGO_HOME: /cargo
+      CARGO_TARGET_DIR: /app/target/ingest
+      PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - cargo watch --poll -x "run -p ingest"
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - cargo-home:/cargo
+      - ingest-target:/app/target
+    ports:
+      - "127.0.0.1:4001:4001"
+
+  frontend:
+    container_name: archivist-dev-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend-dev
+    depends_on:
+      api:
+        condition: service_started
+      ingest:
+        condition: service_started
+    environment:
+      VITE_API_BASE_URL: ""
+      VITE_DEV_PROXY_TARGET: http://api:4000
+      CHOKIDAR_USEPOLLING: "true"
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - >
+        bun install --frozen-lockfile &&
+        cd apps/frontend &&
+        bunx vite --host 0.0.0.0 --port 3001
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - bun-cache:/root/.bun/install/cache
+      - node-modules:/app/node_modules
+    ports:
+      - "127.0.0.1:3001:3001"
+
+volumes:
+  api-target:
+    name: archivist-dev-api-target
+  worker-target:
+    name: archivist-dev-worker-target
+  ingest-target:
+    name: archivist-dev-ingest-target
+  cargo-home:
+    name: archivist-dev-cargo-home
+  bun-cache:
+    name: archivist-dev-bun-cache
+  node-modules:
+    name: archivist-dev-node-modules
+  arkivist-data:
+    name: archivist-dev-data

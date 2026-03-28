@@ -1,4 +1,5 @@
 type ServiceWorkerRegistrar = Pick<ServiceWorkerContainer, "register">;
+type ServiceWorkerDisabler = Pick<ServiceWorkerContainer, "getRegistrations">;
 const SHELL_CACHE = "arkivist-shell-v2";
 const ASSET_CACHE = "arkivist-assets-v2";
 const CORE_SHELL_URLS = [
@@ -10,21 +11,25 @@ const CORE_SHELL_URLS = [
 
 export interface ServiceWorkerEnvironment {
 	serviceWorker?: ServiceWorkerRegistrar;
+	isDevelopment?: boolean;
 }
 
 export function shouldRegisterServiceWorker({
 	serviceWorker,
+	isDevelopment = false,
 }: ServiceWorkerEnvironment) {
-	return typeof serviceWorker !== "undefined";
+	return !isDevelopment && typeof serviceWorker !== "undefined";
 }
 
 export async function registerAppServiceWorker(
 	serviceWorker: ServiceWorkerRegistrar | undefined = globalThis.navigator
 		?.serviceWorker,
+	isDevelopment = false,
 ) {
 	if (
 		!shouldRegisterServiceWorker({
 			serviceWorker,
+			isDevelopment,
 		})
 	) {
 		return false;
@@ -33,6 +38,32 @@ export async function registerAppServiceWorker(
 	try {
 		await serviceWorker.register("/sw.js", { scope: "/" });
 		void warmOfflineShellAssets();
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export async function disableAppServiceWorker(
+	serviceWorker: ServiceWorkerDisabler | undefined = globalThis.navigator
+		?.serviceWorker,
+	cacheStorage: CacheStorage | undefined = globalThis.caches,
+) {
+	if (!serviceWorker) {
+		return false;
+	}
+
+	try {
+		const registrations = await serviceWorker.getRegistrations();
+		await Promise.all(
+			registrations.map((registration) => registration.unregister()),
+		);
+		if (cacheStorage) {
+			await Promise.all([
+				cacheStorage.delete(SHELL_CACHE),
+				cacheStorage.delete(ASSET_CACHE),
+			]);
+		}
 		return true;
 	} catch {
 		return false;

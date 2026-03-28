@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { registerAppServiceWorker } from "./lib/pwa";
+import * as pwa from "./lib/pwa";
 import { ThemeProvider } from "./lib/theme";
 import { router } from "./router";
 
@@ -25,7 +25,11 @@ if (!rootElement) {
 	throw new Error("Missing #root element");
 }
 
-void registerAppServiceWorker();
+if (import.meta.env.DEV) {
+	void pwa.disableAppServiceWorker?.();
+} else {
+	void pwa.registerAppServiceWorker();
+}
 
 createRoot(rootElement).render(
 	<StrictMode>

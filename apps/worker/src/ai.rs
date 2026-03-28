@@ -77,7 +77,9 @@ pub(crate) async fn generate_thread_summaries(
         .into_iter()
         .map(|row| ((row.channel_id.clone(), row.root_ts.clone()), row))
         .collect::<HashMap<_, _>>();
-    let candidates = select_candidate_threads(&state, &request, thread_summaries).await?;
+    let candidates =
+        select_candidate_threads(&state, &request, thread_summaries, &existing, &config.model)
+            .await?;
     if candidates.is_empty() {
         tracing::info!("skipping thread summary generation because no candidate threads matched");
         return Ok(Json(GenerateThreadSummariesResponse {
@@ -247,7 +249,38 @@ async fn select_candidate_threads(
     state: &AppState,
     request: &crate::backfill_range::BackfillChannelRequest,
     thread_summaries: Vec<ThreadSummaryRow>,
+    existing: &HashMap<(String, String), GeneratedThreadSummaryRow>,
+    model: &str,
 ) -> Result<Vec<ThreadSummaryRow>, (StatusCode, Json<ErrorResponse>)> {
+    if request.resume_from_last_message_ts {
+        let mut candidates = thread_summaries
+            .into_iter()
+            .filter(|summary| {
+                summary_matches_channel_filter(summary, request.channel_id.as_deref())
+            })
+            .filter(|summary| {
+                generated_summary_needs_refresh(
+                    existing.get(&(summary.channel_id.clone(), summary.root_ts.clone())),
+                    summary,
+                    model,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| {
+            (&left.channel_id, &left.last_activity_ts, &left.root_ts).cmp(&(
+                &right.channel_id,
+                &right.last_activity_ts,
+                &right.root_ts,
+            ))
+        });
+        tracing::info!(
+            selected_candidates = candidates.len(),
+            channel_filter = request.channel_id.as_deref().unwrap_or(""),
+            "selected stale or missing generated summaries for resume-mode generation"
+        );
+        return Ok(candidates);
+    }
+
     let mut cutoffs = HashMap::<String, Option<String>>::new();
     if let Some(channel_id) = request
         .channel_id
@@ -295,9 +328,27 @@ async fn select_candidate_threads(
     Ok(candidates)
 }
 
+fn summary_matches_channel_filter(summary: &ThreadSummaryRow, channel_id: Option<&str>) -> bool {
+    channel_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none_or(|channel_id| summary.channel_id == channel_id)
+}
+
 fn is_summary_in_range(summary: &ThreadSummaryRow, oldest_ts: Option<&str>) -> bool {
     oldest_ts.is_none_or(|oldest_ts| {
         slack_ts_value(&summary.last_activity_ts) >= slack_ts_value(oldest_ts)
+    })
+}
+
+fn generated_summary_needs_refresh(
+    row: Option<&GeneratedThreadSummaryRow>,
+    summary: &ThreadSummaryRow,
+    model: &str,
+) -> bool {
+    row.is_none_or(|row| {
+        row.model != model
+            || !same_slack_ts(&row.source_last_activity_ts, &summary.last_activity_ts)
     })
 }
 

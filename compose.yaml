@@ -1,0 +1,99 @@
+name: archivist
+
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DATABASE_URL_UNPOOLED: ${DATABASE_URL_UNPOOLED:-${DATABASE_URL:?DATABASE_URL is required}}
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DATABASE_URL_UNPOOLED: ${DATABASE_URL_UNPOOLED:-${DATABASE_URL:?DATABASE_URL is required}}
+      ARKIVIST_API_HOST: 0.0.0.0
+      ARKIVIST_API_PORT: 4000
+      ARKIVIST_WEB_ORIGIN: ${ARKIVIST_WEB_ORIGIN:-http://localhost:3001}
+      ARKIVIST_AUTH_STORE_PATH: /var/lib/arkivist/logs/auth-identities.json
+      ARKIVIST_SYNCED_USERS_PATH: /var/lib/arkivist/logs/synced-users.json
+      ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
+    restart: unless-stopped
+    volumes:
+      - arkivist-data:/var/lib/arkivist
+    ports:
+      - "127.0.0.1:4000:4000"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DATABASE_URL_UNPOOLED: ${DATABASE_URL_UNPOOLED:-${DATABASE_URL:?DATABASE_URL is required}}
+      ARKIVIST_WORKER_HOST: 0.0.0.0
+      ARKIVIST_WORKER_PORT: 4002
+      ARKIVIST_WORKER_BASE_URL: http://worker:4002
+      ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
+    restart: unless-stopped
+    volumes:
+      - arkivist-data:/var/lib/arkivist
+    ports:
+      - "127.0.0.1:4002:4002"
+
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ingest
+    depends_on:
+      api:
+        condition: service_started
+      worker:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      ARKIVIST_INGEST_HOST: 0.0.0.0
+      ARKIVIST_INGEST_PORT: 4001
+      ARKIVIST_API_BASE_URL: http://api:4000
+      ARKIVIST_WORKER_BASE_URL: http://worker:4002
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4001:4001"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    depends_on:
+      api:
+        condition: service_started
+      ingest:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "${ARKIVIST_FRONTEND_PORT:-3001}:8080"
+volumes:
+  arkivist-data:

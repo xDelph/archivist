@@ -316,12 +316,15 @@ pub(super) async fn fetch_thread_replies(
     channel_id: &str,
     root_ts: &str,
     cursor: Option<&str>,
+    oldest_ts: Option<&str>,
+    inclusive: bool,
 ) -> Result<SlackHistoryResponse, (StatusCode, Json<ErrorResponse>)> {
     let endpoint = format!(
         "{}/conversations.replies",
         slack_api_base_url.trim_end_matches('/')
     );
     let client = reqwest::Client::new();
+    let inclusive = if inclusive { "true" } else { "false" };
 
     for attempt in 0..=SLACK_RATE_LIMIT_RETRIES {
         let response = client
@@ -331,6 +334,8 @@ pub(super) async fn fetch_thread_replies(
                 ("channel", channel_id),
                 ("ts", root_ts),
                 ("cursor", cursor.unwrap_or_default()),
+                ("oldest", oldest_ts.unwrap_or_default()),
+                ("inclusive", inclusive),
             ])
             .send()
             .await
