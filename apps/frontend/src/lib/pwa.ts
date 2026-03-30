@@ -1,12 +1,12 @@
 type ServiceWorkerRegistrar = Pick<ServiceWorkerContainer, "register">;
 type ServiceWorkerDisabler = Pick<ServiceWorkerContainer, "getRegistrations">;
-const SHELL_CACHE = "arkivist-shell-v2";
-const ASSET_CACHE = "arkivist-assets-v2";
+const SHELL_CACHE = "arkivist-shell-v3";
+const ASSET_CACHE = "arkivist-assets-v3";
+const LEGACY_CACHE_NAMES = ["arkivist-shell-v2", "arkivist-assets-v2"];
 const CORE_SHELL_URLS = [
 	"/",
 	"/manifest.webmanifest",
-	"/icons/app-icon.svg",
-	"/icons/app-icon-maskable.svg",
+	"/icons/proposal-e-spines-tight.svg",
 ];
 
 export interface ServiceWorkerEnvironment {
@@ -59,10 +59,11 @@ export async function disableAppServiceWorker(
 			registrations.map((registration) => registration.unregister()),
 		);
 		if (cacheStorage) {
-			await Promise.all([
-				cacheStorage.delete(SHELL_CACHE),
-				cacheStorage.delete(ASSET_CACHE),
-			]);
+			await Promise.all(
+				[SHELL_CACHE, ASSET_CACHE, ...LEGACY_CACHE_NAMES].map((cacheName) =>
+					cacheStorage.delete(cacheName),
+				),
+			);
 		}
 		return true;
 	} catch {

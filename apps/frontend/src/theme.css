@@ -274,11 +274,18 @@ html[data-appearance="light"] {
 
 @layer components {
 	.brand-mark {
-		background: var(--color-accent);
-		color: var(--color-on-accent);
+		background-color: transparent;
+		background-image: url("/icons/proposal-e-spines-tight.svg");
+		background-position: center;
+		background-repeat: no-repeat;
+		background-size: cover;
 		box-shadow: var(--shadow-accent);
-		transition: background-color var(--transition-fast), color
-			var(--transition-fast), box-shadow var(--transition-medium), transform
+		overflow: hidden;
+		transition: box-shadow var(--transition-medium), transform
 			var(--transition-fast);
+	}
+
+	.brand-mark > svg {
+		opacity: 0;
 	}
 }

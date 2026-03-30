@@ -14,7 +14,7 @@ services:
       DATABASE_URL_UNPOOLED: ${DATABASE_URL_UNPOOLED:-${DATABASE_URL:?DATABASE_URL is required}}
       ARKIVIST_API_HOST: 0.0.0.0
       ARKIVIST_API_PORT: 4000
-      ARKIVIST_WEB_ORIGIN: http://localhost:3001
+      ARKIVIST_WEB_ORIGIN: https://devwithai-local.arkivist.dev
       ARKIVIST_AUTH_STORE_PATH: /var/lib/arkivist/logs/auth-identities.json
       ARKIVIST_SYNCED_USERS_PATH: /var/lib/arkivist/logs/synced-users.json
       ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
@@ -62,7 +62,7 @@ services:
       ARKIVIST_WORKER_HOST: 0.0.0.0
       ARKIVIST_WORKER_PORT: 4002
       ARKIVIST_WORKER_BASE_URL: http://worker:4002
-      ARKIVIST_WEB_ORIGIN: http://localhost:3001
+      ARKIVIST_WEB_ORIGIN: https://devwithai-local.arkivist.dev
       ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
       CARGO_HOME: /cargo
       CARGO_TARGET_DIR: /cargo-target/worker
@@ -112,7 +112,7 @@ services:
       ARKIVIST_INGEST_PORT: 4001
       ARKIVIST_API_BASE_URL: http://api:4000
       ARKIVIST_WORKER_BASE_URL: http://worker:4002
-      ARKIVIST_WEB_ORIGIN: http://localhost:3001
+      ARKIVIST_WEB_ORIGIN: https://devwithai-local.arkivist.dev
       CARGO_HOME: /cargo
       CARGO_TARGET_DIR: /cargo-target/ingest
       PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

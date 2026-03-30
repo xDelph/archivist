@@ -51,6 +51,8 @@ describe("pwa helpers", () => {
 		expect(disabled).toBe(true);
 		expect(getRegistrations).toHaveBeenCalledTimes(1);
 		expect(unregister).toHaveBeenCalledTimes(1);
+		expect(deleteCache).toHaveBeenCalledWith("arkivist-shell-v3");
+		expect(deleteCache).toHaveBeenCalledWith("arkivist-assets-v3");
 		expect(deleteCache).toHaveBeenCalledWith("arkivist-shell-v2");
 		expect(deleteCache).toHaveBeenCalledWith("arkivist-assets-v2");
 	});
@@ -107,8 +109,8 @@ describe("pwa helpers", () => {
 		);
 
 		expect(warmed).toBe(true);
-		expect(open).toHaveBeenNthCalledWith(1, "arkivist-shell-v2");
-		expect(open).toHaveBeenNthCalledWith(2, "arkivist-assets-v2");
+		expect(open).toHaveBeenNthCalledWith(1, "arkivist-shell-v3");
+		expect(open).toHaveBeenNthCalledWith(2, "arkivist-assets-v3");
 		expect(shellPut).toHaveBeenCalled();
 		expect(assetPut).toHaveBeenCalled();
 	});

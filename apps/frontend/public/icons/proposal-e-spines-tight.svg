@@ -1,10 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Tight book spines — 3 upright, 1 leaning left against them -->
   <rect width="512" height="512" rx="128" fill="#151518"/>
+
+  <!-- Book group — packed upright, left side -->
   <rect x="152" y="136" width="44" height="248" rx="5" fill="#333338"/>
   <rect x="204" y="152" width="56" height="232" rx="5" fill="#505058"/>
   <rect x="268" y="140" width="40" height="244" rx="5" fill="#6e6e78"/>
+
+  <!-- Leaning book — tilted, no overlap, same bottom line (y=384) -->
   <g transform="rotate(-12, 352, 384)">
     <rect x="366" y="132" width="48" height="256" rx="5" fill="#f8fafc"/>
+    <!-- Spine accent -->
     <rect x="366" y="132" width="10" height="256" rx="5" fill="#4ade80"/>
   </g>
 </svg>

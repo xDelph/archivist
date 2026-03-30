@@ -7,9 +7,12 @@ export function Footer() {
 		<footer className="border-t border-(--color-border-subtle) px-6 py-8">
 			<div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-(--color-text-secondary) sm:flex-row sm:items-center sm:justify-between">
 				<div className="flex items-center gap-3">
-					<span className="flex h-8 w-8 items-center justify-center rounded-xl border border-(--color-border-strong) bg-(--color-bg-panel) text-xs font-semibold text-(--color-text-primary)">
-						A
-					</span>
+					<img
+						src="/icons/proposal-e-spines-tight.svg"
+						alt=""
+						aria-hidden="true"
+						className="h-8 w-8 rounded-xl shadow-[var(--landing-panel-shadow)]"
+					/>
 					<div>
 						<p className="font-semibold tracking-tight text-(--color-text-primary)">
 							Arkivist

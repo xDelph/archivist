@@ -1,11 +1,10 @@
-const SHELL_CACHE = "arkivist-shell-v2";
-const ASSET_CACHE = "arkivist-assets-v2";
+const SHELL_CACHE = "arkivist-shell-v3";
+const ASSET_CACHE = "arkivist-assets-v3";
 const DATA_CACHE = "arkivist-data-v1";
 const CORE_SHELL_URLS = [
   "/",
   "/manifest.webmanifest",
-  "/icons/app-icon.svg",
-  "/icons/app-icon-maskable.svg",
+  "/icons/proposal-e-spines-tight.svg",
 ];
 const STATIC_DESTINATIONS = new Set(["script", "style", "font", "image"]);
 

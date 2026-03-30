@@ -1,16 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="96" x2="416" y1="64" y2="448" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#f97316" />
-      <stop offset="1" stop-color="#0f172a" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="132" fill="url(#bg)" />
-  <path
-    fill="#f8fafc"
-    d="M176 136h131c62.96 0 113 50.04 113 112s-50.04 112-113 112h-66l-71 62c-8.39 7.34-21 1.42-21-9.72V360c-32.69-18.7-57-61.18-57-112 0-61.96 50.04-112 112-112Zm0 48c-35.42 0-64 28.58-64 64 0 35.42 28.58 64 64 64h52c7.11 0 14 2.53 19.42 7.14L203 360.8V331c0-13.25 10.75-24 24-24h80c35.42 0 64-28.58 64-64 0-35.42-28.58-64-64-64Z"
-  />
-  <circle cx="207" cy="247" r="20" fill="#fb7185" />
-  <circle cx="256" cy="247" r="20" fill="#fdba74" />
-  <circle cx="305" cy="247" r="20" fill="#fde68a" />
+  <rect width="512" height="512" rx="128" fill="#151518"/>
+  <rect x="152" y="136" width="44" height="248" rx="5" fill="#333338"/>
+  <rect x="204" y="152" width="56" height="232" rx="5" fill="#505058"/>
+  <rect x="268" y="140" width="40" height="244" rx="5" fill="#6e6e78"/>
+  <g transform="rotate(-12, 352, 384)">
+    <rect x="366" y="132" width="48" height="256" rx="5" fill="#f8fafc"/>
+    <rect x="366" y="132" width="10" height="256" rx="5" fill="#4ade80"/>
+  </g>
 </svg>

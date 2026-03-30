@@ -13,7 +13,7 @@ export default defineConfig({
 			"/api": devProxyTarget,
 			"/health": devProxyTarget,
 		},
-		allowedHosts: ["devwithai.arkivist.dev"],
+		allowedHosts: ["devwithai-local.arkivist.dev"],
 	},
 	resolve: {
 		alias: {

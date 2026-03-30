@@ -35,9 +35,12 @@ export function Header() {
 							?.scrollIntoView({ behavior: "smooth", block: "start" });
 					}}
 				>
-					<span className="flex h-9 w-9 items-center justify-center rounded-xl border border-(--color-border-strong) bg-(--color-bg-panel) text-sm font-semibold text-(--color-text-primary)">
-						A
-					</span>
+					<img
+						src="/icons/proposal-e-spines-tight.svg"
+						alt=""
+						aria-hidden="true"
+						className="h-9 w-9 rounded-xl shadow-[var(--landing-panel-shadow)]"
+					/>
 					<span className="text-base font-semibold tracking-tight text-(--color-text-primary)">
 						Arkivist
 					</span>

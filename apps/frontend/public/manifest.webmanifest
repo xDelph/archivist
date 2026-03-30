@@ -10,16 +10,10 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/app-icon.svg",
+      "src": "/icons/proposal-e-spines-tight.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/app-icon-maskable.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ]
 }

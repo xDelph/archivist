@@ -12,7 +12,7 @@ import { useNetworkStatus } from "@/lib/use-network-status";
 import { cn } from "@/lib/utils";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Archive, Bookmark, CloudOff, House, Search } from "lucide-react";
+import { Bookmark, CloudOff, House, Search } from "lucide-react";
 import { startTransition, useEffect, useState } from "react";
 
 const navItems = [
@@ -85,9 +85,12 @@ export function AppShell() {
 			<header className="sticky top-0 z-30 border-b border-(--color-border-subtle) bg-(--color-header-bg) backdrop-blur-xl">
 				<div className="mx-auto flex max-w-[1680px] items-center gap-3 px-3 py-2 sm:px-4">
 					<Link to="/" className="flex items-center gap-2">
-						<span className="brand-mark flex size-10 items-center justify-center rounded-xl">
-							<Archive className="size-3.5" />
-						</span>
+						<img
+							src="/icons/proposal-e-spines-tight.svg"
+							alt=""
+							aria-hidden="true"
+							className="size-10 rounded-xl shadow-[var(--shadow-accent)]"
+						/>
 						<div>
 							<p className="text-[1.15rem] font-semibold leading-none tracking-tight text-(--color-text-bright) sm:text-[1.28rem]">
 								Arkivist
