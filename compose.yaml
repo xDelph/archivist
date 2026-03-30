@@ -94,6 +94,6 @@ services:
         condition: service_started
     restart: unless-stopped
     ports:
-      - "${ARKIVIST_FRONTEND_PORT:-3001}:8080"
+      - "127.0.0.1:${ARKIVIST_FRONTEND_PORT:-3001}:8080"
 volumes:
   arkivist-data:

@@ -19,18 +19,31 @@ services:
       ARKIVIST_SYNCED_USERS_PATH: /var/lib/arkivist/logs/synced-users.json
       ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
       CARGO_HOME: /cargo
-      CARGO_TARGET_DIR: /app/target/api
+      CARGO_TARGET_DIR: /cargo-target/api
       PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     working_dir: /app
     command:
       - sh
       - -c
-      - cargo watch --poll -x "run -p api"
+      - >
+        cargo watch --poll
+        --watch-when-idle
+        -w apps/api
+        -w crates
+        -w Cargo.toml
+        -w Cargo.lock
+        -i .git
+        -i target
+        -i node_modules
+        -i dist
+        -i coverage
+        -i .turbo
+        -x "run -p api"
     restart: unless-stopped
     volumes:
       - .:/app
       - cargo-home:/cargo
-      - api-target:/app/target
+      - api-target:/cargo-target/api
       - arkivist-data:/var/lib/arkivist
     ports:
       - "127.0.0.1:4000:4000"
@@ -52,18 +65,31 @@ services:
       ARKIVIST_WEB_ORIGIN: http://localhost:3001
       ARKIVIST_EVENT_LOG_PATH: /var/lib/arkivist/logs/process-events.jsonl
       CARGO_HOME: /cargo
-      CARGO_TARGET_DIR: /app/target/worker
+      CARGO_TARGET_DIR: /cargo-target/worker
       PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     working_dir: /app
     command:
       - sh
       - -c
-      - cargo watch --poll -x "run -p worker"
+      - >
+        cargo watch --poll
+        --watch-when-idle
+        -w apps/worker
+        -w crates
+        -w Cargo.toml
+        -w Cargo.lock
+        -i .git
+        -i target
+        -i node_modules
+        -i dist
+        -i coverage
+        -i .turbo
+        -x "run -p worker"
     restart: unless-stopped
     volumes:
       - .:/app
       - cargo-home:/cargo
-      - worker-target:/app/target
+      - worker-target:/cargo-target/worker
       - arkivist-data:/var/lib/arkivist
     ports:
       - "127.0.0.1:4002:4002"
@@ -88,18 +114,31 @@ services:
       ARKIVIST_WORKER_BASE_URL: http://worker:4002
       ARKIVIST_WEB_ORIGIN: http://localhost:3001
       CARGO_HOME: /cargo
-      CARGO_TARGET_DIR: /app/target/ingest
+      CARGO_TARGET_DIR: /cargo-target/ingest
       PATH: /usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     working_dir: /app
     command:
       - sh
       - -c
-      - cargo watch --poll -x "run -p ingest"
+      - >
+        cargo watch --poll
+        --watch-when-idle
+        -w apps/ingest
+        -w crates
+        -w Cargo.toml
+        -w Cargo.lock
+        -i .git
+        -i target
+        -i node_modules
+        -i dist
+        -i coverage
+        -i .turbo
+        -x "run -p ingest"
     restart: unless-stopped
     volumes:
       - .:/app
       - cargo-home:/cargo
-      - ingest-target:/app/target
+      - ingest-target:/cargo-target/ingest
     ports:
       - "127.0.0.1:4001:4001"
 
