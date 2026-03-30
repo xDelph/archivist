@@ -1,33 +1,39 @@
 const FEATURES = [
 	{
 		name: "Capture",
-		title: "Archive public-channel threads and files automatically.",
+		title: "Continuously backfill public-channel threads, files, and activity.",
 		description:
-			"Backfills keep history current without asking someone to export Slack by hand whenever context is missing.",
+			"Workers keep the archive warm in the background so new catch-up views and searches do not depend on a manual export.",
+	},
+	{
+		name: "Catch up",
+		title: "Open Fresh, This Week, or Starred instead of raw scrollback.",
+		description:
+			"The app surfaces the threads worth revisiting first, with shared sorting across the main lists.",
 	},
 	{
 		name: "Search",
-		title: "Find a thread by phrase, channel, or time window.",
+		title: "Filter by phrase, channel, date range, or ranking.",
 		description:
-			"Arkivist indexes the archive for retrieval instead of making people remember which month, channel, or teammate touched it.",
+			"Search is tuned for finding the right conversation and opening the full thread card immediately.",
 	},
 	{
 		name: "Summaries",
-		title: "Turn long threads into something a busy teammate can scan.",
+		title: "Read full AI thread briefs with status, tags, and context.",
 		description:
-			"AI summaries condense the important parts without replacing the original conversation.",
+			"Short previews help scan lists; full summaries and why-it-mattered notes stay attached to thread detail.",
 	},
 	{
-		name: "Reading",
-		title: "Save useful threads and reopen them offline.",
+		name: "Saved",
+		title: "Bookmark useful threads and keep them readable offline.",
 		description:
-			"The archive is not only searchable. It is also readable when the network drops or the team is traveling.",
+			"Saved conversations stay available for travel, spotty networks, and installable home-screen access.",
 	},
 	{
 		name: "Control",
-		title: "Keep the system in your infrastructure.",
+		title: "Run the whole stack in your own infrastructure.",
 		description:
-			"Auth, storage, and access stay under your control instead of becoming another external black box.",
+			"Frontend, API, ingest, worker, and migrations can ship together without turning the archive into somebody else's SaaS.",
 	},
 ];
 
@@ -41,12 +47,12 @@ export function Features() {
 							What it does
 						</p>
 						<h2 className="mt-3 text-[clamp(2rem,5vw,3.3rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-(--color-text-primary)">
-							Five jobs. No filler.
+							Six jobs. Still focused.
 						</h2>
 						<p className="mt-4 max-w-sm text-[1rem] leading-7 text-(--color-text-secondary)">
-							The product should answer one question quickly: can this team
-							reliably recover the thread they need later? These are the parts
-							that make the answer yes.
+							The product answers a sharper question now: can a teammate recover
+							the right thread, on time, from wherever they are? These are the
+							capabilities that make that true.
 						</p>
 					</div>
 					<div className="space-y-6">

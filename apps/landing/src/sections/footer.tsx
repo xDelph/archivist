@@ -15,7 +15,7 @@ export function Footer() {
 							Arkivist
 						</p>
 						<p className="text-xs uppercase tracking-[0.14em] text-(--color-text-quiet)">
-							Slack archive for durable recall
+							Slack archive, catch-up, and offline reading
 						</p>
 					</div>
 				</div>

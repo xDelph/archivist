@@ -1,21 +1,21 @@
 const STEPS = [
 	{
 		step: "01",
-		title: "Connect Slack and schedule the archive.",
+		title: "Connect Slack and bootstrap the stack.",
 		description:
-			"Arkivist backfills public-channel history so the archive becomes a living record instead of a one-time import.",
+			"Arkivist can run as a self-hosted frontend, API, ingest, worker, and migration stack, then start pulling public-channel history.",
 	},
 	{
 		step: "02",
-		title: "Store the thread, file, and summary together.",
+		title: "Let the worker keep history fresh and enrich it.",
 		description:
-			"Messages stay readable, summaries stay attached, and the original context remains available when someone needs the full thread.",
+			"Background backfills attach files, generate summaries, and keep thread previews aligned with the latest activity instead of freezing after the first import.",
 	},
 	{
 		step: "03",
-		title: "Open the archive from catch-up, search, or saved reading.",
+		title: "Reopen the right thread from Catch up, Search, or Saved.",
 		description:
-			"People can recover the right conversation from the workflow that matches the moment instead of hunting through Slack.",
+			"People can start with Fresh, This Week, or Starred, jump to filtered search when needed, and keep critical threads available offline.",
 	},
 ];
 
@@ -29,7 +29,8 @@ export function HowItWorks() {
 							How it works
 						</p>
 						<h2 className="mt-3 max-w-md text-[clamp(2rem,5vw,3.3rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-(--color-text-primary)">
-							Built to reduce re-explaining, not to create another dashboard.
+							Built to shorten the path from a question back to the thread that
+							answered it.
 						</h2>
 					</div>
 					<div className="space-y-8">

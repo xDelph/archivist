@@ -4,8 +4,8 @@ const REPO_URL = "https://github.com/xDelph/archivist";
 
 const TRUST_POINTS = [
 	"AGPL-3.0 licensed.",
-	"Designed for self-hosted operation.",
-	"Built around searchable, readable thread history.",
+	"Compose-ready self-hosted stack.",
+	"Frontend, API, ingest, and worker stay under your control.",
 ];
 
 export function OpenSource() {
@@ -28,12 +28,12 @@ export function OpenSource() {
 							Open source
 						</p>
 						<h2 className="mt-3 max-w-2xl text-[clamp(2rem,5vw,3.3rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-(--color-text-primary)">
-							If your team relies on Slack for real decisions, the archive
-							should not be a black box either.
+							If Slack is part of how your team thinks, the archive should be
+							runnable and inspectable too.
 						</h2>
 						<p className="mt-4 max-w-2xl text-[1rem] leading-7 text-(--color-text-secondary)">
-							Arkivist is for teams that want durable recall without handing
-							over their working memory to another opaque hosted product.
+							Arkivist is open source, self-hostable, and designed so the same
+							stack that captures history is the one your team reads from later.
 						</p>
 					</div>
 					<div className="space-y-6">

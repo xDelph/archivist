@@ -3,26 +3,29 @@ import { ArrowRight, Github } from "lucide-react";
 const REPO_URL = "https://github.com/xDelph/archivist";
 
 const PROOF_POINTS = [
-	"Archives public-channel history without manual exports.",
-	"Searches threads, files, and summaries from one place.",
-	"Keeps the archive inside your infrastructure.",
+	"Continuously backfills public-channel history in the background.",
+	"Opens Fresh, This Week, and Starred queues before you search.",
+	"Keeps saved thread detail readable offline and on the home screen.",
 ];
 
 const PREVIEW_THREADS = [
 	{
-		channel: "#product",
-		title: "Pricing rollout notes",
-		summary: "Seven replies, one decision, and the final launch checklist.",
+		channel: "#engineering",
+		title: "OpenSearch latency spike",
+		summary:
+			"AI brief attached. Rollback owner assigned, root cause narrowed, follow-up still open.",
 	},
 	{
-		channel: "#engineering",
-		title: "Incident recap",
-		summary: "Recovered root cause, linked files, and next follow-ups.",
+		channel: "#product",
+		title: "Pricing rollout FAQ",
+		summary:
+			"Why it mattered is clear: launch copy approved, support macros updated, comms owner confirmed.",
 	},
 	{
 		channel: "#ops",
-		title: "Vendor renewal thread",
-		summary: "Contract terms, approvals, and the final owner assignment.",
+		title: "EMEA vendor renewal",
+		summary:
+			"Saved for offline reading with the contract thread, linked files, and final approver in one place.",
 	},
 ];
 
@@ -38,12 +41,13 @@ export function Hero() {
 						className="mt-5 max-w-4xl text-[clamp(3rem,9vw,5.8rem)] font-semibold leading-[0.96] tracking-[-0.04em] text-(--color-text-primary)"
 						style={{ textShadow: "var(--landing-title-shadow)" }}
 					>
-						Keep every important thread readable after Slack forgets it.
+						Keep every important Slack thread readable, searchable, and ready to
+						reopen.
 					</h1>
 					<p className="mt-6 max-w-2xl text-[1.05rem] leading-7 text-(--color-text-secondary) sm:text-[1.18rem]">
-						Arkivist captures public-channel history, turns long threads into
-						quick summaries, and gives your team a calm place to search for
-						decisions instead of reconstructing them from memory.
+						Arkivist continuously archives public channels, builds catch-up
+						queues, stores full AI thread summaries, and gives your team a calm
+						place to save the conversations that still matter later.
 					</p>
 					<div className="mt-8 flex flex-col gap-3 sm:flex-row">
 						<a
@@ -101,15 +105,15 @@ function ArchivePreview() {
 						Archive view
 					</p>
 					<h2 className="mt-1 text-xl font-semibold tracking-tight text-(--color-text-primary)">
-						One place to reopen the thread that actually settled it
+						One archive for catch-up, search, and saved reading
 					</h2>
 				</div>
 				<p className="text-right text-[0.72rem] uppercase tracking-[0.18em] text-(--color-accent)">
+					Fresh
+					<br />
 					Search
 					<br />
-					Summaries
-					<br />
-					Offline
+					Saved
 				</p>
 			</div>
 
@@ -140,9 +144,9 @@ function ArchivePreview() {
 			</div>
 
 			<div className="mt-5 border-t border-(--color-border-subtle) pt-4 text-sm leading-6 text-(--color-text-secondary)">
-				Arkivist is for teams that treat Slack as working memory but still need
-				retrievable evidence when a launch, incident, or policy decision comes
-				back up later.
+				Arkivist is for teams that use Slack as working memory but still need a
+				reliable way to catch up, verify a decision, and reopen the full thread
+				later without depending on whoever happened to remember it.
 			</div>
 		</section>
 	);
