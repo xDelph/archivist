@@ -19,7 +19,7 @@ FROM rust:${RUST_VERSION}-slim-bookworm AS migrate-builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN cargo install --locked sqlx-cli --no-default-features --features postgres,rustls
+RUN cargo install --locked sqlx-cli --version 0.8.6 --no-default-features --features postgres,rustls
 RUN install -D /usr/local/cargo/bin/sqlx /out/sqlx
 
 FROM oven/bun:${BUN_VERSION}-alpine AS frontend-builder

@@ -90,7 +90,7 @@ Points importants:
 Installation `sqlx-cli`:
 
 ```bash
-cargo install sqlx-cli --no-default-features --features postgres,rustls
+cargo install sqlx-cli --version 0.8.6 --no-default-features --features postgres,rustls
 ```
 
 ## Installation locale
