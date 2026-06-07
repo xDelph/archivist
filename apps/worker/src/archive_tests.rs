@@ -53,6 +53,7 @@ async fn archive_file_rejects_missing_user_token() {
             r2_key_prefix: Some("T123".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -107,6 +108,7 @@ async fn archive_file_rejects_missing_r2_config() {
             r2_key_prefix: Some("T123".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -162,6 +164,7 @@ async fn archive_file_downloads_from_slack_and_uploads_to_r2() {
             r2_key_prefix: Some("T123".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -240,6 +243,7 @@ async fn archive_file_reuses_existing_r2_object() {
             r2_key_prefix: Some("T123".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");

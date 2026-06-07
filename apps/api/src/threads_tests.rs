@@ -605,6 +605,7 @@ async fn thread_detail_route_formats_mentions_in_generated_summary_metadata() {
             display_name: Some("thomas".to_owned()),
             avatar_url: None,
             is_active: true,
+            is_anonymized: false,
         })
         .await
         .expect("seed user");
@@ -614,6 +615,7 @@ async fn thread_detail_route_formats_mentions_in_generated_summary_metadata() {
             display_name: Some("patrick".to_owned()),
             avatar_url: None,
             is_active: true,
+            is_anonymized: false,
         })
         .await
         .expect("seed user");

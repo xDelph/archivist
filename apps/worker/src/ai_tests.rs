@@ -21,14 +21,46 @@ struct MockAiState {
 }
 
 #[tokio::test]
-async fn generate_thread_summaries_requires_openrouter_config() {
+async fn generate_thread_summaries_is_disabled_by_default() {
     let tempdir = tempdir().expect("tempdir");
     let log_path = tempdir.path().join("events.jsonl");
     let store = JsonlEventStore::open(&log_path).await.expect("store");
     seed_root_message(&store, "C123", "1700000000.000001", "root message").await;
     let router = build_router(
         store,
-        worker_config(&log_path, "https://openrouter.ai/api/v1", None, None),
+        worker_config(&log_path, "https://openrouter.ai/api/v1", None, None, false),
+    )
+    .expect("router");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/jobs/generate_thread_summaries")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"channel_id":"C123"}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(payload["generated"], 0);
+}
+
+#[tokio::test]
+async fn generate_thread_summaries_requires_openrouter_config_when_enabled() {
+    let tempdir = tempdir().expect("tempdir");
+    let log_path = tempdir.path().join("events.jsonl");
+    let store = JsonlEventStore::open(&log_path).await.expect("store");
+    seed_root_message(&store, "C123", "1700000000.000001", "root message").await;
+    let router = build_router(
+        store,
+        worker_config(&log_path, "https://openrouter.ai/api/v1", None, None, true),
     )
     .expect("router");
 
@@ -88,6 +120,7 @@ async fn generate_thread_summaries_persists_model_output() {
             &openrouter_base_url,
             Some("test-openrouter-key"),
             Some("openai/gpt-oss-120b:free"),
+            true,
         ),
     )
     .expect("router");
@@ -185,6 +218,7 @@ async fn generate_thread_summaries_skips_unchanged_threads_for_same_model() {
             &openrouter_base_url,
             Some("test-openrouter-key"),
             Some("openai/gpt-oss-120b:free"),
+            true,
         ),
     )
     .expect("router");
@@ -266,6 +300,7 @@ async fn generate_thread_summaries_force_regenerate_overwrites_existing_summary(
             &openrouter_base_url,
             Some("test-openrouter-key"),
             Some("openai/gpt-oss-120b:free"),
+            true,
         ),
     )
     .expect("router");
@@ -327,6 +362,7 @@ async fn generate_thread_summaries_skips_threads_without_replies() {
             &openrouter_base_url,
             Some("test-openrouter-key"),
             Some("openai/gpt-oss-120b:free"),
+            true,
         ),
     )
     .expect("router");
@@ -371,6 +407,7 @@ async fn generate_thread_summaries_temporarily_skip_long_single_message_threads(
             &openrouter_base_url,
             Some("test-openrouter-key"),
             Some("openai/gpt-oss-120b:free"),
+            true,
         ),
     )
     .expect("router");
@@ -450,6 +487,7 @@ async fn generate_thread_summaries_resume_mode_filters_per_channel() {
             &openrouter_base_url,
             Some("test-openrouter-key"),
             Some("openai/gpt-oss-120b:free"),
+            true,
         ),
     )
     .expect("router");
@@ -545,6 +583,7 @@ async fn generate_thread_summaries_resume_mode_includes_stale_generated_summarie
             &openrouter_base_url,
             Some("test-openrouter-key"),
             Some("openai/gpt-oss-120b:free"),
+            true,
         ),
     )
     .expect("router");
@@ -584,6 +623,7 @@ fn worker_config(
     openrouter_base_url: &str,
     openrouter_api_key: Option<&str>,
     openrouter_model: Option<&str>,
+    ai_summaries_enabled: bool,
 ) -> WorkerConfig {
     WorkerConfig {
         host: "127.0.0.1".to_owned(),
@@ -604,6 +644,7 @@ fn worker_config(
         r2_key_prefix: None,
         current_signing_key: None,
         next_signing_key: None,
+        ai_summaries_enabled,
     }
 }
 

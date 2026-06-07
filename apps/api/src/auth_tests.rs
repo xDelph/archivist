@@ -203,6 +203,7 @@ async fn seed_synced_user(tempdir: &TempDir, user_id: &str, is_active: bool) {
             display_name: Some("Thomas".to_owned()),
             avatar_url: Some("https://images.example.com/avatar.png".to_owned()),
             is_active,
+            is_anonymized: false,
         })
         .await
         .expect("seed synced user");

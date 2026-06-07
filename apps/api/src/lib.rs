@@ -1,6 +1,8 @@
+mod admin_users;
 mod analytics;
 mod analytics_store;
 mod auth;
+mod auth_privacy;
 mod auth_store;
 mod catch_up;
 mod channels;
@@ -18,6 +20,7 @@ mod thread_list;
 mod thread_preview;
 mod thread_text;
 mod threads;
+mod user_privacy;
 mod user_role_store;
 mod user_store;
 mod view_models;
@@ -178,10 +181,35 @@ pub async fn build_router(config: ApiConfig) -> Result<Router, StoreError> {
         .route("/api/threads", get(thread_list::thread_list))
         .route("/api/threads/{id}", get(threads::thread_detail))
         .route(
+            "/api/auth/anonymize",
+            axum::routing::post(auth_privacy::anonymize_self),
+        )
+        .route(
+            "/api/auth/de-anonymize",
+            axum::routing::post(auth_privacy::de_anonymize_self),
+        )
+        .route(
             "/api/analytics/events",
             axum::routing::post(analytics::record_event),
         )
         .route("/api/analytics/metrics", get(analytics::metrics))
+        .route("/api/admin/users", get(admin_users::list_users))
+        .route(
+            "/api/admin/users/{slack_user_id}/anonymize",
+            axum::routing::post(admin_users::anonymize_user),
+        )
+        .route(
+            "/api/admin/users/{slack_user_id}/de-anonymize",
+            axum::routing::post(admin_users::de_anonymize_user),
+        )
+        .route(
+            "/api/admin/users/{slack_user_id}/deactivate",
+            axum::routing::post(admin_users::deactivate_user),
+        )
+        .route(
+            "/api/admin/users/{slack_user_id}/reactivate",
+            axum::routing::post(admin_users::reactivate_user),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_session,
@@ -388,6 +416,8 @@ fn user_store_error_to_store_error(error: user_store::UserStoreError) -> StoreEr
     match error {
         user_store::UserStoreError::Read(error) => StoreError::Read(error),
         user_store::UserStoreError::Parse(error) => StoreError::Parse(error),
+        user_store::UserStoreError::Sqlx(error) => StoreError::Sqlx(error),
+        user_store::UserStoreError::NotFound => StoreError::InvalidRuntimeConfig("user_not_found"),
         #[cfg(test)]
         user_store::UserStoreError::CreateDirectory(error)
         | user_store::UserStoreError::Write(error) => StoreError::Read(error),

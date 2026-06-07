@@ -14,6 +14,7 @@ export default defineConfig({
 			"/health": devProxyTarget,
 		},
 		allowedHosts: ["devwithai-local.arkivist.dev"],
+		port: 4001,
 	},
 	resolve: {
 		alias: {

@@ -327,6 +327,21 @@ impl PgEventStore {
         avatar_url: Option<&str>,
         is_active: bool,
     ) -> Result<(), StoreError> {
+        let is_anonymized = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT COALESCE(is_anonymized, FALSE)
+            FROM users
+            WHERE id = $1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool())
+        .await
+        .map_err(StoreError::Sqlx)?;
+        if is_anonymized == Some(true) {
+            return Ok(());
+        }
+
         sqlx::query(
             r#"
             INSERT INTO users (id, email, display_name, avatar_url, is_active)

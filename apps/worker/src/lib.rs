@@ -56,6 +56,7 @@ pub struct WorkerConfig {
     pub r2_key_prefix: Option<String>,
     pub current_signing_key: Option<String>,
     pub next_signing_key: Option<String>,
+    pub ai_summaries_enabled: bool,
 }
 
 impl WorkerConfig {
@@ -96,6 +97,7 @@ impl WorkerConfig {
             r2_key_prefix: std::env::var("ARKIVIST_R2_KEY_PREFIX").ok(),
             current_signing_key: std::env::var("UPSTASH_QSTASH_CURRENT_SIGNING_KEY").ok(),
             next_signing_key: std::env::var("UPSTASH_QSTASH_NEXT_SIGNING_KEY").ok(),
+            ai_summaries_enabled: ai_summaries_enabled_from_env(),
         }
     }
 
@@ -122,6 +124,7 @@ where
 #[derive(Clone)]
 struct AppState {
     store: EventStore,
+    ai_summaries_enabled: bool,
     event_log_path: String,
     process_event_url: String,
     heartbeat_url: String,
@@ -198,6 +201,7 @@ pub fn build_router(
         .route("/jobs/archive_file", post(archive::archive_file))
         .with_state(AppState {
             store: store.into(),
+            ai_summaries_enabled: config.ai_summaries_enabled,
             event_log_path: config.event_log_path,
             process_event_url,
             heartbeat_url,
@@ -401,6 +405,16 @@ fn qstash_signature_failed(error: SignatureError) -> (StatusCode, Json<ErrorResp
     };
 
     (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error }))
+}
+
+fn ai_summaries_enabled_from_env() -> bool {
+    matches!(
+        std::env::var("ARKIVIST_AI_SUMMARIES_ENABLED")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
+    )
 }
 
 fn read_port(key: &str, fallback: u16) -> u16 {

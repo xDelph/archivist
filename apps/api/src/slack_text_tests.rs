@@ -26,6 +26,7 @@ fn render_slack_text_resolves_mentions_and_entities() {
             display_name: Some("Thomas".to_owned()),
             avatar_url: None,
             is_active: true,
+            is_anonymized: false,
         },
     )]);
     let channels = build_channel_name_map(&[Channel {
@@ -54,6 +55,25 @@ fn render_slack_text_falls_back_to_inline_labels() {
             &HashMap::new(),
         ),
         "Ask @thomas in #support",
+    );
+}
+
+#[test]
+fn render_slack_text_masks_anonymized_users() {
+    let users = HashMap::from([(
+        "U123".to_owned(),
+        SyncedUserRecord {
+            slack_user_id: "U123".to_owned(),
+            display_name: Some("anonymous".to_owned()),
+            avatar_url: None,
+            is_active: true,
+            is_anonymized: true,
+        },
+    )]);
+
+    assert_eq!(
+        render_slack_text("Ping <@U123|Thomas>", &users, &HashMap::new()),
+        "Ping @anonymous",
     );
 }
 

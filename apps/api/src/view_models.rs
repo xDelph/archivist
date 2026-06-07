@@ -1,4 +1,4 @@
-use crate::user_store::SyncedUserRecord;
+use crate::{user_privacy::mask_synced_user, user_store::SyncedUserRecord};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub(crate) struct UserSummaryResponse {
 
 impl From<SyncedUserRecord> for UserSummaryResponse {
     fn from(value: SyncedUserRecord) -> Self {
+        let value = mask_synced_user(value);
         Self {
             slack_user_id: value.slack_user_id,
             display_name: value.display_name,

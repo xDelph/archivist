@@ -15,6 +15,7 @@ import {
 	threadListSortSchema,
 } from "@/lib/thread-list-sort";
 import { AccountPage } from "@/routes/account-page";
+import { AdminUsersPage } from "@/routes/admin-users-page";
 import { HomePage } from "@/routes/home-page";
 import { SavedPage } from "@/routes/saved-page";
 import { SearchPage } from "@/routes/search-page";
@@ -127,6 +128,12 @@ const accountRoute = createRoute({
 	component: AccountPage,
 });
 
+const adminUsersRoute = createRoute({
+	getParentRoute: () => appRoute,
+	path: "/admin/users",
+	component: AdminUsersPage,
+});
+
 const threadRoute = createRoute({
 	getParentRoute: () => appRoute,
 	path: "/threads/$threadId",
@@ -141,6 +148,7 @@ const routeTree = rootRoute.addChildren([
 		topicsRoute,
 		savedRoute,
 		accountRoute,
+		adminUsersRoute,
 		threadRoute,
 	]),
 ]);

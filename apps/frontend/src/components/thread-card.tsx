@@ -1,6 +1,6 @@
 import { ChannelBadge } from "@/components/channel-badge";
 import { IdentityAvatar } from "@/components/identity-avatar";
-import { AiStateBadge, SavedStateBadge } from "@/components/thread-card-badges";
+import { SavedStateBadge } from "@/components/thread-card-badges";
 import { ThreadMetrics } from "@/components/thread-metrics";
 import type { ThreadPreviewSource } from "@/lib/api";
 import { formatSlackTimestamp } from "@/lib/format";
@@ -240,7 +240,6 @@ export function ThreadCard({
 			<article
 				className={cn(
 					"surface-panel surface-panel-soft group relative px-3 py-3 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-(--color-border-accent) hover:bg-(--color-bg-base) hover:shadow-[0_18px_40px_rgba(0,0,0,0.24)] focus-within:border-(--color-border-accent)",
-					previewSource === "ai" && "border-(--color-accent-soft)/55",
 					isDragging ? "duration-0" : "ease-[cubic-bezier(0.22,1,0.36,1)]",
 					className,
 				)}
@@ -297,7 +296,6 @@ export function ThreadCard({
 										{displayAuthorName(author, authorFallback || channelName)}
 									</p>
 									<ChannelBadge name={channelName} />
-									{previewSource === "ai" ? <AiStateBadge /> : null}
 									{savedState ? <SavedStateBadge state={savedState} /> : null}
 									{isStarred ? <StarStateBadge /> : null}
 								</div>

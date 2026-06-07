@@ -42,6 +42,16 @@ pub(crate) async fn generate_thread_summaries(
     State(state): State<AppState>,
     body: Bytes,
 ) -> Result<Json<GenerateThreadSummariesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !state.ai_summaries_enabled {
+        tracing::info!("thread summary generation disabled by ARKIVIST_AI_SUMMARIES_ENABLED");
+        return Ok(Json(GenerateThreadSummariesResponse {
+            ok: true,
+            generated: 0,
+            skipped: 0,
+            failed: 0,
+        }));
+    }
+
     let request = parse_backfill_request(&body)?;
     let config = state
         .openrouter_config

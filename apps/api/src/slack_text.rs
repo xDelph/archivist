@@ -1,4 +1,4 @@
-use crate::user_store::SyncedUserRecord;
+use crate::{user_privacy::ANONYMOUS_DISPLAY_NAME, user_store::SyncedUserRecord};
 use domain::Channel;
 use html_escape::decode_html_entities as decode_entities;
 use regex::Regex;
@@ -43,6 +43,9 @@ pub(crate) fn render_slack_text(
     mention_pattern()
         .replace_all(&decoded, |captures: &regex::Captures<'_>| {
             if let Some(user_id) = captures.name("user").map(|value| value.as_str()) {
+                if users.get(user_id).is_some_and(|user| user.is_anonymized) {
+                    return format!("@{ANONYMOUS_DISPLAY_NAME}");
+                }
                 return users
                     .get(user_id)
                     .and_then(|user| user.display_name.as_deref())

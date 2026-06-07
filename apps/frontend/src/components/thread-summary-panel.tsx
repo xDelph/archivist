@@ -29,7 +29,7 @@ export function ThreadSummaryPanel({
 
 	return (
 		<SectionCard
-			eyebrow={summary.source === "ai" ? "AI Summary" : "Thread Detail"}
+			eyebrow="Thread Detail"
 			title={null}
 			titleClassName="hidden"
 			overlayActions

@@ -127,6 +127,7 @@ async fn duplicate_events_are_acknowledged() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -225,6 +226,7 @@ async fn reaction_events_are_counted_in_health() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -302,6 +304,7 @@ async fn file_share_messages_are_counted_in_health() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -403,6 +406,7 @@ async fn refresh_thread_summaries_job_reports_refreshed_threads() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -452,6 +456,7 @@ async fn local_worker_with_signing_keys_still_accepts_unsigned_refresh_jobs() {
             r2_key_prefix: None,
             current_signing_key: Some("current".to_owned()),
             next_signing_key: Some("next".to_owned()),
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");

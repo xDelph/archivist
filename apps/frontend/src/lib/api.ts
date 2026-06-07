@@ -14,6 +14,22 @@ export interface CurrentUser {
 	display_name: string | null;
 	avatar_url: string | null;
 	roles: string[];
+	is_active: boolean;
+	is_anonymized: boolean;
+}
+
+export interface AdminUser {
+	slack_user_id: string;
+	email: string | null;
+	display_name: string | null;
+	is_active: boolean;
+	is_anonymized: boolean;
+	roles: string[];
+}
+
+export interface AdminUsersResponse {
+	ok: boolean;
+	users: AdminUser[];
 }
 
 export interface ThreadAuthor {
@@ -270,6 +286,66 @@ export async function logoutCurrentUser() {
 	return apiRequest<{ ok: boolean }>("/api/auth/logout", {
 		method: "POST",
 	});
+}
+
+export async function anonymizeCurrentUser() {
+	return apiRequest<{ ok: boolean }>("/api/auth/anonymize", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ confirm: true }),
+	});
+}
+
+export async function deAnonymizeCurrentUser() {
+	return apiRequest<{ ok: boolean }>("/api/auth/de-anonymize", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ confirm: true }),
+	});
+}
+
+export async function fetchAdminUsers(query?: string) {
+	const params = new URLSearchParams();
+	if (query?.trim()) {
+		params.set("query", query.trim());
+	}
+	const search = params.toString();
+	return apiRequest<AdminUsersResponse>(
+		search ? `/api/admin/users?${search}` : "/api/admin/users",
+	);
+}
+
+export async function adminAnonymizeUser(slackUserId: string) {
+	return adminUserAction(slackUserId, "anonymize");
+}
+
+export async function adminDeAnonymizeUser(slackUserId: string) {
+	return adminUserAction(slackUserId, "de-anonymize");
+}
+
+export async function adminDeactivateUser(slackUserId: string) {
+	return adminUserAction(slackUserId, "deactivate");
+}
+
+export async function adminReactivateUser(slackUserId: string) {
+	return adminUserAction(slackUserId, "reactivate");
+}
+
+async function adminUserAction(slackUserId: string, action: string) {
+	return apiRequest<{ ok: boolean }>(
+		`/api/admin/users/${encodeURIComponent(slackUserId)}/${action}`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ confirm: true }),
+		},
+	);
 }
 
 export async function fetchCatchUp({

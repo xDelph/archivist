@@ -159,6 +159,7 @@ fn signed_worker_config(log_path: &std::path::Path) -> WorkerConfig {
         r2_key_prefix: None,
         current_signing_key: Some(CURRENT_SIGNING_KEY.to_owned()),
         next_signing_key: Some(NEXT_SIGNING_KEY.to_owned()),
+        ai_summaries_enabled: false,
     }
 }
 

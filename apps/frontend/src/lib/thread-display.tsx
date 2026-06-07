@@ -72,6 +72,9 @@ export function displayAuthorName(
 	author: ThreadAuthor | null | undefined,
 	fallback: string | null | undefined,
 ) {
+	if (author?.display_name === "anonymous") {
+		return "@anonymous";
+	}
 	return author?.display_name || fallback || "Unknown member";
 }
 

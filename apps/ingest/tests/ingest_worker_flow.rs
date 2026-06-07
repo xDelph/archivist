@@ -42,6 +42,7 @@ async fn slack_event_flows_from_ingest_to_worker() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("worker router");
@@ -136,6 +137,7 @@ async fn channel_rename_flows_from_ingest_to_worker() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("worker router");
@@ -222,6 +224,7 @@ async fn slack_event_flows_from_ingest_to_worker_through_qstash_mock() {
             r2_key_prefix: None,
             current_signing_key: Some(CURRENT_SIGNING_KEY.to_owned()),
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("worker router");

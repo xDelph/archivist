@@ -102,6 +102,7 @@ async fn backfill_files_without_channel_id_archives_missing_files_across_workspa
             r2_key_prefix: Some("archive".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -188,6 +189,7 @@ async fn backfill_files_with_channel_id_only_archives_requested_channel() {
             r2_key_prefix: Some("archive".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");

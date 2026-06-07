@@ -8,7 +8,10 @@ use self::session::{
     SESSION_COOKIE_NAME, SessionError, session_claims, session_cookie, session_cookie_header,
     validate_session_token,
 };
-use crate::{ApiConfig, AppState};
+use crate::{
+    ApiConfig, AppState,
+    user_privacy::{ANONYMOUS_DISPLAY_NAME, mask_synced_user},
+};
 use axum::{
     Json,
     extract::{Query, Request, State},
@@ -84,6 +87,8 @@ struct SessionUserResponse {
     display_name: Option<String>,
     avatar_url: Option<String>,
     roles: Vec<String>,
+    is_active: bool,
+    is_anonymized: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -178,38 +183,53 @@ pub(crate) async fn slack_callback(
         .map_err(callback_error_response)?;
     let synced_user = state
         .user_store
-        .find_user(&identity.slack_user_id)
+        .find_user_raw(&identity.slack_user_id)
         .await
         .ok_or_else(|| callback_error_response(CallbackError::UserNotSynced))?;
     if !synced_user.is_active {
         return Err(callback_error_response(CallbackError::UserInactive));
     }
-    state
-        .auth_store
-        .upsert_identity(&identity)
-        .await
-        .map_err(|error| {
-            tracing::error!(
-                ?error,
-                slack_user_id = %identity.slack_user_id,
-                "failed to upsert auth identity"
-            );
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "identity_store_failed",
-                }),
-            )
-        })?;
+    if !synced_user.is_anonymized {
+        state
+            .auth_store
+            .upsert_identity(&identity)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    ?error,
+                    slack_user_id = %identity.slack_user_id,
+                    "failed to upsert auth identity"
+                );
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "identity_store_failed",
+                    }),
+                )
+            })?;
+    }
+    let masked_user = mask_synced_user(synced_user);
     let session_secret =
         require_session_secret(&state, "auth.slack_callback", Some("/auth/slack/callback"))?;
     let session_cookie = session_cookie_header(
         session_secret,
         &session_claims(
             identity.slack_user_id.clone(),
-            identity.email.clone(),
-            identity.display_name.clone(),
-            identity.avatar_url.clone(),
+            if masked_user.is_anonymized {
+                None
+            } else {
+                identity.email.clone()
+            },
+            if masked_user.is_anonymized {
+                Some(ANONYMOUS_DISPLAY_NAME.to_owned())
+            } else {
+                identity.display_name.clone()
+            },
+            if masked_user.is_anonymized {
+                None
+            } else {
+                identity.avatar_url.clone()
+            },
         ),
     )
     .map_err(|_| {
@@ -259,14 +279,32 @@ pub(crate) async fn me(
             )
         })?;
 
+    let synced_user = state
+        .user_store
+        .find_user_raw(&claims.slack_user_id)
+        .await
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "user_not_found",
+            }),
+        ))?;
+    let masked_user = mask_synced_user(synced_user);
+
     Ok(Json(MeResponse {
         ok: true,
         user: SessionUserResponse {
-            slack_user_id: claims.slack_user_id,
-            email: claims.email,
-            display_name: claims.display_name,
-            avatar_url: claims.avatar_url,
+            slack_user_id: masked_user.slack_user_id,
+            email: if masked_user.is_anonymized {
+                None
+            } else {
+                claims.email
+            },
+            display_name: masked_user.display_name,
+            avatar_url: masked_user.avatar_url,
             roles,
+            is_active: masked_user.is_active,
+            is_anonymized: masked_user.is_anonymized,
         },
     }))
 }

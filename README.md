@@ -27,7 +27,8 @@ La documentation backend détaillée reste dans `apps/backend/README.md`.
 - Backfill asynchrone en 3 phases (messages, fichiers, agrégations)
 - Stockage SQL (Neon/Postgres) + archivage fichiers Cloudflare R2
 - Dashboard threads (`recent`, `week`, `month`, `top`)
-- Auth complète (register/login/logout/me, reset password, préférences anonymat)
+- Auth Slack OIDC (login/logout/me) + mode anonyme réversible (self-service + admin)
+- Gestion admin des users (`/admin/users`) : anonymiser, restaurer, désactiver, réactiver
 - UI Next.js avec proxy BFF vers le backend Rust
 
 ### Stack
@@ -318,7 +319,13 @@ scripts/db/probe_read_model_queries.sh --tab all --limit 50 --api-url http://loc
 - `POST /api/auth/logout`
 - `GET /api/auth/me`
 - `POST /api/auth/change-password`
-- `PATCH|POST /api/auth/preferences`
+- `POST /api/auth/anonymize`
+- `POST /api/auth/de-anonymize`
+- `GET /api/admin/users`
+- `POST /api/admin/users/{id}/anonymize`
+- `POST /api/admin/users/{id}/de-anonymize`
+- `POST /api/admin/users/{id}/deactivate`
+- `POST /api/admin/users/{id}/reactivate`
 - `POST /api/auth/password/forgot`
 - `POST /api/auth/password/reset`
 - `GET /api/record/threads?...`
@@ -361,6 +368,21 @@ cargo run --manifest-path apps/backend/Cargo.toml --bin rebuild_rollups -- --enq
 cargo run --manifest-path apps/backend/Cargo.toml --bin repair_rollup -- --channel C123 --ts 1700000000.000000
 cargo run --manifest-path apps/backend/Cargo.toml --bin validate_rollups -- --strict --sample 300
 ```
+
+### Anonymisation utilisateur
+
+- Colonnes `users.is_anonymized`, `users.anonymized_at`, `users.anonymized_by` (migration `20260605120000_user_anonymization.sql`).
+- Self-service : `/account` → section Privacy (`POST /api/auth/anonymize` / `de-anonymize`).
+- Admin : `/admin/users` (rôle `admin` requis) pour anonymiser, restaurer, désactiver ou réactiver un membre.
+- Désactivation admin = anonyme + `is_active = false` (login bloqué).
+- Tant que `is_anonymized = true`, le sync Slack (`upsert_user_profile`) ne réécrit pas le profil.
+- Affichage masqué à la demande (`@anonymous`) ; les `user_id` Slack restent dans messages/réactions.
+
+### Résumés IA
+
+- Génération désactivée par défaut (`ARKIVIST_AI_SUMMARIES_ENABLED=false`).
+- Migration `20260605120000_user_anonymization.sql` purge `generated_thread_summaries`.
+- L'UI n'affiche plus de badge/label « AI Summary ».
 
 ### Problèmes fréquents
 

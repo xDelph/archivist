@@ -57,6 +57,7 @@ async fn backfill_channel_rejects_missing_user_token() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -150,6 +151,7 @@ async fn backfill_channel_fetches_history_and_upserts_messages() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -259,6 +261,7 @@ async fn backfill_channel_uploads_files_to_r2_and_sets_archive_url() {
             r2_key_prefix: Some("archive".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -343,6 +346,7 @@ async fn backfill_channel_reuses_existing_r2_object_without_slack_download_url()
             r2_key_prefix: Some("archive".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -418,6 +422,7 @@ async fn backfill_channel_skips_file_when_download_url_is_missing() {
             r2_key_prefix: Some("archive".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -480,6 +485,7 @@ async fn backfill_channel_fetches_thread_replies_for_root_messages() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -537,6 +543,7 @@ async fn backfill_channel_retries_thread_replies_after_rate_limit() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -606,6 +613,7 @@ async fn backfill_channel_tolerates_files_missing_names() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -658,6 +666,7 @@ async fn backfill_channel_returns_bad_gateway_when_slack_history_fails() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -717,6 +726,7 @@ async fn backfill_channel_uses_explicit_oldest_ts() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -798,6 +808,7 @@ async fn backfill_channel_resume_from_last_message_ts_uses_latest_stored_message
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -906,6 +917,7 @@ async fn backfill_channel_resume_from_last_message_ts_reprocesses_boundary_files
             r2_key_prefix: Some("archive".to_owned()),
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -1026,6 +1038,7 @@ async fn backfill_channel_resume_from_last_message_ts_refreshes_existing_thread_
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -1110,6 +1123,7 @@ async fn backfill_without_channel_id_uses_explicit_oldest_ts_for_each_public_cha
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -1217,6 +1231,7 @@ async fn backfill_without_channel_id_oldest_ts_refreshes_existing_thread_replies
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -1319,6 +1334,7 @@ async fn backfill_without_channel_id_resume_from_last_message_ts_uses_each_chann
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -1387,6 +1403,7 @@ async fn backfill_without_channel_id_fetches_all_public_channels() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -1449,6 +1466,7 @@ async fn backfill_channel_rejects_invalid_json_body() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");
@@ -1499,6 +1517,7 @@ async fn backfill_channel_rejects_conflicting_range_options() {
             r2_key_prefix: None,
             current_signing_key: None,
             next_signing_key: None,
+            ai_summaries_enabled: false,
         },
     )
     .expect("router");

@@ -13,6 +13,7 @@ use tower::util::ServiceExt;
 #[tokio::test]
 async fn me_returns_the_current_user_from_a_valid_session_cookie() {
     let tempdir = tempdir().expect("tempdir");
+    seed_synced_user(&tempdir, "U123", true).await;
     let session_token = build_session_token(
         "session_secret",
         &SessionClaims {
@@ -45,6 +46,7 @@ async fn me_returns_the_current_user_from_a_valid_session_cookie() {
 #[tokio::test]
 async fn me_returns_roles_for_the_current_user() {
     let tempdir = tempdir().expect("tempdir");
+    seed_synced_user(&tempdir, "U123", true).await;
     let session_token = build_session_token(
         "session_secret",
         &SessionClaims {
@@ -206,4 +208,19 @@ async fn logout_clears_the_session_cookie() {
     assert!(set_cookie.contains("arkivist_session="));
     assert!(set_cookie.contains("Max-Age=0"));
     assert!(set_cookie.contains("HttpOnly"));
+}
+
+async fn seed_synced_user(tempdir: &tempfile::TempDir, user_id: &str, is_active: bool) {
+    crate::user_store::LocalUserStore::open(tempdir.path().join("synced-users.json"))
+        .await
+        .expect("user store")
+        .upsert_user(crate::user_store::SyncedUserRecord {
+            slack_user_id: user_id.to_owned(),
+            display_name: Some("Thomas".to_owned()),
+            avatar_url: Some("https://images.example.com/avatar.png".to_owned()),
+            is_active,
+            is_anonymized: false,
+        })
+        .await
+        .expect("seed synced user");
 }
